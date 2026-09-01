@@ -1,0 +1,48 @@
+{
+  "project": "cleat",
+  "complexity_lizard": {
+    "sources": [
+      "quality/bin"
+    ],
+    "languages": [
+      "python"
+    ],
+    "exclude": [],
+    "ceilings": {
+      "cc": 8,
+      "lines": 60
+    },
+    "baseline": "quality/complexity-baseline.json"
+  },
+  "hygiene": {
+    "roots": [
+      "quality/tests"
+    ],
+    "skip_dirs": [],
+    "extensions": [
+      ".py",
+      ".sh"
+    ],
+    "habits": {
+      "fixed sleeps": {
+        "pattern": "time\\.sleep\\(",
+        "ceiling": 2,
+        "use": "poll for the condition; the two baselined matches are test-mutate.py's timeout fixtures"
+      }
+    }
+  },
+  "doc_size": [
+    {
+      "file": "README.md",
+      "ceiling": 800
+    },
+    {
+      "file": "quality/README.md",
+      "ceiling": 1400
+    },
+    {
+      "file": "quality/STRATEGY.md",
+      "ceiling": 3000
+    }
+  ]
+}

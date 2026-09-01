@@ -1,0 +1,86 @@
+[
+ {
+  "file": "quality/bin/check-features-map.py",
+  "text": "def main():",
+  "cc": 43,
+  "lines": 205
+ },
+ {
+  "file": "quality/bin/mutate.py",
+  "text": "def main():",
+  "cc": 24,
+  "lines": 63
+ },
+ {
+  "file": "quality/bin/check-layering.py",
+  "text": "def main():",
+  "cc": 20,
+  "lines": 55
+ },
+ {
+  "file": "quality/bin/check-crap.py",
+  "text": "def gate(args, settings):",
+  "cc": 18,
+  "lines": 47
+ },
+ {
+  "file": "quality/bin/check-complexity-lizard.py",
+  "text": "def main():",
+  "cc": 17,
+  "lines": 68
+ },
+ {
+  "file": "quality/bin/mutate.py",
+  "text": "def mutate_file(package, sources, relative, list_only=False, log=print, tests_root=None):",
+  "cc": 16,
+  "lines": 44
+ },
+ {
+  "file": "quality/bin/check-crap.py",
+  "text": "def coverage_from_codecov(export, sources_root, path_map=None):",
+  "cc": 15,
+  "lines": 29
+ },
+ {
+  "file": "quality/bin/check-features-map.py",
+  "text": "def strip_comments(text):",
+  "cc": 14,
+  "lines": 61
+ },
+ {
+  "file": "quality/bin/mutate.py",
+  "text": "def run_suite(package, filters=None, test_command=None, filter_flag=None):",
+  "cc": 14,
+  "lines": 20
+ },
+ {
+  "file": "quality/bin/check-crap.py",
+  "text": "def coverage_from_istanbul(report, sources_root):",
+  "cc": 12,
+  "lines": 26
+ },
+ {
+  "file": "quality/bin/check-crap.py",
+  "text": "def complexities_for(args, settings):",
+  "cc": 12,
+  "lines": 25
+ },
+ {
+  "file": "quality/bin/check-doc-size.py",
+  "text": "def main():",
+  "cc": 10,
+  "lines": 32
+ },
+ {
+  "file": "quality/bin/check-layering.py",
+  "text": "def judge(app, exempt, rules, strict_dead, code, owner):",
+  "cc": 10,
+  "lines": 28
+ },
+ {
+  "file": "quality/bin/lizard_reader.py",
+  "text": "def functions_from_csv(text, skip_rust_tests=True):",
+  "cc": 9,
+  "lines": 22
+ }
+]
