@@ -1,0 +1,20 @@
+name: cleat
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install lizard ast-grep-cli
+      - name: quality gates, strictly
+        run: python3 quality/bin/gate.py --strict
+      - name: every check's own test
+        run: bash quality/tests/run.sh

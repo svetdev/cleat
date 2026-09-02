@@ -10,7 +10,7 @@ import json, os, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "bin"))
-import quality_config as qc  # noqa: E402
+import quality_config as qc
 
 failed = 0
 def check(name, ok, detail=""):
@@ -69,10 +69,10 @@ try:
     # here), so their absence is noted, not failed.
     for section in ("hygiene", "doc_size"):
         check(f"this checkout's quality.json has \"{section}\"", section in real.data)
-    for section in ("complexity", "crap", "layering", "features_map", "mutation"):
+    for section in ("complexity", "crap", "layering", "reachability", "mutation"):
         check(f"this checkout's quality.json {'has' if section in real.data else 'chose not to configure'} \"{section}\"", True)
 
-    # quality.example.json is documented (docs/repo-map.md) as Kiteloop's own
+    # quality.example.json is documented (README.md) as this repository's own
     # quality.json, kept as the worked example of every section — nothing checks
     # that it stays that way, so it drifts silently unless something does.
     def first_differing_section(a, b):
@@ -83,8 +83,13 @@ try:
         return None
 
     example = qc.Config(os.path.join(HERE, "..", "quality.example.json"))
-    diff = first_differing_section(real.data, example.data)
-    check("quality.example.json decodes equal to quality.json", diff is None, diff)
+    if example.data.get("project") == real.data.get("project"):
+        diff = first_differing_section(real.data, example.data)
+        check("quality.example.json decodes equal to quality.json", diff is None,
+              "section %r differs between %s and %s — the example is this repository's own config, copy it over" % (diff, real.file, example.file))
+    else:
+        check("quality.example.json is the template's own config (project %r), not this project's (%r) — not compared; "
+              "attach.py --refresh keeps it current" % (example.data.get("project"), real.data.get("project")), True)
 
     equal_a = {"complexity": {"threshold": 8}, "hygiene": {"ceiling": 60}}
     equal_b = {"complexity": {"threshold": 8}, "hygiene": {"ceiling": 60}}

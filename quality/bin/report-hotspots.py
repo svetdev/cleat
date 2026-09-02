@@ -3,16 +3,17 @@
 
 Complexity alone says a function is hard to change; it does not say anyone is
 changing it. A function nobody touches can sit at cc 20 for years and cost
-nothing more than what check-complexity.sh already charges it. The one that
+nothing more than what check-complexity.py already charges it. The one that
 costs is the function that is both complex *and* hot — someone comes back to
 it every few days, and every one of those visits pays the complexity tax. This
 multiplies the two and ranks the result, so refactoring effort goes where it
 actually pays for itself, rather than at whatever is most complex today.
 
 This is a report, not a gate: nothing here fails a build, and there is no
-baseline. Complexity comes from the same SwiftLint pass check-crap.py already
-runs (`lint_complexities`, threshold 1, over `crap.sources` in quality.json) —
-reused here rather than run a second time. Churn is the number of commits that
+baseline. Complexity comes from whatever the project measures it with: lizard
+when `crap.complexity.tool` or the `complexity` section says so,
+else the same SwiftLint pass check-crap.py runs (`lint_complexities`,
+threshold 1, over `crap.sources`) — the readers are reused, not duplicated. Churn is the number of commits that
 touched a function's file in the last N days (`hotspots.window_days` in
 quality.json, default 90), from `git log --since --name-only`.
 
@@ -28,10 +29,11 @@ complexity gate itself would flag.
   quality/bin/report-hotspots.py --min-cc 8
   quality/bin/report-hotspots.py --config PATH
   quality/bin/report-hotspots.py --lint F --sources DIR --repo DIR --window-days N   # the tests use these
+  quality/bin/report-hotspots.py --lizard-csv F --repo DIR                           # from a saved lizard run
+  quality/bin/report-hotspots.py --sources DIR --tool lizard --languages python       # lizard, no config needed
 """
 
 import argparse
-import importlib.util
 import json
 import os
 import subprocess
@@ -41,11 +43,9 @@ from shutil import which
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import quality_config  # noqa: E402
+from extractors import churn, complexity
+import quality_config
 
-_spec = importlib.util.spec_from_file_location("check_crap", os.path.join(HERE, "check-crap.py"))
-check_crap = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(check_crap)
 
 SECTION = "hotspots"
 
@@ -100,16 +100,70 @@ def min_cc_for(args, settings):
     return int(section.get("min_cc", 0))
 
 
-def complexities_for(args, settings):
-    """From --lint, else SwiftLint over --sources, else crap.sources."""
-    if args.lint:
-        with open(args.lint) as handle:
-            return check_crap.complexities_from_lint(json.load(handle))
+def lizard_spec(settings):
+    """The lizard configuration to measure with, when the project measures with lizard:
+    `crap.complexity` when its `tool` is lizard, else the `complexity` section (or its
+    old name) when it does; None when neither is there or no quality.json is in reach."""
+    if settings.explicit is None and quality_config.find() is None:
+        return None
+    data = settings.config.data
+    crap = data.get("crap")
+    if isinstance(crap, dict) and isinstance(crap.get("complexity"), dict) and crap["complexity"].get("tool") == "lizard":
+        return crap["complexity"]
+    for key in ("complexity", "complexity_lizard"):
+        section = data.get(key)
+        if isinstance(section, dict) and (section.get("tool") == "lizard" or section.get("languages")):
+            return section
+    return None
+
+
+def complexities_from_lizard(settings, spec, roots=None):
+    """lizard over the configured `spec` — its sources, or `roots` when --sources
+    overrides them — as check-complexity.py runs it."""
+    try:
+        return complexity.lizard_complexities(roots or settings.config.paths(spec["sources"]), spec["languages"],
+                                              spec.get("exclude", []), spec.get("skip_rust_tests", True))
+    except complexity.ToolError as problem:
+        raise GateError(str(problem))
+
+
+def complexities_from_swiftlint(args, settings):
+    """SwiftLint over --sources, else crap.sources."""
     if not which("swiftlint"):
         raise GateError("swiftlint is not installed — brew install swiftlint")
     roots = [os.path.abspath(s) for s in args.sources] if args.sources else \
         settings.config.paths(settings.config.get("crap", "sources"))
-    return check_crap.lint_complexities(roots)
+    return complexity.swiftlint_complexities(roots)
+
+
+def _saved_report(args):
+    """Complexities from a saved report named by a flag, or None."""
+    if args.lint:
+        with open(args.lint) as handle:
+            return complexity.complexities_from_swiftlint(json.load(handle))
+    if args.lizard_csv:
+        with open(args.lizard_csv) as handle:
+            functions, _ = complexity.functions_from_csv(handle.read())
+        return complexity.complexities(functions)
+    return None
+
+
+def complexities_for(args, settings):
+    """From --lint (SwiftLint json) or --lizard-csv (a saved lizard run); else the reader
+    the project measures with — lizard when `complexity.tool` (or `crap.complexity.tool`)
+    says so, over --sources when given — or lizard over --sources with --tool lizard and
+    --languages; else SwiftLint."""
+    saved = _saved_report(args)
+    if saved is not None:
+        return saved
+    roots = [os.path.abspath(s) for s in args.sources] if args.sources else None
+    if args.tool == "lizard" and args.languages:
+        spec = {"languages": args.languages, "sources": []}
+    else:
+        spec = lizard_spec(settings)
+    if spec is not None and args.tool != "swiftlint":
+        return complexities_from_lizard(settings, spec, roots)
+    return complexities_from_swiftlint(args, settings)
 
 
 def repo_for(args, settings):
@@ -117,22 +171,12 @@ def repo_for(args, settings):
 
 
 def churn_by_file(repo, window_days):
-    """{abs realpath: commit count} for every file touched by a commit in the last
-    `window_days` days, from `git log --name-only` — a filename appears at most once per
-    commit in that output, so counting lines is counting commits."""
-    proc = subprocess.run(
-        ["git", "-C", repo, "log", "--since=%d days ago" % window_days, "--name-only", "--pretty=format:"],
-        capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise GateError("git log failed in %s: %s" % (repo, proc.stderr.strip()))
-    counts = {}
-    for line in proc.stdout.splitlines():
-        name = line.strip()
-        if not name:
-            continue
-        path = os.path.realpath(os.path.join(repo, name))
-        counts[path] = counts.get(path, 0) + 1
-    return counts
+    """{abs realpath: commit count} over the window — the churn extractor, with its
+    failure reported the way this report reports one."""
+    try:
+        return churn.commits_by_file(repo, window_days)
+    except churn.ChurnError as problem:
+        raise GateError(str(problem))
 
 
 def rank(complexities, churn, repo, min_cc=0):
@@ -145,7 +189,7 @@ def rank(complexities, churn, repo, min_cc=0):
             continue
         commits = churn.get(path, 0)
         score = commits * cc
-        rows.append((os.path.relpath(path, repo), line, check_crap.declaration_text(path, line), cc, commits, score))
+        rows.append((os.path.relpath(path, repo), line, complexity.declaration_text(path, line), cc, commits, score))
     rows.sort(key=lambda r: (-r[5], r[0], r[1]))
     return rows
 
@@ -157,7 +201,10 @@ def main():
     parser.add_argument("--min-cc", type=int, help="drop functions under this complexity from the ranking (default: hotspots.min_cc, else 0)")
     parser.add_argument("--repo", help="the git root git log runs in, and paths are reported relative to (default: the directory of quality.json)")
     parser.add_argument("--sources", nargs="+", help="trees to lint (default: crap.sources)")
+    parser.add_argument("--tool", choices=["lizard", "swiftlint"], help="which reader measures (default: what the config says, else swiftlint)")
+    parser.add_argument("--languages", nargs="+", help="lizard -l values, for --tool lizard without a config")
     parser.add_argument("--lint", help="a SwiftLint json report, skipping a real lint run (tests use this)")
+    parser.add_argument("--lizard-csv", help="a saved lizard --csv run, skipping a real lizard run")
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
     try:

@@ -26,10 +26,15 @@ below; Views and the app entry (files at the root, layer `App`) on anything.
 about the process, not a layer. Directories in `layering.skip_dirs` are not
 read at all.
 
-How a reference is read: every top-level `struct`/`class`/`enum`/`actor`/
-`protocol`/`typealias` name declared in the tree being judged is owned by the
-file that declares it; a capitalised identifier in another file's *code* that
-matches one is a reference to that file. Comments and string literals are
+How a reference is read (`extractors/references.py`) depends on
+`layering.references`: `identifiers` — the default, for Swift — reads every
+top-level `struct`/`class`/`enum`/`actor`/`protocol`/`typealias` name declared
+in the judged trees as owned by the file that declares it, and a capitalised
+identifier in another file's *code* that matches one as a reference to that
+file; `imports`, with `layering.language` one of python, typescript,
+javascript, rust, go, kotlin, java, resolves each import line to the file it
+names under a judged root; `ast-grep` is the identifiers reading through a
+parser, for nine languages, needing `ast-grep` installed. For `identifiers`: Comments and string literals are
 stripped first, because prose is not a dependency — a repo's headers name
 types in other layers constantly, and a mention in a comment would make every
 file depend on what it talks about. The reading is by name, so a nested type
@@ -62,20 +67,13 @@ It reads the tree and starts no build, so it is safe while the app is running.
 
 import argparse
 import os
-import re
 import sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import quality_config  # noqa: E402
+import quality_config
 
-DECL_RE = re.compile(
-    r"^(?:@\w+(?:\([^)]*\))?\s+)*"
-    r"(?:(?:public|internal|private|fileprivate|package|final|open|indirect|nonisolated)\s+)*"
-    r"(?:struct|class|enum|actor|protocol|typealias)\s+([A-Z]\w*)",
-    re.M,
-)
-IDENT_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\b")
+from extractors import references
 
 
 class Root:
@@ -101,6 +99,19 @@ class Rules:
         # Reachable from every layer: a fact about the process, not a layer.
         self.always_allowed = set(config.get("layering", "always_allowed"))
         self.roots = [self._root(config, entry) for entry in config.get("layering", "roots")]
+        section = config.section("layering")
+        # How a reference is read: `identifiers` (Swift — declared type names) or
+        # `imports` (a language with explicit imports), with `language` naming which.
+        self.reader = section.get("references", "identifiers")
+        self.language = section.get("language", "swift")
+        self.extensions = tuple(section.get("extensions", [".swift"]))
+        if self.reader not in ("identifiers", "imports", "ast-grep"):
+            raise KeyError('%s: "layering.references" must be "identifiers", "imports" or "ast-grep"; got %r' % (config.file, self.reader))
+
+    def permits(self, from_layer, to_layer):
+        """Whether `from_layer` may reference `to_layer`."""
+        allowed = self.allowed.get(from_layer)
+        return allowed is None or to_layer == from_layer or to_layer in allowed or to_layer in self.always_allowed
 
     @staticmethod
     def _root(config, entry):
@@ -119,102 +130,25 @@ class Rules:
         return Root(os.path.abspath(config.path(root)), exempt)
 
 
-def strip_code(text):
-    """Code only: comments and string literals replaced, line count preserved."""
-    keep_lines = lambda m: "\n" * m.group(0).count("\n")
-    text = re.sub(r"/\*.*?\*/", keep_lines, text, flags=re.S)
-    text = re.sub(r"//[^\n]*", "", text)
-    text = re.sub(r'"""(?:.|\n)*?"""', lambda m: '""' + keep_lines(m), text)
-    text = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', text)
-    return text
-
-
-def swift_files(app, skip_dirs):
-    for dirpath, dirnames, filenames in os.walk(app):
-        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
-        for name in sorted(filenames):
-            if name.endswith(".swift"):
-                yield os.path.join(dirpath, name)
-
-
 def layer_of(relative):
     parts = relative.split(os.sep)
     return parts[0] if len(parts) > 1 else "App"
 
 
-def build_owner_index(owner_roots, skip_dirs):
-    """(code, owner) across every tree in `owner_roots`: `code` maps each file to
-    its stripped text, `owner` maps each declared name to `{root: declaring
-    file}` — one entry per root that declares it, so a name declared in more
-    than one root still resolves per-referencer instead of picking one root
-    globally."""
-    code = {}
-    files_by_root = {}
-    for root in owner_roots:
-        files_by_root[root] = list(swift_files(root, skip_dirs))
-        for path in files_by_root[root]:
-            with open(path, errors="replace") as handle:
-                code[path] = strip_code(handle.read())
-    owner = {}
-    for root in owner_roots:
-        for path in files_by_root[root]:
-            for name in DECL_RE.findall(code[path]):
-                owner.setdefault(name, {}).setdefault(root, path)
-    return code, owner
-
-
-def resolve_owner(owner, name, own_root):
-    """(declaring file, declaring root) for `name`, preferring a declaration
-    under `own_root` when the name is declared under more than one root; None
-    if the name is declared nowhere."""
-    by_root = owner.get(name)
-    if not by_root:
-        return None
-    if own_root in by_root:
-        return by_root[own_root], own_root
-    root, path = next(iter(by_root.items()))
-    return path, root
-
-
-def read_references(app, code, owner, skip_dirs):
-    """Every (from file, line, type, owning file, owning root) in `app`, first
-    line per pair, for references to types declared in another file — the
-    owning file may be under `app` itself or under another root in `owner`.
-    `code` must already carry every file under `app` (`app` is always one of
-    the trees `build_owner_index` was called with)."""
-    references = []
-    for path in swift_files(app, skip_dirs):
-        seen = set()
-        for number, line in enumerate(code[path].split("\n"), 1):
-            for name in IDENT_RE.findall(line):
-                resolved = resolve_owner(owner, name, app)
-                if resolved is None:
-                    continue
-                target, target_root = resolved
-                if target == path or name in seen:
-                    continue
-                seen.add(name)
-                references.append((path, number, name, target, target_root))
-    return references
-
-
-def judge(app, exempt, rules, strict_dead, code, owner):
+def judge(app, exempt, rules, strict_dead, references_in_app):
     """(violations, dead exemptions, judged, exempt used) for the tree at `app`,
     judged against `exempt` — `strict_dead` when a file an entry names but the
     tree lacks still counts as dead (the tree is one of the configured roots,
     not a fixture handed in with --app, where a missing file is almost always
     just a fixture that has no reason to reproduce every file in the list).
-    `owner` resolves a referenced name's declaring file and root, so a type
-    that moved out of `app` into another judged root is still seen."""
-    references = read_references(app, code, owner, rules.skip_dirs)
+    `references_in_app` is what the extractor read: (from file, line, name,
+    referenced file, its root)."""
+    references = references_in_app
     violations = []
     exempt_used = set()
     for path, number, name, target, target_root in references:
         source = os.path.relpath(path, app)
-        from_layer = layer_of(source)
-        to_layer = layer_of(os.path.relpath(target, target_root))
-        allowed = rules.allowed.get(from_layer)
-        if allowed is None or to_layer == from_layer or to_layer in allowed or to_layer in rules.always_allowed:
+        if rules.permits(layer_of(source), layer_of(os.path.relpath(target, target_root))):
             continue
         key = (source, name)
         if key in exempt:
@@ -226,6 +160,35 @@ def judge(app, exempt, rules, strict_dead, code, owner):
         if strict_dead or os.path.isfile(os.path.join(app, key[0]))
     )
     return violations, dead, len(references), len(exempt_used)
+
+
+def targets_for(args, rules, config):
+    """What to judge: with --app, one handed-in tree under every root's exemptions at
+    once and no dead-exemption strictness (a fixture stands in for whichever root it is
+    shaped like); else each configured root under its own list."""
+    if args.app:
+        merged = {}
+        for root in rules.roots:
+            merged.update(root.exempt)
+        app = os.path.abspath(args.app)
+        return [(app, merged, False, None)], [app]
+    targets = [(root.path, root.exempt, True, os.path.relpath(root.path, config.root)) for root in rules.roots]
+    return targets, [root.path for root in rules.roots]
+
+
+def reader_for(rules, owner_roots):
+    """A function app → references, for the configured reader. Owners come from every
+    judged root at once, so a name that moved from one root into another still resolves."""
+    if rules.reader == "imports":
+        if rules.language not in references.IMPORT_RES:
+            raise KeyError("no import reader for %r — one of: %s" % (rules.language, ", ".join(sorted(references.IMPORT_RES))))
+        return lambda app: references.import_references(app, owner_roots, rules.language, rules.skip_dirs)
+    if rules.reader == "ast-grep":
+        if rules.language not in references.ASTGREP:
+            raise KeyError("no ast-grep reader for %r — one of: %s" % (rules.language, ", ".join(sorted(references.ASTGREP))))
+        return lambda app: references.astgrep_references(app, owner_roots, rules.language, rules.skip_dirs)
+    code, owner = references.build_owner_index(owner_roots, rules.skip_dirs, rules.extensions)
+    return lambda app: references.identifier_references(app, code, owner, rules.skip_dirs, rules.extensions)
 
 
 def main():
@@ -241,48 +204,53 @@ def main():
         print("FAIL: %s" % problem.args[0])
         return 2
 
-    if args.app:
-        # One handed-in tree, judged loosely: every root's exemptions are in
-        # play (a fixture stands in for whichever root it is shaped like), and
-        # a file the fixture lacks is nobody's business but the fixture's.
-        # Owners come from this tree alone — a fixture never reproduces the
-        # configured roots' files, so pulling those in would resolve nothing.
-        merged = {}
-        for root in rules.roots:
-            merged.update(root.exempt)
-        app = os.path.abspath(args.app)
-        code, owner = build_owner_index([app], rules.skip_dirs)
-        targets = [(app, merged, False, None)]
-    else:
-        # Owners come from every configured root at once, so a name that moved
-        # from one root into another is still resolved — a reference to it does
-        # not go blind just because the declaration crossed a root boundary.
-        code, owner = build_owner_index([root.path for root in rules.roots], rules.skip_dirs)
-        targets = [(root.path, root.exempt, True, os.path.relpath(root.path, config.root)) for root in rules.roots]
+    targets, owner_roots = targets_for(args, rules, config)
+    try:
+        read = reader_for(rules, owner_roots)
+    except KeyError as problem:
+        print("FAIL: %s" % problem.args[0])
+        return 2
 
     failed = False
     for app, exempt, strict_dead, label in targets:
-        violations, dead, judged, exempt_used = judge(app, exempt, rules, strict_dead, code, owner)
-        where = " in %s" % label if label else ""
-        if violations:
-            failed = True
-            print("FAIL: %d cross-layer reference(s) the layering does not allow%s." % (len(violations), where))
-            print("Layers may depend downward only: Views/App > ViewModels > Services > Runtime > Models > Extensions.")
-            for source, number, name, target in violations:
-                print("  %s:%d -> %s (%s)" % (source, number, name, target))
-            print("Move the type to the layer that needs it, inject it, or — on purpose — add the pair to the "
-                  "`exempt` list%s of the `layering` section in %s, with the reason." % (where, config.file))
-        if dead:
-            failed = True
-            print("FAIL: %d EXEMPT entr%s in %s%s name%s no violating reference — the reference is gone, so the entry must go too:"
-                  % (len(dead), "y" if len(dead) == 1 else "ies", config.file,
-                     " for %s" % label if label else "", "s" if len(dead) == 1 else ""))
-            for source, name in dead:
-                print("  (%r, %r)" % (source, name))
-        if not violations and not dead and not args.quiet:
-            prefix = "%s: " % label if label else ""
-            print("OK: %s%d cross-file references obey the layering (%d exempt)" % (prefix, judged, exempt_used))
+        try:
+            found = read(app)
+        except references.ToolError as problem:
+            print("FAIL: %s" % problem, file=sys.stderr)
+            return 2
+        violations, dead, judged, exempt_used = judge(app, exempt, rules, strict_dead, found)
+        failed = print_verdict(violations, dead, judged, exempt_used, label, config, args.quiet) or failed
     return 1 if failed else 0
+
+
+def print_violations(violations, where, config):
+    print("FAIL: %d cross-layer reference(s) the layering does not allow%s." % (len(violations), where))
+    print("Layers may depend downward only — see `layering.allowed` in %s." % config.file)
+    for source, number, name, target in violations:
+        print("  %s:%d -> %s (%s)" % (source, number, name, target))
+    print("Move the type to the layer that needs it, inject it, or — on purpose — add the pair to the "
+          "`exempt` list%s of the `layering` section in %s, with the reason." % (where, config.file))
+
+
+def print_dead(dead, label, config):
+    print("FAIL: %d EXEMPT entr%s in %s%s name%s no violating reference — the reference is gone, so the entry must go too:"
+          % (len(dead), "y" if len(dead) == 1 else "ies", config.file,
+             " for %s" % label if label else "", "s" if len(dead) == 1 else ""))
+    for source, name in dead:
+        print("  (%r, %r)" % (source, name))
+
+
+def print_verdict(violations, dead, judged, exempt_used, label, config, quiet):
+    """Print one root's result; True when it failed."""
+    failed = bool(violations or dead)
+    if violations:
+        print_violations(violations, " in %s" % label if label else "", config)
+    if dead:
+        print_dead(dead, label, config)
+    if not failed and not quiet:
+        prefix = "%s: " % label if label else ""
+        print("OK: %s%d cross-file references obey the layering (%d exempt)" % (prefix, judged, exempt_used))
+    return failed
 
 
 if __name__ == "__main__":

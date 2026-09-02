@@ -1,89 +1,75 @@
 # cleat
 
-Deterministic quality gates that only tighten. A cam cleat holds a line
-against the pull and gives nothing back; these checks hold a codebase's
-structure the same way — what's clean stays clean, and existing debt is
-baselined, not forgiven into the build.
+Quality gates for AI-driven development. Attach cleat to a project and every change an agent makes is held to ratchets that only tighten: functions that grow past a complexity ceiling, code copied instead of extracted, escapes that switch a check off, tests that stop running, references that cut across layers, public signatures that vanish. Existing debt is baselined once and never forgiven into the build.
 
-Built for codebases that AI agents work on. An agent generates code faster
-than review can absorb it, and prompt instructions are suggestions — a rule
-in a context file holds until the model is deep in a long chain of steps and
-skips it. A gate is not a suggestion. The checks here refuse structural
-regression mechanically: functions that grow past a complexity ceiling,
-references that cut across layers, complexity the tests don't pay for, test
-suites that quietly stop running, documentation that drifts from the code it
-describes.
+A cam cleat holds a line against the pull and gives nothing back.
 
-Slowing the agent down at the gate is the point. Generation is cheap; the
-compound interest on a mess is not.
+## Why gates, not instructions
+
+An agent generates code faster than review can absorb it, and a rule in a context file is a suggestion: it holds until the model is deep in a long chain of steps and skips it. A gate is not a suggestion. It fails, names the file and the line, says what fixes it, and — wired into the agent's own loop — becomes the next thing the agent works on. Slowing generation down at the gate is the point; the compound interest on a mess is not cheap.
+
+## Attach it
+
+```
+python3 /path/to/cleat/quality/bin/attach.py --into /path/to/your/project
+```
+
+One command, nothing to install. It copies `quality/` in, looks at the tree, and writes:
+
+- **`quality.json`** — the languages it found, the documents an agent reads with a word ceiling each, the test trees with today's fixed-sleep count as the ceiling, the escapes gate, the duplication ratchet; the complexity ratchet when `lizard` is installed, changed-line coverage when a coverage report exists.
+- **The baselines** — today's debt, accepted once. Day one is green.
+- **Agent hooks** — a Stop hook that runs the gates and hands a failure back to the agent as its next task, and a PreToolUse guard that refuses any command that would rewrite a baseline or edit the policy.
+- **A block in the agent's instructions file** saying how the gates work and that a baseline is not a fix.
+- **CI and CODEOWNERS** — the gates under `--strict` on every pull request, and a person's review over the control plane. Local hooks give feedback; required CI gives authority.
+
+Attaching again is safe: what exists is kept. `python3 quality/bin/gate.py` runs everything.
+
+## The gates
+
+| Gate | Refuses | Needs |
+|---|---|---|
+| doc-size | a document an agent reads growing past its ceiling | — |
+| doc-citations | a document citing a file that is not there | — |
+| test-hygiene | a test habit the suite was cleaned of growing back | — |
+| escapes | a new `any`, `unwrap()`, `# type: ignore`, `.skip`, `\|\| true`… keyed by site | — |
+| duplication | a copied block in the lines you changed; the duplicated share rising | — |
+| guard-suites | a test suite on disk that nothing runs | — |
+| layering | a reference from a lower layer to a higher one | imports, or ast-grep |
+| reachability | a file matching a pattern that nothing references | imports, or ast-grep |
+| complexity | a function over cyclomatic 8 or 60 lines | `lizard` or SwiftLint |
+| public-api | a public signature removed, renamed or changed | — (or cargo-public-api, api-extractor) |
+| manifests | a source file a generated project does not name | — |
+| inventory | a directory that must not shrink losing an entry | — |
+| sarif | a new result from any scanner that writes SARIF | the scanner |
+| changed-coverage | changed lines the tests did not run | an LCOV or Cobertura report |
+| crap | complexity the tests do not pay for | a coverage report |
+| hotspots, mutation | reports: churn × complexity; mutants no test kills | — / a per-stack tool |
+
+Nine languages have built-in escape patterns and conformance fixtures: Python, TypeScript/JavaScript, Swift, Rust, Go, Kotlin, Java, Ruby, shell. Every gate carries its own test, and every check is generic: a project's facts live in `quality.json` and nowhere else.
+
+## How a gate holds against an agent
+
+1. **The ratchet is monotonic.** A baselined function that gets worse fails, not just a new one. A baseline looser than the code is a NOTE locally and a failure in CI, so the file always records exactly the debt that exists. Baselines carry their provenance, so a tool upgrade is noticed.
+2. **A failure names the fix, never the escape.** No gate prints the command that accepts new debt beside the failure; it appears only where running it can only tighten.
+3. **Policy is a person's.** The guard hook refuses `--write-baseline` and edits to `quality.json`, the baselines and the gates; CODEOWNERS makes the same true in review.
 
 ## Layout
 
 ```
-quality/                the template — copy this directory into your repo
-  bin/                  the checks and tools: generic, config-driven, no
-                        project names inside
-  tests/                one self-test per check, driven over a throwaway
-                        tree; run.sh runs them all
-  README.md             the adoption guide — travels with the copy, so it's
-                        there for whoever finds the scripts vendored in
-                        your repo
-  STRATEGY.md           why these checks, the adoption ladder, per-stack
-                        tool choices
-  quality.example.json  this repo's own config, doubling as the working
-                        example
+quality/                the template — attach.py copies it into your repo
+  bin/                  the gates; gate.py runs them; ratchet.py is the one
+                        ratchet they share; attach.py attaches it all
+    extractors/         fact-finding with no judgment in it: patterns,
+                        complexity, coverage, duplication, references, …
+  tests/                one suite per gate, plus conformance fixtures per
+                        language; run.sh runs them all
+  README.md             the adoption guide, key by key, with the tiers
+  STRATEGY.md           why these gates, in this order
 quality.json            cleat judged by its own gates
 ```
 
-## The idea, in three rules
-
-1. **Ratchets, not gates.** Every check baselines what exists on adoption
-   day and fails only new debt. Day one is always green; no project is too
-   far gone to start.
-2. **The project's facts live in one file** — `quality.json` at the
-   repository root. The checks are generic; a check that learns a project's
-   name has forked.
-3. **Every check carries its own test.** A gate nobody trusts trains people
-   to ignore red, which is worse than no gate.
-
-What each check refuses, key by key, is in
-[`quality/README.md`](quality/README.md); the reasoning and the adoption
-ladder are in [`quality/STRATEGY.md`](quality/STRATEGY.md).
-
-## Adopting it
-
-1. Copy `quality/` into your repository.
-2. Copy `quality/quality.example.json` to your repository root as
-   `quality.json` and cut it down to the sections you're starting with —
-   the ladder in STRATEGY.md says document ceilings and test hygiene first.
-3. Write the baselines once (each check's `--write-baseline` or first-run
-   findings).
-4. Wire the checks into whatever runs your tests: the fast checks as a
-   preflight, the coverage-fed CRAP check as a postflight.
-
-The test runner itself stays yours — running a suite is the one part that
-differs by stack, so the template ends at the preflight/postflight contract.
-
-Works today with SwiftLint for Swift complexity, `lizard` for Python,
-TypeScript, Rust and anything else it parses, and coverage from xccov,
-llvm-cov, or istanbul. A new stack needs a coverage reader returning
-per-declaration coverage — a page of code, not a port.
-
-## With an agent in the loop
-
-The gates compose with the practices that steer generation rather than
-replacing them: a spec says what to build, tests verify behavior, gates
-refuse structural rot — each catches what the others can't. For Claude
-Code, wiring the preflight into a Stop or pre-push hook (and denying
-`--no-verify`-style bypasses) puts the ratchet inside the agent's own
-loop.
-
 ## Provenance
 
-Extracted from [Kiteloop](https://github.com/svetdev), where the checks
-gated a Swift app, a Swift package, and their Python/TypeScript tooling;
-generalized through a second adoption on a Rust/TypeScript project. This
-repository is judged by its own gates — `quality.json` at the root is the
-config, baselined debt included.
+Extracted from a production codebase where the checks gated a Swift app, a Swift package and their tooling; generalized through a second adoption on a Rust/TypeScript project, then rebuilt around one engine and N extractors so a new language is a config entry, never a patch to a check. This repository is judged by its own gates, baselined debt included.
 
 MIT licensed.

@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """test-check-guard-suites — assert quality/bin/check-guard-suites.py.
 
-Nine guard suites sat outside `scripts/run-unit-suite.sh`'s `PREFLIGHT` array
-when this was written: `quality/tests/test-check-complexity-lizard.py`,
-`quality/tests/test-report-hotspots.py`, and the seven `test-*.py` under
-`scripts/core-package/`. Each asserts something real and none runs anywhere a
+Nine guard suites sat outside the test runner's `PREFLIGHT` array when this
+was written: two under `quality/tests/` and seven under a tooling directory.
+Each asserts something real and none runs anywhere a
 standing measurement reads them — the third time this exact class of bug has
 shipped. The check this asserts reads the `test-*.py`/`test-*.sh` files under
 the roots `"guard_suites"."roots"` names and the `PREFLIGHT` array out of the
 script `"guard_suites"."preflight"` names, and fails the suites named by
 neither the array nor `"exempt"`. `"exempt"` is a ratchet the same shape as
-`"exempt_services"` in `check-features-map.py`: a suite already outside the
+`"exempt"` in `check-reachability.py`: a suite already outside the
 preflight is named there with the item that tracks wiring it in, and a stale
 entry -- naming a path no swept root has -- is its own failure rather than a
 silent no-op, since left alone it would go on exempting whatever suite is
 later added at that path.
 
 A `test-*.py`/`test-*.sh` file under a swept root need not be a suite at all
--- `scripts/core-package/test-move.py` is the tool that moves an app-hosted
-test into the package, not a test, and has a guard suite of its own. A path
+-- `scripts/tools/test-move.py` is a tool that moves a test between
+targets, not a test, and has a guard suite of its own. A path
 in `"not_suites"`, keyed the same way as `"exempt"`, is dropped from the
 sweep before `"exempt"` is even consulted, so it is counted in neither the
 checked figure nor the exempt one, and a path the key names that no swept
@@ -36,7 +35,7 @@ preflight does.
 
 It starts no build, reads no process list and writes nothing outside a
 temporary directory, so it is safe to run -- on its own or as part of the
-suite -- while Kiteloop is running.
+suite -- while the project's own app is running.
 
   python3 quality/tests/test-check-guard-suites.py
 """
@@ -90,10 +89,10 @@ def write(path, text):
 # --- The fixture ----------------------------------------------------------
 #
 # Three swept roots, mirroring this repository's own: `quality/tests`,
-# `scripts` and `scripts/core-package`. One suite listed in PREFLIGHT under
+# `scripts` and `scripts/tools`. One suite listed in PREFLIGHT under
 # each, plus one exempt suite -- that is the green shape every case starts
 # from, so a case says what it changes and nothing else.
-ROOTS = ["quality/tests", "scripts", "scripts/core-package"]
+ROOTS = ["quality/tests", "scripts", "scripts/tools"]
 PREFLIGHT_SCRIPT = "scripts/run-unit-suite.sh"
 EXEMPT_SUITE = "quality/tests/test-dormant.py"
 EXEMPT = {EXEMPT_SUITE: "a fixture-only exemption"}
@@ -101,7 +100,7 @@ EXEMPT = {EXEMPT_SUITE: "a fixture-only exemption"}
 DEFAULT_ENTRIES = [
     "quality/tests/test-a.py",
     "scripts/test-b.py --quiet",
-    "scripts/core-package/test-c.py",
+    "scripts/tools/test-c.py",
 ]
 
 
@@ -112,7 +111,7 @@ def preflight_script(entries):
     return "#!/bin/bash\nPREFLIGHT=(\n%s\n)\n" % body
 
 
-def fixture(entries=None, extra_suites=None, exempt=None, preflight=None, not_suites=None):
+def fixture(entries=None, extra_suites=None, exempt=None, preflight=None, not_suites=None, patterns=None):
     """A throwaway checkout, with the quality.json the script is handed.
 
     `not_suites` is left out of the written config entirely when not given,
@@ -129,6 +128,8 @@ def fixture(entries=None, extra_suites=None, exempt=None, preflight=None, not_su
     }
     if not_suites is not None:
         guard_suites["not_suites"] = not_suites
+    if patterns is not None:
+        guard_suites["patterns"] = patterns
     write(os.path.join(root, "quality.json"), json.dumps({"guard_suites": guard_suites}, indent=2))
 
     write(
@@ -138,7 +139,7 @@ def fixture(entries=None, extra_suites=None, exempt=None, preflight=None, not_su
         ),
     )
 
-    for entry in ["quality/tests/test-a.py", "scripts/test-b.py", "scripts/core-package/test-c.py"]:
+    for entry in ["quality/tests/test-a.py", "scripts/test-b.py", "scripts/tools/test-c.py"]:
         write(os.path.join(root, entry), "# suite\n")
     write(os.path.join(root, EXEMPT_SUITE), "# dormant\n")
 
@@ -160,6 +161,19 @@ def run(root, *args):
 
 print("test-check-guard-suites")
 
+# --- What a suite is named like ---------------------------------------------
+#
+# `"patterns"` says what filenames are suites -- a pytest tree is `test_*.py`.
+# With it set, the default `test-*` shapes are not swept at all, and a file
+# matching the given shape is judged like any other suite.
+
+code, out, err = run(fixture(patterns=["test_*.py"], extra_suites=["scripts/test_orphan.py"],
+                             entries=["scripts/test_listed.py"]), )
+check_equal("under a custom pattern an unlisted matching file fails", 1, code)
+check_contains("the unlisted file is named", "scripts/test_orphan.py", err)
+check_equal("the default test-* files are not swept under a custom pattern",
+            0, err.count("test-a.py") + err.count("test-b.py") + err.count("test-c.py"))
+
 # --- The green shape --------------------------------------------------------
 
 code, out, err = run(fixture())
@@ -167,7 +181,7 @@ check_equal("a tree whose suites are all listed or exempt passes", 0, code)
 check_contains(
     "the OK line names the roots, the count checked, the count exempt and the "
     "count not a suite",
-    "OK: all 3 guard suite(s) under quality/tests/, scripts/, scripts/core-package/ "
+    "OK: all 3 guard suite(s) under quality/tests/, scripts/, scripts/tools/ "
     "are named in scripts/run-unit-suite.sh's PREFLIGHT array (1 exempt, 0 not a suite)",
     out,
 )
@@ -200,12 +214,12 @@ code, out, err = run(fixture(extra_suites=["scripts/test-orphan.py"]), "--quiet"
 check_equal("--quiet still fails", 1, code)
 check_contains("--quiet still names the offender", "scripts/test-orphan.py", err)
 
-# A suite under scripts/core-package/, exercising the third root the same way.
-code, out, err = run(fixture(extra_suites=["scripts/core-package/test-orphan.py"]))
-check_equal("an orphan under scripts/core-package/ fails the same way", 1, code)
+# A suite under scripts/tools/, exercising the third root the same way.
+code, out, err = run(fixture(extra_suites=["scripts/tools/test-orphan.py"]))
+check_equal("an orphan under scripts/tools/ fails the same way", 1, code)
 check_contains(
     "and is named by its own path",
-    "scripts/core-package/test-orphan.py",
+    "scripts/tools/test-orphan.py",
     err,
 )
 
@@ -226,11 +240,11 @@ check_contains(
 
 # --- Overlapping roots: a nested suite is seen once, not once per root ------
 #
-# `scripts` and `scripts/core-package` are both swept roots here, the way
-# quality.json spells them today, so a suite under scripts/core-package/ sits
+# `scripts` and `scripts/tools` are both swept roots here, the way
+# quality.json spells them today, so a suite under scripts/tools/ sits
 # beneath both. It must be counted, and reported, exactly once.
 
-code, out, err = run(fixture(extra_suites=["scripts/core-package/nested/test-deep.py"]))
+code, out, err = run(fixture(extra_suites=["scripts/tools/nested/test-deep.py"]))
 check_equal("an unlisted suite under overlapping roots fails once, not twice", 1, code)
 check_contains(
     "the failure reports exactly one guard suite",
@@ -240,12 +254,12 @@ check_contains(
 check_equal(
     "and names it exactly once, not once per overlapping root",
     1,
-    err.count("scripts/core-package/nested/test-deep.py"),
+    err.count("scripts/tools/nested/test-deep.py"),
 )
 
 code, out, err = run(fixture(
-    extra_suites=["scripts/core-package/nested/test-deep.py"],
-    entries=DEFAULT_ENTRIES + ["scripts/core-package/nested/test-deep.py"],
+    extra_suites=["scripts/tools/nested/test-deep.py"],
+    entries=DEFAULT_ENTRIES + ["scripts/tools/nested/test-deep.py"],
 ))
 check_equal("the same nested suite, once covered by PREFLIGHT, also passes", 0, code)
 check_contains(
@@ -359,7 +373,7 @@ code, out, err = run(fixture(
 check_equal("a suite named in not_suites is not reported as unlisted", 0, code)
 check_contains(
     "and the OK line counts it as not a suite, not as exempt",
-    "OK: all 3 guard suite(s) under quality/tests/, scripts/, scripts/core-package/ "
+    "OK: all 3 guard suite(s) under quality/tests/, scripts/, scripts/tools/ "
     "are named in scripts/run-unit-suite.sh's PREFLIGHT array (1 exempt, 1 not a suite)",
     out,
 )
@@ -422,7 +436,7 @@ check_equal(
     "quality/tests/test-a.py\n"
     "quality/tests/test-dormant.py\n"
     "scripts/test-b.py\n"
-    "scripts/core-package/test-c.py\n",
+    "scripts/tools/test-c.py\n",
     out,
 )
 check_equal("--list prints nothing on stderr", "", err)
@@ -459,7 +473,7 @@ check_contains(
     "quality/tests/test-a.py",
     err,
 )
-check_contains("both missing suites are named", "scripts/core-package/test-c.py", err)
+check_contains("both missing suites are named", "scripts/tools/test-c.py", err)
 
 code, out, err = run(fixture())
 check_absent(

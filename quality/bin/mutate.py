@@ -25,7 +25,7 @@ non-terminating — `<` widened to `<=` on a loop bound, a `!` dropped from a wa
 condition, `true` narrowed to `false` on an exit flag — so a suite run carries
 a wall-clock ceiling, `MUTATE_TIMEOUT_SECONDS` (default 600s, overridable via
 the environment variable of the same name; same shape as
-`lizard_reader.py`'s `LIZARD_TIMEOUT_SECONDS`). A mutant whose suite runs past
+`extractors/complexity.py`'s `LIZARD_TIMEOUT_SECONDS`). A mutant whose suite runs past
 it is ended, counted as `timed-out` alongside `uncompilable` — out of the
 score, never a survivor — and the source is restored the same as after a kill.
 The green-before-mutation run gets the same ceiling; a timeout there is a FAIL,
@@ -43,9 +43,9 @@ with no test file of its own goes straight to the whole suite.
 It still runs `swift test` many times, so it is not a preflight step. Run it
 on the file you just wrote, or on the whole package when reviewing.
 
-  quality/bin/mutate.py Services/MentionParser.swift       # one file (path under the sources root)
+  quality/bin/mutate.py Services/Parser.swift       # one file (path under the sources root)
   quality/bin/mutate.py --all                               # every source file
-  quality/bin/mutate.py --list Services/MentionParser.swift # print the mutants, run nothing
+  quality/bin/mutate.py --list Services/Parser.swift # print the mutants, run nothing
   quality/bin/mutate.py --config quality.json FILE          # a particular quality.json (the tests use this)
   quality/bin/mutate.py --package DIR --sources DIR FILE    # another package, no config needed
 """
@@ -59,7 +59,7 @@ import sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import quality_config  # noqa: E402
+import quality_config
 
 # (pattern, replacement, name). Patterns are applied to code only — comments and
 # string literals are masked first — and each match is its own mutant.

@@ -53,6 +53,20 @@ class Config:
             raise KeyError(f"{self.file}: \"{section}\" has no \"{key}\" — see quality.example.json")
         return value
 
+    def entry(self, section, name):
+        """One entry of a section that may be a list of named gates: the only one when
+        `name` is None and there is one, else the one whose "name" matches — KeyError
+        naming the choices otherwise."""
+        raw = self.section(section)
+        entries = raw if isinstance(raw, list) else [raw]
+        if name is None and len(entries) == 1:
+            return entries[0]
+        for entry in entries:
+            if entry.get("name") == name:
+                return entry
+        raise KeyError("%s: \"%s\" has no gate named %s (have: %s) — name one with --gate"
+                       % (self.file, section, name, ", ".join(str(e.get("name")) for e in entries)))
+
     def path(self, relative):
         """A path from the file, resolved against the file's directory (absolute paths and
         `~` pass through)."""

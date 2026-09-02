@@ -5,10 +5,8 @@ the preflight array.
 A guard suite — a `test-*.py` or `test-*.sh` under one of the roots
 `"guard_suites"."roots"` names — is only worth anything if something runs it.
 Nothing compared the suites on disk against the `PREFLIGHT` array in
-`scripts/run-unit-suite.sh` before this existed, and nine had drifted out of
-it: `quality/tests/test-check-complexity-lizard.py`,
-`quality/tests/test-report-hotspots.py`, and the seven `test-*.py` under
-`scripts/core-package/`. Each sits on disk, each asserts something real, and
+the test runner before this existed, and nine had drifted out of it: two under
+`quality/tests/` and seven under a tooling directory. Each sits on disk, each asserts something real, and
 none runs anywhere the suite measures — the same "green because it never ran"
 shape this repository's other checks were written to end, one level up: not a
 check that stopped judging, but a whole judge nobody wired in.
@@ -21,13 +19,13 @@ follow (`--quiet`, and the like). That set of paths is compared against every
 `test-*.py` and `test-*.sh` file found anywhere beneath each swept root, not
 only at its top level — a suite one directory deeper is exactly the shape of
 drift this check exists to end. A root listed both as a parent and as one of
-its own children (`scripts` and `scripts/core-package`, which is how
+its own children (`scripts` and `scripts/tools`, which is how
 `quality.json` spells it today) yields each nested suite once: suites are
 deduplicated by resolved path, not by which root's walk happened to find them
 first.
 
 It is a ratchet, the same shape as `"exempt_services"` in
-`check-features-map.py`: a suite outside the preflight is named in
+`check-reachability.py`: a suite outside the preflight is named in
 `"exempt"`, keyed by its path relative to the repository root, with the
 reason it is there — where the backlog already tracks the work of wiring it
 in, the item id is the reason. The success line says how many are exempt, so
@@ -47,8 +45,8 @@ entry is. The fix is the same too: delete the entry, or, if it should stay
 exempt on purpose, update the reason to say why.
 
 Some files named `test-*.py`/`test-*.sh` under a swept root are not guard
-suites at all — `scripts/core-package/test-move.py` is the tool that moves an
-app-hosted test into the package, not a test itself, and it has a guard suite
+suites at all — `scripts/tools/test-move.py` is a tool that moves a
+test between targets, not a test itself, and it has a guard suite
 of its own. `"not_suites"`, keyed the same way as `"exempt"`, says so: a path
 listed there is dropped from the sweep before `"exempt"` is even consulted,
 so it is counted in neither the checked figure nor the exempt one. The
@@ -77,25 +75,27 @@ Usage
 quality.json
   "guard_suites": {
     "preflight": "scripts/run-unit-suite.sh",   the script whose PREFLIGHT array is read
-    "roots": ["quality/tests", "scripts", "scripts/core-package"],
+    "patterns": ["test-*.py", "test-*.sh"],      what a suite is named like (this is the default)
+    "roots": ["quality/tests", "scripts", "scripts/tools"],
     "exempt": {                                 suites run nowhere standing, keyed repo-relative
       "quality/tests/test-dormant.py": "tracked as <item id>"
     },
     "not_suites": {                             test-*.py/test-*.sh files that are not suites
-      "scripts/core-package/test-move.py": "the tool that moves a test into the package"
+      "scripts/tools/test-move.py": "the tool that moves a test between targets"
     }
   }
   Paths are relative to the directory quality.json is in.
 """
 
 import argparse
+import fnmatch
 import collections
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import quality_config  # noqa: E402
+import quality_config
 
 SECTION = "guard_suites"
 
@@ -105,11 +105,12 @@ PREFLIGHT_RE = re.compile(r"PREFLIGHT=\((.*?)\n\)", re.DOTALL)
 ENTRY_RE = re.compile(r'"([^"]*)"')
 
 # A guard suite's filename, wherever beneath a swept root it sits.
-SUITE_RE = re.compile(r"^test-.+\.(?:py|sh)$")
+# The filename shapes a guard suite takes, unless `"guard_suites"."patterns"` says
+# otherwise — a pytest tree is `test_*.py`, a Go one `*_test.go`.
+DEFAULT_PATTERNS = ["test-*.py", "test-*.sh"]
 
 # Pruned wherever it appears while walking a root -- a compiled cache is not a
-# file this project put there on purpose (scripts/check-repo-map.py excludes
-# it the same way).
+# file this project put there on purpose.
 EXCLUDED_DIRS = {"__pycache__"}
 
 # A suite found beneath a swept root: `path`, its path relative to the
@@ -133,6 +134,7 @@ class Settings:
         self.root_dirs = config.paths(self.roots)
         self.exempt = config.get(SECTION, "exempt")
         self.not_suites = config.get(SECTION, "not_suites", {})
+        self.patterns = config.section(SECTION).get("patterns", DEFAULT_PATTERNS)
 
 
 def parse_preflight(text):
@@ -151,10 +153,10 @@ def parse_preflight(text):
     return [entry.split()[0] for entry in entries]
 
 
-def _is_suite_file(path, name):
-    """A filename under a swept root that is a guard suite -- matches
-    `SUITE_RE` and exists as a regular file."""
-    return bool(SUITE_RE.match(name)) and os.path.isfile(path)
+def _is_suite_file(path, name, patterns=DEFAULT_PATTERNS):
+    """A filename under a swept root that is a guard suite -- matches one of
+    `patterns` and exists as a regular file."""
+    return any(fnmatch.fnmatch(name, pattern) for pattern in patterns) and os.path.isfile(path)
 
 
 def swept_suites(settings):
@@ -168,7 +170,7 @@ def swept_suites(settings):
             dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDED_DIRS)
             for name in sorted(filenames):
                 path = os.path.join(dirpath, name)
-                if not _is_suite_file(path, name):
+                if not _is_suite_file(path, name, settings.patterns):
                     continue
                 real = os.path.realpath(path)
                 if real in seen:

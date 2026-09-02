@@ -1,105 +1,64 @@
 # quality/ — deterministic gates a project carries with it
 
-The adoption guide is this file; the strategy — why these checks, the
-adoption ladder, per-stack tool choices, and the roadmap — is `STRATEGY.md`
-beside it.
+The adoption guide is this file; the strategy — why these checks, the adoption ladder, per-stack tool choices, and the roadmap — is `STRATEGY.md` beside it.
 
-Nine checks, each a ratchet: a baseline records what was over the line the
-day the check was adopted, and only new debt fails. None needs the project
-clean first, and each has its own test that drives it over a throwaway tree.
-Everything that names a particular project is in one file, `quality.json`, at
-the repository root, read by every check through the shared
-`bin/quality_config.py`; the checks are generic.
+Seventeen checks, each a ratchet: a baseline records what was over the line the day the check was adopted; new debt fails, and so does baselined debt that got worse (`bin/ratchet.py` — the one implementation they share). None needs the project clean first, and each has its own test that drives it over a throwaway tree. Everything that names a particular project is in one file, `quality.json`, at the repository root, read by every check through the shared `bin/quality_config.py`; the checks are generic.
 
 | Check | What it refuses | Baseline |
 |---|---|---|
-| `bin/check-complexity.sh` | a function over cyclomatic 8 or 60 lines (SwiftLint) | `complexity.baseline`, SwiftLint's own format |
+| `bin/check-complexity.py` | a function over cyclomatic 8 or 60 lines — lizard for most stacks, SwiftLint for Swift | `complexity.baseline`, keyed by file and declaration text, with the numbers |
 | `bin/check-crap.py` | a function over CRAP 8 — `cc² × (1 − coverage)³ + cc`, complexity the tests do not pay for | `crap.baseline`, keyed by file and declaration text |
-| `bin/check-layering.py` | a reference from a lower layer to a higher one | `layering.exempt`, each with its reason |
+| `bin/check-layering.py` | a reference from a lower layer to a higher one — Swift by declared names, any language with imports (`references: "imports"`), or nine languages by parser (`"ast-grep"`) | `layering.exempt`, each with its reason |
 | `bin/check-test-hygiene.py` | a test habit (fixed sleeps, port probes, hand-built temp dirs…) past its ceiling | the ceilings in `hygiene.habits` |
 | `bin/check-doc-size.py` | a document past its word ceiling — the instructions file that keeps growing | `doc_size` |
-| `bin/check-features-map.py` | a capability row citing a file that is gone, or a service nothing constructs | `features_map.exempt_services` |
+| `bin/check-reachability.py` | a file matching a pattern (`Services/*`) that no other file references — by declared names, imports, or ast-grep | `reachability.exempt`, each with its reason |
+| `bin/check-escapes.py` | a new line that opts out of a type check, a lint rule, a test or an error (`any`, `unwrap()`, `# type: ignore`, `.skip`, `\|\| true`…), keyed by site, per language | `escapes.baseline` |
+| `bin/check-duplication.py` | a copied block overlapping the lines changed against the base, and the repository's duplicated share rising — built-in finder, or a jscpd report | `duplication.baseline` (the share) |
+| `bin/check-changed-coverage.py` | changed executable lines of which fewer than `minimum` ran — LCOV or Cobertura, no baseline | — |
+| `bin/check-public-api.py` | a public signature removed, renamed or changed — the built-in reader per language, or `cargo public-api` / api-extractor reports | per surface, the recorded signatures |
+| `bin/check-manifests.py` | a source file a generated project (`project.pbxproj`, a file list) does not name — compiled into nothing, run by nothing | `manifests[].exempt`, with reasons |
+| `bin/check-inventory.py` | a directory that must not shrink (a `.sqlx` cache, snapshots) losing an entry | per directory, the recorded entries |
+| `bin/check-sarif.py` | a new result from any scanner that writes SARIF, keyed by file, rule and message | per report |
+| `bin/check-doc-citations.py` | a document citing a file that is not there | — |
 | `bin/check-guard-suites.py` | a guard suite (`test-*.py`/`test-*.sh`) under a swept `guard_suites.roots` that the project's test runner names in no `PREFLIGHT` entry | `guard_suites.exempt`, keyed by path with the reason it's there |
+| `bin/gate.py` | not a check: runs every gate the config names; `--strict` for CI, `--hook` and `--guard` for an agent's hooks | — |
+| `bin/attach.py` | not a check: attaches all of this to a project in one command | — |
 | `bin/mutate.py` | not a gate: flips operators one at a time and reports the mutants no test kills | — |
 | `bin/report-hotspots.py` | not a gate: ranks every measured function by churn × complexity, so refactoring effort goes where it actually pays for itself | — |
 
 ## Adopting it
 
+`python3 /path/to/cleat/quality/bin/attach.py --into /path/to/project` does steps 1–4 for tier 0 (and the complexity ratchet when `lizard` is installed), wires the agent hooks and CI, and is safe to run again. By hand:
+
 1. Copy this directory into the repository.
-2. Copy `quality.example.json` to the repository root as `quality.json` and fill
-   it in — every path is relative to that file; `~` and absolute paths pass
-   through. A key a check needs that the file lacks fails naming the key; there
-   are no silent defaults.
-3. Write the baselines once: `bin/check-complexity.sh` prints the SwiftLint
-   command; `bin/check-crap.py --write-baseline` after a coverage run;
-   `layering.exempt` is filled from the first run's findings, with a reason each.
-4. Wire the checks into whatever runs the tests, in two places: the `test-*`
-   scripts and the checks as a **preflight** (a failing check stops the run
-   before a build starts), and `check-crap.py` as a **postflight** after a
-   green run, since it reads that run's coverage. `bin/check-guard-suites.py`
-   reads that same preflight array back, so run it alongside the others once
-   it's wired: a `test-*` suite added later and never named in the preflight
-   fails loudly instead of sitting idle.
-5. Run `tests/run.sh` — every guard suite `quality.json` names (its own list
-   comes from `bin/check-guard-suites.py --list`), from the repository root —
-   roughly two minutes, not seconds.
+2. Copy `quality.example.json` to the repository root as `quality.json` and fill it in — every path is relative to that file; `~` and absolute paths pass through. A key a check needs that the file lacks fails naming the key; there are no silent defaults.
+3. Write the baselines once: each ratchet's `--write-baseline` (`check-crap.py` after a coverage run); `layering.exempt` and `reachability.exempt` are filled from the first run's findings, with a reason each.
+4. Run `bin/gate.py` wherever the tests run — as a **preflight** before a build starts, `--postflight` after a green run for `check-crap.py`, which reads that run's coverage — and `bin/gate.py --strict` in CI.
 
-## What stays the project's
+## The ratchet, precisely
 
-The test runner itself. Running a suite is the one part that differs by stack
-— which tool, which result bundle, what a tally line looks like — so the
-template ends at the preflight/postflight contract and the runner is the
-consumer's. Kiteloop's is `scripts/run-unit-suite.sh`, 1,900 lines of which
-about a third read an `.xcresult`; a `cargo test` or `pytest` runner is a page.
+Every baselined gate sorts each finding into one of five outcomes: **new** (fails), **worsened** — a recorded value went up (fails), **held**, **improved**, **stale** — the entry matched nothing. The last two mean the baseline is looser than the code; each is a NOTE with the command that tightens it, and under `--strict` a failure, so CI keeps the file exact. A baseline records what measured it (tool, version, a hash of the gate's config); a run under a different one is noted the same way. Failure output names the fix and never the accept command.
 
-Coverage readers are the other stack-specific piece. `check-crap.py` reads
-Xcode's `xccov` report for an app target and llvm-cov's JSON export for a Swift
-package; a project on another stack adds a reader returning
-`{(absolute file, declaration line): coverage}` and names it in `crap`.
+The tiers, by what a project has to have:
+
+| Tier | Adds | Needs |
+|---|---|---|
+| 0 | doc-size, doc-citations, test-hygiene, escapes, duplication, guard-suites, manifests, inventory, layering and reachability by imports | nothing |
+| 1 | complexity, hotspots, sarif, public-api, layering and reachability by ast-grep | `lizard` (or SwiftLint); any SARIF scanner; `ast-grep` |
+| 2 | changed-coverage, crap | an LCOV or Cobertura report |
+| 3 | layering and reachability by declared names | Swift |
+| 4 | mutation | a per-stack tool |
 
 ## The config, key by key
 
-See `quality.example.json` — Kiteloop's own, a working example rather than a
-schema. Sections: `complexity` (`tool` — defaults to `"swiftlint"`, the only
-reader wired; SwiftLint's cwd, config, baseline, source roots), `crap`
-(threshold, baseline, lint roots, one object per coverage
-reader), `layering` (the app root, the layer order as `allowed` — each layer
-names what it may reach, `null` for no restriction — and `exempt`),
-`hygiene` (test roots, directories to skip, habits as pattern/ceiling/the
-spelling to use instead), `doc_size` (file and word ceiling, a list),
-`features_map` (the map, the roots a citation may resolve under, the roots
-swept for services that must be constructed, exemptions), `mutation` (the
-package and its sources), `guard_suites` (`preflight` — the script whose
-`PREFLIGHT` array is read, `roots` swept for `test-*` suites, `exempt`, and
-`not_suites` — a swept `test-*` file that is not a suite at all, dropped
-before `exempt` is even consulted).
+See `quality.example.json` — this repository's own, a working example rather than a schema. Sections: `complexity` (`tool` — lizard or swiftlint — sources, languages, ceilings, baseline), `crap` (threshold, baseline, lint roots, one object per coverage reader), `layering` (the app root, the layer order as `allowed` — each layer names what it may reach, `null` for no restriction — and `exempt`), `hygiene` (test roots, directories to skip, habits as pattern/ceiling/the spelling to use instead), `doc_size` (file and word ceiling, a list), `escapes` (roots, `languages` from `check-escapes.py --list-languages`, extra `patterns`, `skip_dirs`, baseline), `duplication` (roots, languages, `min_lines`, baseline, optional `report.jscpd`), `changed_coverage` (report, minimum, `min_lines`), `sarif` (a list: name, report glob, baseline), `doc_citations` (a list: file, roots, extensions), `public_api` (a list: name, language and roots — or a `report` — and baseline), `manifests` (a list: file, roots, extensions, exempt), `inventory` (a list: name, path, pattern, baseline), `gates` (a list of named gates — `check`, `with` — for the same check over different facts), `reachability` (roots, the `pattern` of files that must be reached, how references are read, exemptions), `mutation` (the package and its sources), `guard_suites` (`preflight` — the script whose `PREFLIGHT` array is read, `roots` swept for `test-*` suites, `exempt`, and `not_suites` — a swept `test-*` file that is not a suite at all, dropped before `exempt` is even consulted).
 
-## Added by the Kiu adoption (2026-08-24) — to fold back upstream
+## Added by the second adoption (2026-08-24) — to fold back upstream
 
-The template forks the day a consumer patches it privately, so these are
-written as template changes, each with its test:
+The template forks the day a consumer patches it privately, so these are written as template changes, each with its test:
 
-- `bin/lizard_reader.py` + `bin/check-complexity-lizard.py` — the complexity
-  ratchet for Rust, TypeScript and whatever else `lizard` parses; section
-  `complexity_lizard`. Inline Rust `#[cfg(test)]` modules are skipped.
-  `complexity_lizard.exclude_except` names production paths an `exclude` glob
-  would otherwise drop by filename alone (a guard-suite exclude like
-  `*test-*` also matching a production file whose name happens to contain
-  "test-"): `run_lizard` reads each with a second, exclude-free pass and
-  appends its rows, so only those paths are exempted — everything else the
-  glob drops stays dropped.
-- `check-crap.py`: `complexity.tool: "lizard"` inside a gate; an `istanbul`
-  coverage reader (vitest/c8 `coverage-final.json`); readers are optional per
-  gate (only the configured ones run); `crap` may be a **list of gates**, each
-  with a `name`, selected with `--gate`. Flags `--lizard-csv`, `--istanbul`,
-  `--web-sources`, `--gate`.
-- `check-test-hygiene.py`: `hygiene.extensions` (which suffixes to count) and
-  `hygiene.test_file_roots` (trees that mix production and test code, counted
-  through test files only).
-- `mutate.py`: `mutation.test_command` and `mutation.filter_flag` — run the
-  suite through something other than `swift test` (an iOS package through
-  `xcodebuild` on a simulator).
-- Tests: the "this checkout" cases skip when the checkout's `quality.json`
-  chose not to configure that section; `test-check-complexity.sh` writes its
-  own SwiftLint rules into the fixture instead of copying a project's file;
-  `test-quality-config.py` requires only the language-agnostic pair.
+- `check-complexity.py` reads with lizard for Rust, TypeScript and whatever else `lizard` parses (`complexity.tool: "lizard"`). Inline Rust `#[cfg(test)]` modules are skipped. `complexity.exclude_except` names production paths an `exclude` glob would otherwise drop by filename alone (a guard-suite exclude like `*test-*` also matching a production file whose name happens to contain "test-"): those paths get a second, exclude-free pass, so only they are exempted — everything else the glob drops stays dropped.
+- `check-crap.py`: `complexity.tool: "lizard"` inside a gate; an `istanbul` coverage reader (vitest/c8 `coverage-final.json`); readers are optional per gate (only the configured ones run); `crap` may be a **list of gates**, each with a `name`, selected with `--gate`. Flags `--lizard-csv`, `--istanbul`, `--web-sources`, `--gate`.
+- `check-test-hygiene.py`: `hygiene.extensions` (which suffixes to count) and `hygiene.test_file_roots` (trees that mix production and test code, counted through test files only).
+- `mutate.py`: `mutation.test_command` and `mutation.filter_flag` — run the suite through something other than `swift test` (an iOS package through `xcodebuild` on a simulator).
+- Tests: the "this checkout" cases skip when the checkout's `quality.json` chose not to configure that section; `test-quality-config.py` requires only the language-agnostic pair.

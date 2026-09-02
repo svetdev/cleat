@@ -1,6 +1,7 @@
 {
   "project": "cleat",
-  "complexity_lizard": {
+  "complexity": {
+    "tool": "lizard",
     "sources": [
       "quality/bin"
     ],
@@ -26,23 +27,77 @@
     "habits": {
       "fixed sleeps": {
         "pattern": "time\\.sleep\\(",
-        "ceiling": 2,
-        "use": "poll for the condition; the two baselined matches are test-mutate.py's timeout fixtures"
+        "ceiling": 3,
+        "use": "poll for the condition; the three baselined matches are test-mutate.py's timeout fixtures and test-attach.py's fixture project"
       }
     }
   },
   "doc_size": [
     {
       "file": "README.md",
-      "ceiling": 800
+      "ceiling": 1000
     },
     {
       "file": "quality/README.md",
-      "ceiling": 1400
+      "ceiling": 1600
     },
     {
       "file": "quality/STRATEGY.md",
       "ceiling": 3000
+    }
+  ],
+  "escapes": {
+    "roots": [
+      "quality"
+    ],
+    "languages": [
+      "python",
+      "shell"
+    ],
+    "baseline": "quality/escapes-baseline.json",
+    "skip_dirs": [
+      "fixtures"
+    ]
+  },
+  "duplication": {
+    "roots": [
+      "quality/bin",
+      "quality/tests"
+    ],
+    "languages": [
+      "python"
+    ],
+    "skip_dirs": [
+      "fixtures"
+    ],
+    "min_lines": 10,
+    "baseline": "quality/duplication-baseline.json"
+  },
+  "doc_citations": [
+    {
+      "file": "README.md",
+      "roots": [
+        "."
+      ],
+      "extensions": [
+        ".py",
+        ".sh",
+        ".md"
+      ]
+    },
+    {
+      "file": "quality/README.md",
+      "roots": [
+        "quality/bin",
+        "quality/tests",
+        "quality",
+        "."
+      ],
+      "extensions": [
+        ".py",
+        ".sh",
+        ".md"
+      ]
     }
   ]
 }

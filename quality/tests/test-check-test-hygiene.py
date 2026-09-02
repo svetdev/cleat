@@ -92,16 +92,18 @@ try:
         check("this checkout configures no hygiene, so it is not judged", True, "")
     companion = os.path.join(tmp, "companion")
     companion_habits = {"fixed sleeps": {**HABITS["fixed sleeps"], "ceiling": 0}}
-    companion_config = write_config(tmp, {"roots": ["companion/KiteloopMobile/Tests"], "skip_dirs": [], "habits": companion_habits})
-    write(companion, "KiteloopMobile/Tests/FooTests.swift",
+    companion_config = write_config(tmp, {"roots": ["companion/AcmeMobile/Tests"], "skip_dirs": [], "habits": companion_habits})
+    write(companion, "AcmeMobile/Tests/FooTests.swift",
           "import XCTest\nfinal class FooTests: XCTestCase {\n    func testA() {\n        Thread.sleep(forTimeInterval: 1)\n    }\n}\n")
     code, out = run("--config", companion_config)
     check("a fixed sleep in a companion-shaped test tree is counted",
-          code == 1 and "fixed sleeps: 1, ceiling 0" in out and "companion/KiteloopMobile/Tests/FooTests.swift:4" in out, out)
+          code == 1 and "fixed sleeps: 1, ceiling 0" in out and "companion/AcmeMobile/Tests/FooTests.swift:4" in out, out)
     def use_path(use):
-        m = re.search(r"\(([^()]*)\)", use)
-        candidate = (m.group(1) if m else use).strip()
-        return candidate if "/" in candidate else None
+        # a path is one token: no spaces, a slash inside it, letters, dots, dashes — not a
+        # sentence that happens to contain a slash ("findBy… / waitFor")
+        tokens = [tok.strip("()`,.;") for tok in use.split()]
+        paths = [tok for tok in tokens if re.fullmatch(r"[\w.\-]+(?:/[\w.\-]+)+", tok)]
+        return paths[0] if paths else None
     dead_ends = [(name, use_path(habit["use"])) for name, habit in habits.items()
                  if use_path(habit["use"]) and not os.path.exists(os.path.join(REPO, use_path(habit["use"])))]
     check("and every use naming a path names one on disk under the repository root", not dead_ends, str(dead_ends))

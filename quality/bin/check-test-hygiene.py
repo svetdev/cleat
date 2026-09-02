@@ -21,16 +21,12 @@ The habits, their ceilings and the test trees live in the `hygiene` section of
 their test files only: root → the test suffixes), and
 `habits`, name → a regex `pattern` over code, the `ceiling`, and `use`, the one
 spelling to write instead. A ceiling is raised only on purpose, with the reason
-in the commit. Kiteloop's `fixed sleeps` ceiling reads 62 that way: 53 after
-the August 2026 sweep; 55 with the two debounce drains the mutation hardening
-added to BacklogFileWatcherTests, the shape that file already kept on purpose —
-a 0.05 s debounce has to be waited out before the next step, and nothing in
-the watcher says when it has; 61 with the second round's HTTPServerTests: SSE
-handler fixtures parking until the client hangs up, the listener-readiness
-retry loops that file already carried, and two windows asserting a stray byte
-does *not* end a stream; 62 with OllamaRuntimeTests' `writeUntilDropped`, a
-retry loop polling a socket write from the stub server's own background
-thread, where `eventually` — `@MainActor` and async — cannot be called.
+in the commit, and a raised ceiling should read as a ledger: each increment
+names the sites it admits and why each has no better spelling — a debounce that
+has to be waited out and nothing says when it has; a listener-readiness retry;
+a window asserting a stray byte does *not* end a stream; a socket-write poll
+from a background thread where an async `eventually` cannot be called. The
+number is then defensible line by line rather than a total that drifted.
 
 Sites are counted in code only — a mention in a comment is not a habit. A
 failure lists, under each over-ceiling habit, the repo-relative `path:line` of
@@ -51,7 +47,8 @@ import sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import quality_config  # noqa: E402
+import quality_config
+from extractors import patterns
 
 
 def strip_code(text):
@@ -66,13 +63,7 @@ DEFAULT_EXTENSIONS = [".swift"]
 def source_files(roots, skip_dirs, extensions=DEFAULT_EXTENSIONS):
     """Every file under `roots` with one of `extensions` — `.swift` unless the config's
     `hygiene.extensions` says otherwise, so a Rust, TypeScript or Kotlin suite counts too."""
-    suffixes = tuple(extensions)
-    for root in roots:
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in skip_dirs]
-            for name in sorted(filenames):
-                if name.endswith(suffixes):
-                    yield os.path.join(dirpath, name)
+    return patterns.files(roots, extensions, skip_dirs)
 
 
 swift_files = source_files  # the name the tests drove before extensions existed
@@ -91,14 +82,10 @@ def count(roots, skip_dirs, habits, repo_root, extensions=DEFAULT_EXTENSIONS, mi
     totals = {name: 0 for name in habits}
     sites = {name: [] for name in habits}
     files = list(source_files(roots, skip_dirs, extensions)) + list(test_files_in(mixed_roots or {}, skip_dirs))
-    for path in files:
-        with open(path, errors="replace") as handle:
-            code = strip_code(handle.read())
-        rel = os.path.relpath(path, repo_root)
-        for name, habit in habits.items():
-            for match in re.finditer(habit["pattern"], code):
-                totals[name] += 1
-                sites[name].append("%s:%d" % (rel, code.count("\n", 0, match.start()) + 1))
+    regexes = {name: habit["pattern"] for name, habit in habits.items()}
+    for rel, line, _text, name in patterns.sites(files, regexes, repo_root, prepare=strip_code):
+        totals[name] += 1
+        sites[name].append("%s:%d" % (rel, line))
     return totals, sites
 
 

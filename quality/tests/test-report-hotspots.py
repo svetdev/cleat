@@ -118,6 +118,39 @@ try:
     lines = [l for l in out.splitlines() if "hotspot" in l]
     check("the hot complex function tops the list", "Hot.swift:3" in lines[0], out)
     check("its score is churn x cc", "hotspot 45 (churn 5 x cc 9)" in lines[0], out)
+
+    # the same ranking from a saved lizard run, for the stacks SwiftLint does not read
+    rows = [(1, 9, 5, 1, 1, "hot@3-3@%s" % hot, hot, "hot", "hot ( a )", 3, 3),
+            (1, 9, 5, 1, 1, "cold@3-3@%s" % cold, cold, "cold", "cold ( a )", 3, 3),
+            (1, 2, 5, 1, 1, "simpleHot@3-3@%s" % simple, simple, "simpleHot", "simpleHot ( a )", 3, 3)]
+    csv_path = os.path.join(tmp, "lizard.csv")
+    with open(csv_path, "w") as handle:
+        handle.write("\n".join(",".join('"%s"' % c if isinstance(c, str) else str(c) for c in row) for row in rows) + "\n")
+    p = subprocess.run([sys.executable, SCRIPT, "--lizard-csv", csv_path, "--repo", repo, "--window-days", "90"],
+                       capture_output=True, text=True, cwd=nowhere)
+    csv_out = p.stdout + p.stderr
+    csv_lines = [l for l in csv_out.splitlines() if "hotspot" in l]
+    check("--lizard-csv measures from a saved lizard run", p.returncode == 0 and "3 function(s) measured" in csv_out, csv_out)
+    check("and ranks the same way", "Hot.swift:3" in csv_lines[0] and "hotspot 45 (churn 5 x cc 9)" in csv_lines[0], csv_out)
+
+    # with lizard installed, a config that measures with lizard measures with lizard — --sources or not —
+    # and --tool lizard --languages needs no config at all; without lizard, neither may crash into SwiftLint
+    lizard_config = os.path.join(tmp, "lizard-quality.json")
+    write(lizard_config, {"complexity": {"tool": "lizard", "sources": ["repo/Services"], "languages": ["swift"],
+                                         "ceilings": {"cc": 8, "lines": 60}, "baseline": "b.json"}})
+    for extra in ((), ("--sources", services)):
+        p = subprocess.run([sys.executable, SCRIPT, "--config", lizard_config, "--repo", repo, "--window-days", "90", *extra],
+                           capture_output=True, text=True, cwd=nowhere)
+        text = p.stdout + p.stderr
+        if shutil.which("lizard"):
+            check("a lizard config measures with lizard%s" % (" even with --sources" if extra else ""), p.returncode == 0 and "function(s) measured" in text, text)
+        else:
+            check("without lizard a lizard config fails naming lizard, not swiftlint%s" % (" even with --sources" if extra else ""), p.returncode == 2 and "lizard" in text and "swiftlint" not in text, text)
+    p = subprocess.run([sys.executable, SCRIPT, "--sources", services, "--tool", "lizard", "--languages", "swift", "--repo", repo, "--window-days", "90"],
+                       capture_output=True, text=True, cwd=nowhere)
+    text = p.stdout + p.stderr
+    check("--tool lizard --languages measures with no config at all (or names lizard when it is missing)",
+          (p.returncode == 0 and "measured" in text) if shutil.which("lizard") else (p.returncode == 2 and "lizard" in text), text)
     check("the hot simple function ranks above the cold complex one", "SimpleHot.swift:3" in lines[1], out)
     check("its score is its own churn x cc, not the complex file's", "hotspot 6 (churn 3 x cc 2)" in lines[1], out)
     check("the cold complex function sinks to the bottom despite matching complexity",

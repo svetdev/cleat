@@ -33,7 +33,8 @@ import sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import quality_config  # noqa: E402
+import quality_config
+from extractors import wordcount
 
 SECTION = "doc_size"
 # A document within this fraction of its ceiling is worth a WARN even on a
@@ -42,9 +43,7 @@ SECTION = "doc_size"
 MARGIN_FRACTION = 0.02
 
 
-def word_count(path):
-    with open(path, errors="replace") as handle:
-        return len(handle.read().split())
+word_count = wordcount.words
 
 
 def documents(args):

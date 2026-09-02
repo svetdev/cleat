@@ -1,0 +1,8 @@
+# The quality control plane. A change here is a policy decision — a ceiling
+# raised, a baseline rewritten, an exemption added, a gate edited — and needs
+# a person's approval, not just a green run. With branch protection requiring
+# review from code owners, no agent can loosen a gate on its own.
+/quality.json          @svetdev
+/quality/bin/          @svetdev
+/quality/*.json        @svetdev
+/.github/              @svetdev
