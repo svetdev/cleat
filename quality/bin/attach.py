@@ -14,6 +14,7 @@ attached too.
   python3 …/cleat/quality/bin/attach.py --into ~/proj --refresh   # replace a vendored quality/ with this one
   python3 quality/bin/attach.py --add                    # add the gates attach would write that the config lacks
   python3 quality/bin/attach.py --git-hooks              # also a pre-push git hook running the gates
+  python3 quality/bin/attach.py --ci                     # also the CI workflow, CODEOWNERS and the ruleset command
 
 What it writes, and why each one:
 
@@ -26,17 +27,20 @@ What it writes, and why each one:
                                  rewrite policy; both merged into whatever is already there
   CLAUDE.md                      a short block telling the agent how the gates work and that a
                                  baseline is not a fix — appended, once, to CLAUDE.md or AGENTS.md
-  .github/workflows/cleat.yml    the gates under --strict on every pull request: local hooks give
-                                 feedback, required CI gives authority
-  .github/CODEOWNERS             the control plane — quality.json, the baselines, the gates, the
-                                 hooks — needs a person's review
   .git/hooks/pre-push            with --git-hooks: the gates before code leaves the machine, for
                                  whoever works without an agent harness
+  .github/workflows/cleat.yml    with --ci: the gates under --strict on every pull request
+  .github/CODEOWNERS             with --ci: the control plane — quality.json, the baselines, the
+                                 gates, the hooks — needs a person's review
 
-It ends by printing the `gh api` command that makes the CI check required on
-the default branch with code-owner review and no bypass — the one step attach
-cannot take itself — and what the agent's own token must lack for that to
-mean anything.
+That is local by default: the gates, the baselines and the agent's loop, on
+this machine, nothing under .github/. Local gives feedback and the guard;
+what it cannot do is stop whoever holds the keyboard from removing the hook.
+When there is a second person, or the agent pushes with your keys, `--ci`
+adds the workflow and CODEOWNERS and prints the `gh api` command that makes
+the check required on the default branch with code-owner review and no
+bypass — the one step attach cannot take itself — and what the agent's own
+token must lack for that to mean anything.
 
 Every file that already exists is left alone (the settings file is merged),
 so attaching twice is safe. `--force` rewrites quality.json and the baselines.
@@ -158,6 +162,7 @@ class Plan:
         self.notes = []
         self.refreshing = False
         self.force = False
+        self.ci = False
 
     def say(self, path, what):
         self.writes.append((path, what))
@@ -624,7 +629,7 @@ def settle_config(plan, root, dry_run, force, add):
     return existing
 
 
-def attach(root, dry_run, force, do_refresh=False, add=False, git_hooks=False):
+def attach(root, dry_run, force, do_refresh=False, add=False, git_hooks=False, ci=False):
     plan = Plan(root)
     plan.refreshing = do_refresh
     plan.force = force
@@ -635,11 +640,13 @@ def attach(root, dry_run, force, do_refresh=False, add=False, git_hooks=False):
     appended = append_agent_block(plan, dry_run)
     if appended and not dry_run:
         raise_ceiling_for_block(plan, config, os.path.join(root, "quality.json"), appended, dry_run)
-    lizard_step = "      - run: pip install lizard\n" if "complexity" in config else ""
-    write_text(plan, os.path.join(".github", "workflows", "cleat.yml"), CI_WORKFLOW % {"install": lizard_step}, dry_run)
-    write_text(plan, os.path.join(".github", "CODEOWNERS"), CODEOWNERS % {"owner": owner_handle(root)}, dry_run)
     if git_hooks:
         write_git_hook(plan, dry_run)
+    if ci:
+        lizard_step = "      - run: pip install lizard\n" if "complexity" in config else ""
+        write_text(plan, os.path.join(".github", "workflows", "cleat.yml"), CI_WORKFLOW % {"install": lizard_step}, dry_run)
+        write_text(plan, os.path.join(".github", "CODEOWNERS"), CODEOWNERS % {"owner": owner_handle(root)}, dry_run)
+    plan.ci = ci
     return plan, config
 
 
@@ -663,19 +670,31 @@ def summary_lines(plan, config):
     return lines
 
 
-def report(plan, config, dry_run):
-    print("cleat %s %s" % ("would attach to" if dry_run else "attached to", plan.root))
-    for line in summary_lines(plan, config):
-        print("  " + line)
-    if dry_run:
-        return
+def print_next(plan):
+    """What attach cannot do itself. Local by default: run it, and know what the hooks
+    give. With --ci: the ruleset, and the identity the agent needs for it to hold."""
     print("Next:")
+    if not plan.ci:
+        print("  1. Run python3 quality/bin/gate.py. Every gate is green today; from here they only tighten.")
+        print("  2. The Stop hook hands a failing gate back to the agent; the guard refuses edits to the policy.")
+        print("     What local cannot do is stop whoever holds the keyboard from removing the hook.")
+        print("  3. When there is a reviewer, or the agent pushes with your keys: attach.py --ci adds the workflow,")
+        print("     CODEOWNERS and the command that makes the check required. quality/README.md has the tiers.")
+        return
     print("  1. Commit. Then make the check required on the default branch, with code-owner review and no bypass:")
     print("     " + ruleset_command(plan.root).replace("\n", "\n     "))
     print("  2. Give the agent its own GitHub identity — a machine user or an App with contents and pull-request")
     print("     write, no admin. A PR's author cannot approve it, so an agent that is you leaves nobody to approve;")
     print("     an agent that holds admin can turn the rules off. With its own identity, you are the reviewer.")
     print("  3. quality/README.md: the tiers above this one, and how each attachment point holds.")
+
+
+def report(plan, config, dry_run):
+    print("cleat %s %s" % ("would attach to" if dry_run else "attached to", plan.root))
+    for line in summary_lines(plan, config):
+        print("  " + line)
+    if not dry_run:
+        print_next(plan)
 
 
 def main():
@@ -686,13 +705,14 @@ def main():
     parser.add_argument("--refresh", action="store_true", help="replace a vendored quality/'s template files with this checkout's")
     parser.add_argument("--add", action="store_true", help="add the gates attach would write that an existing quality.json lacks")
     parser.add_argument("--git-hooks", action="store_true", help="also write a pre-push git hook that runs the gates")
+    parser.add_argument("--ci", action="store_true", help="also write the CI workflow and CODEOWNERS, and print the ruleset command")
     args = parser.parse_args()
     root = os.path.abspath(args.into) if args.into else os.path.dirname(os.path.dirname(HERE))
     if not os.path.isdir(root):
         print("FAIL: no such directory: %s" % root, file=sys.stderr)
         return 2
     try:
-        plan, config = attach(root, args.dry_run, args.force, args.refresh, args.add, args.git_hooks)
+        plan, config = attach(root, args.dry_run, args.force, args.refresh, args.add, args.git_hooks, args.ci)
     except Busy as problem:
         print("FAIL: %s" % problem, file=sys.stderr)
         return 2

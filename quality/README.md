@@ -28,7 +28,7 @@ Seventeen checks, each a ratchet: a baseline records what was over the line the 
 
 ## Adopting it
 
-`python3 /path/to/cleat/quality/bin/attach.py --into /path/to/project` does steps 1–4 for tier 0 (and the complexity ratchet when `lizard` is installed), wires the agent hooks and CI, and is safe to run again. By hand:
+`python3 /path/to/cleat/quality/bin/attach.py --into /path/to/project` does steps 1–4 for tier 0 (and the complexity ratchet when `lizard` is installed), wires the agent hooks, and is safe to run again; `--ci` adds the workflow and CODEOWNERS. By hand:
 
 1. Copy this directory into the repository.
 2. Copy `quality.example.json` to the repository root as `quality.json` and fill it in — every path is relative to that file; `~` and absolute paths pass through. A key a check needs that the file lacks fails naming the key; there are no silent defaults.
@@ -37,7 +37,7 @@ Seventeen checks, each a ratchet: a baseline records what was over the line the 
 
 ## How cleat attaches
 
-CI is required, agent hooks are recommended, a git hook is optional; each stops something the others do not.
+Local by default: the gates, the baselines and the agent hooks. `--git-hooks` adds a pre-push hook; `--ci` adds the workflow and CODEOWNERS when there is a reviewer or the agent pushes with your keys. Each layer stops something the others do not.
 
 | Where | Stops | Does not stop |
 |---|---|---|

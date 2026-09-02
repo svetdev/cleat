@@ -9,7 +9,7 @@ with today's sleep count as the ceiling, and the escapes baseline; the gates
 then pass under --strict; the Stop and PreToolUse hooks are in
 .claude/settings.json, merged with what was there; the agent block is appended
 to CLAUDE.md once; the workflow and CODEOWNERS exist, the latter naming the
-origin's owner; attaching again changes nothing; --refresh replaces the
+origin's owner with --ci and nothing under .github without; attaching again changes nothing; --refresh replaces the
 template's files and keeps the project's; --add merges the gates a config
 lacks and writes their baselines; and a new escape then fails the gates in
 hook mode. Writes nothing outside a temporary directory.
@@ -61,8 +61,10 @@ try:
     check("--dry-run writes nothing", not os.path.exists(os.path.join(root, "quality.json")) and not os.path.isdir(os.path.join(root, "quality")), out)
 
     code, out = run("--into", root)
-    out_first = out
     check("attach succeeds", code == 0, out)
+    check("by default nothing is written under .github, and the next steps are local", not os.path.exists(os.path.join(root, ".github")) and "Run python3 quality/bin/gate.py" in out and "attach.py --ci" in out, out)
+    code, out_first = run("--into", root, "--ci")
+    check("--ci adds the workflow and CODEOWNERS on top", code == 0 and os.path.isfile(os.path.join(root, ".github", "CODEOWNERS")), out_first)
     check("quality/ is copied into the project", os.path.isfile(os.path.join(root, "quality", "bin", "gate.py")) and os.path.isfile(os.path.join(root, "quality", "README.md")), out)
     check("without the template's own plan or baselines", not os.path.exists(os.path.join(root, "quality", "REFACTOR.md"))
           and "quality/bin" not in read(os.path.join(root, "quality", "escapes-baseline.json")), out)

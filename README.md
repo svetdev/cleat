@@ -20,7 +20,7 @@ One command, nothing to install. It copies `quality/` in, looks at the tree, and
 - **The baselines** — today's debt, accepted once. Day one is green.
 - **Agent hooks** — a Stop hook that runs the gates and hands a failure back to the agent as its next task, and a PreToolUse guard that refuses any command that would rewrite a baseline or edit the policy.
 - **A block in the agent's instructions file** saying how the gates work and that a baseline is not a fix.
-- **CI and CODEOWNERS** — the gates under `--strict` on every pull request, and a person's review over the control plane. Local hooks give feedback; required CI gives authority.
+- **With `--ci`, the workflow and CODEOWNERS** — the gates under `--strict` on every pull request, and a person's review over the control plane. Local hooks give feedback; required CI gives authority.
 
 Attaching again is safe: what exists is kept. `python3 quality/bin/gate.py` runs everything.
 
@@ -49,13 +49,13 @@ Nine languages have built-in escape patterns and conformance fixtures: Python, T
 
 ## How cleat attaches
 
-Three places, in order of necessity. Attach writes the first two and, with `--git-hooks`, the third.
+Local by default. Attach writes the gates, the baselines and the agent hooks; nothing leaves your machine and nothing lands under `.github/`.
 
-1. **CI, required.** `gate.py --strict --skip-missing-tools` as a required status check on the default branch, with code-owner review over `quality.json`, the baselines and `quality/`, and no bypass. This is the only layer an agent cannot route around, so nothing else counts as attached without it. Attach prints the `gh api` ruleset command filled in for the repository.
-2. **Agent hooks, recommended.** A Stop hook that hands a failure back to the agent as its next task, while the context that produced the code is still loaded, and a PreToolUse guard that refuses the policy edits an agent reaches for when blocked. Per project in `.claude/settings.json`, or globally with `[ -f quality/bin/gate.py ] && python3 quality/bin/gate.py --hook || true`.
-3. **A pre-push git hook, optional.** The same run before code leaves the machine, for whoever works without an agent harness. Seconds long; `--no-verify` exists, which is why it is third.
+1. **Run it.** `python3 quality/bin/gate.py`. Green today, and from here it only tightens.
+2. **Put it in the agent's loop.** The Stop hook hands a failing gate back to the agent as its next task, while the context that produced the code is still loaded; the PreToolUse guard refuses the policy edits an agent reaches for when blocked. Per project in `.claude/settings.json`, or globally with `[ -f quality/bin/gate.py ] && python3 quality/bin/gate.py --hook || true`. `--git-hooks` adds a pre-push hook for whoever works without an agent harness.
+3. **Add CI when there is a reviewer, or when the agent pushes with your keys.** `attach.py --ci` writes the workflow and CODEOWNERS and prints the ruleset command that makes the check required on the default branch with code-owner review and no bypass. This is the only layer an agent cannot route around.
 
-Hooks alone give feedback and no guarantee. And a protected branch only holds against an identity that cannot approve or bypass: an agent authenticated as you can approve nothing (a PR's author cannot) and reconfigure everything (admin scope). Give the agent its own GitHub identity with contents and pull-request write and nothing more; then you are the reviewer.
+What local gives you is feedback and the guard. What it cannot do is stop whoever holds the keyboard from removing the hook, which for one person working alone means stopping yourself, and that is usually fine. A protected branch only holds against an identity that cannot approve or bypass, so with `--ci` give the agent its own GitHub identity with contents and pull-request write and nothing more; then you are the reviewer.
 
 ## How a gate holds against an agent
 
