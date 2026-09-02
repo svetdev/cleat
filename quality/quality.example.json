@@ -44,6 +44,10 @@
     {
       "file": "quality/STRATEGY.md",
       "ceiling": 3000
+    },
+    {
+      "file": "CONTRIBUTING.md",
+      "ceiling": 700
     }
   ],
   "escapes": {
@@ -87,6 +91,20 @@
     },
     {
       "file": "quality/README.md",
+      "roots": [
+        "quality/bin",
+        "quality/tests",
+        "quality",
+        "."
+      ],
+      "extensions": [
+        ".py",
+        ".sh",
+        ".md"
+      ]
+    },
+    {
+      "file": "CONTRIBUTING.md",
       "roots": [
         "quality/bin",
         "quality/tests",

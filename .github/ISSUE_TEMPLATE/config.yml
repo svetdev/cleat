@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How to attach cleat
+    url: https://github.com/svetdev/cleat#how-cleat-attaches
+    about: Local by default, agent hooks recommended, CI when there is a reviewer.

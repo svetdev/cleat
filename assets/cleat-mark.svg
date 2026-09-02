@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <title>cleat</title>
+  <g fill="none" stroke="#1f1a14" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="148" y="158" width="104" height="84" rx="16" fill="#e8e0d2"/>
+    <circle cx="170" cy="200" r="6" fill="#f4efe6"/>
+    <circle cx="230" cy="200" r="6" fill="#f4efe6"/>
+    <path d="M 16 200 C 60 178 120 172 200 172 C 280 172 340 178 384 200 C 340 222 280 228 200 228 C 120 228 60 222 16 200 Z" fill="#f4efe6"/>
+    <path d="M 118 140 C 66 140 66 260 118 260 C 172 260 228 140 282 140 C 334 140 334 260 282 260 C 228 260 172 140 118 140 Z" stroke-width="22"/>
+    <path d="M 118 140 C 66 140 66 260 118 260 C 172 260 228 140 282 140 C 334 140 334 260 282 260 C 228 260 172 140 118 140 Z" stroke="#e0801c" stroke-width="14"/>
+    <path d="M 132 128 C 76 128 76 272 132 272 C 176 272 224 128 268 128 C 324 128 324 272 268 272" stroke-width="22"/>
+    <path d="M 132 128 C 76 128 76 272 132 272 C 176 272 224 128 268 128 C 324 128 324 272 268 272" stroke="#e0801c" stroke-width="14"/>
+    <path d="M 118 260 C 96 300 76 330 52 372" stroke-width="22"/>
+    <path d="M 118 260 C 96 300 76 330 52 372" stroke="#e0801c" stroke-width="14"/>
+  </g>
+</svg>

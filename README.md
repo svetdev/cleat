@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/cleat-mark.svg" width="160" alt="cleat: a horn cleat with two wraps of rope"></p>
+
 # cleat
 
 Quality gates for AI-driven development. Attach cleat to a project and every change an agent makes is held to ratchets that only tighten: functions that grow past a complexity ceiling, code copied instead of extracted, escapes that switch a check off, tests that stop running, references that cut across layers, public signatures that vanish. Existing debt is baselined once and never forgiven into the build.
@@ -14,15 +16,22 @@ An agent generates code faster than review can absorb it, and a rule in a contex
 python3 /path/to/cleat/quality/bin/attach.py --into /path/to/your/project
 ```
 
-One command, nothing to install. It copies `quality/` in, looks at the tree, and writes:
+One command, nothing to install. It copies `quality/` in, looks at the tree, and writes `quality.json` for what it finds (the languages, the documents an agent reads, the test trees, the escapes and duplication gates; complexity when `lizard` is installed, changed-line coverage when a report exists), the baselines so day one is green, the agent hooks, and a block in the agent's instructions file. Attaching again is safe: what exists is kept.
 
-- **`quality.json`** — the languages it found, the documents an agent reads with a word ceiling each, the test trees with today's fixed-sleep count as the ceiling, the escapes gate, the duplication ratchet; the complexity ratchet when `lizard` is installed, changed-line coverage when a coverage report exists.
-- **The baselines** — today's debt, accepted once. Day one is green.
-- **Agent hooks** — a Stop hook that runs the gates and hands a failure back to the agent as its next task, and a PreToolUse guard that refuses any command that would rewrite a baseline or edit the policy.
-- **A block in the agent's instructions file** saying how the gates work and that a baseline is not a fix.
-- **With `--ci`, the workflow and CODEOWNERS** — the gates under `--strict` on every pull request, and a person's review over the control plane. Local hooks give feedback; required CI gives authority.
+## Try it in two minutes
 
-Attaching again is safe: what exists is kept. `python3 quality/bin/gate.py` runs everything.
+A scratch repository with one function, attached, then made worse:
+
+```
+mkdir try-cleat && cd try-cleat && git init -q
+printf 'def f(a):\n    if a:\n        return 1\n    return 0\n' > app.py
+python3 /path/to/cleat/quality/bin/attach.py --into .
+python3 quality/bin/gate.py                        # gate: 3 gate(s), all passed.
+printf 'x = f(1)  # type: ignore\n' >> app.py
+python3 quality/bin/gate.py                        # FAIL  escapes ... app.py:5  type ignore
+```
+
+The failure names the file, the line and the escape, and says what fixes it. It does not say how to make the baseline accept it; that is a decision the config records, made by a person.
 
 ## The gates
 
@@ -55,7 +64,7 @@ Local by default. Attach writes the gates, the baselines and the agent hooks; no
 2. **Put it in the agent's loop.** The Stop hook hands a failing gate back to the agent as its next task, while the context that produced the code is still loaded; the PreToolUse guard refuses the policy edits an agent reaches for when blocked. Per project in `.claude/settings.json`, or globally with `[ -f quality/bin/gate.py ] && python3 quality/bin/gate.py --hook || true`. `--git-hooks` adds a pre-push hook for whoever works without an agent harness.
 3. **Add CI when there is a reviewer, or when the agent pushes with your keys.** `attach.py --ci` writes the workflow and CODEOWNERS and prints the ruleset command that makes the check required on the default branch with code-owner review and no bypass. This is the only layer an agent cannot route around.
 
-What local gives you is feedback and the guard. What it cannot do is stop whoever holds the keyboard from removing the hook, which for one person working alone means stopping yourself, and that is usually fine. A protected branch only holds against an identity that cannot approve or bypass, so with `--ci` give the agent its own GitHub identity with contents and pull-request write and nothing more; then you are the reviewer.
+Local gives feedback and the guard; it cannot stop whoever holds the keyboard from removing the hook, which alone means stopping yourself. A protected branch holds only against an identity that cannot approve or bypass, so with `--ci` give the agent its own GitHub identity with contents and pull-request write and nothing more; then you are the reviewer.
 
 ## How a gate holds against an agent
 

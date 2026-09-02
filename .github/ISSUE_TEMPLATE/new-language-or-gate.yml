@@ -1,0 +1,17 @@
+name: A language or a gate cleat should have
+description: Something you wanted to attach and could not.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you wanted to gate, and in which language
+      description: For a gate, say what rot it stops and what an agent does to cause it. For a language, say which existing tool already measures it (lizard, a coverage reporter, a SARIF scanner).
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: A config section that did not work, or the nearest gate that almost did.
+      render: json

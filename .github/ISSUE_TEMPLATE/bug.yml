@@ -1,0 +1,27 @@
+name: Something broke
+description: A crash, a wrong exit code, attach or the runner misbehaving.
+labels: ["bug"]
+body:
+  - type: input
+    id: command
+    attributes:
+      label: The command
+      placeholder: python3 quality/bin/attach.py --into ~/proj --refresh
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output, including the traceback if there was one
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: The relevant part of quality.json
+      render: json
+  - type: input
+    id: env
+    attributes:
+      label: Python version, OS, and which of lizard / swiftlint / ast-grep are installed
