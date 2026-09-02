@@ -8,9 +8,9 @@
   {
    "file": ".",
    "text": "duplicated share of significant lines",
-   "percent": 0.27,
+   "percent": 0.26,
    "duplicated_lines": 22,
-   "total_lines": 8292
+   "total_lines": 8392
   }
  ]
 }

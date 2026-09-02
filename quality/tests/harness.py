@@ -39,5 +39,6 @@ def write(path, text):
 
 def run(script, *args, cwd=None, stdin=None):
     """(exit code, stdout + stderr) of `script` run under this interpreter."""
-    proc = subprocess.run([sys.executable, script, *args], capture_output=True, text=True, cwd=cwd, input=stdin)
+    proc = subprocess.run([sys.executable, script, *args], capture_output=True, text=True, cwd=cwd, input=stdin,
+                          stdin=subprocess.DEVNULL if stdin is None else None)
     return proc.returncode, proc.stdout + proc.stderr

@@ -57,6 +57,10 @@ try:
     check("--hook exits 2 with the failures on stderr", code == 2 and "[escapes]" in err and "src/a.py:1  noqa" in err and "fix what each names" in err, err)
     code, out, err = run("--config", config, "--hook", "--gate", "doc-size")
     check("--hook exits 0 when everything passes", code == 0 and err == "", err)
+    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": True, "hook_event_name": "Stop"}))
+    check("--hook does not block a second consecutive stop: the failures are reported and the agent may stop", code == 0 and "[escapes]" in err and "not blocking a second time" in err, err)
+    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": False}))
+    check("with stop_hook_active false it blocks as before", code == 2, err)
 
     write(config, json.dumps({"project": "x"}))
     code, out, err = run("--config", config)

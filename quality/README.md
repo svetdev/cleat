@@ -35,6 +35,18 @@ Seventeen checks, each a ratchet: a baseline records what was over the line the 
 3. Write the baselines once: each ratchet's `--write-baseline` (`check-crap.py` after a coverage run); `layering.exempt` and `reachability.exempt` are filled from the first run's findings, with a reason each.
 4. Run `bin/gate.py` wherever the tests run — as a **preflight** before a build starts, `--postflight` after a green run for `check-crap.py`, which reads that run's coverage — and `bin/gate.py --strict` in CI.
 
+## How cleat attaches
+
+CI is required, agent hooks are recommended, a git hook is optional; each stops something the others do not.
+
+| Where | Stops | Does not stop |
+|---|---|---|
+| CI: `gate.py --strict --skip-missing-tools` as a required check, code-owner review on the control plane, no bypass | a merge with a failing or loosened gate; a baseline or ceiling changed without a person | nothing it can see — it is the authority |
+| Agent hooks: Stop runs the gates and blocks one stop; PreToolUse refuses `--write-baseline` and edits to `quality.json`, the baselines, the gates, the hooks | the agent finishing with a red gate; the agent loosening policy mid-task | a session with different settings; a plain terminal |
+| Git pre-push hook (`attach --git-hooks`) | a push with a red gate, from a human or an agent with no hook harness | `--no-verify` |
+
+The Stop hook blocks once per stop: on the stop after that (`stop_hook_active`) it reports and lets the agent go, so an unfixable failure does not loop it; CI refuses the result. Branch protection assumes an identity that cannot approve or bypass — an agent authenticated as you can do both — so the agent should hold its own GitHub identity with contents and pull-request write only. Attach prints the ruleset command that makes the check required.
+
 ## The ratchet, precisely
 
 Every baselined gate sorts each finding into one of five outcomes: **new** (fails), **worsened** — a recorded value went up (fails), **held**, **improved**, **stale** — the entry matched nothing. The last two mean the baseline is looser than the code; each is a NOTE with the command that tightens it, and under `--strict` a failure, so CI keeps the file exact. A baseline records what measured it (tool, version, a hash of the gate's config); a run under a different one is noted the same way. Failure output names the fix and never the accept command.

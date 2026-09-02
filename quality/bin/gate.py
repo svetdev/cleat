@@ -33,7 +33,10 @@ the same check over different facts:
 `--hook` is how the ratchet sits inside an agent's loop. Claude Code's Stop
 hook treats exit 2 as "not done" and hands stderr back to the model, so a
 failing gate becomes the next thing the agent works on, with the fix in
-front of it. `--guard` reads a PreToolUse event from stdin and exits 2 —
+front of it. It blocks one stop, not every stop: when the event says
+`stop_hook_active` — the agent is already continuing because of this hook —
+the failures are reported and the agent may stop, so a failure it cannot
+fix does not loop it forever; CI refuses the result instead. `--guard` reads a PreToolUse event from stdin and exits 2 —
 refusing the call — when the command would write a baseline, edit
 quality.json, or edit the gates: those are policy changes for a person.
 """
@@ -42,6 +45,7 @@ import argparse
 import json
 import os
 import re
+import select as selectors  # `select` is a function below
 import shutil
 import subprocess
 import sys
@@ -273,15 +277,32 @@ def fail(message):
     return 2
 
 
+def stop_hook_active():
+    """Whether the agent is already continuing because this hook blocked its last stop —
+    Claude Code says so in the Stop event on stdin. A hook that blocks again would loop
+    the agent forever on a failure it cannot fix."""
+    try:
+        if sys.stdin.isatty() or not selectors.select([sys.stdin], [], [], 0.5)[0]:
+            return False  # nothing piped in: not a Stop event
+        return bool(json.loads(sys.stdin.read() or "{}").get("stop_hook_active"))
+    except (ValueError, OSError):
+        return False
+
+
 def finish(failures, hook):
     """The exit code — and, in hook mode, the failures again on stderr, which is what
-    the agent's harness hands back to it."""
-    if failures and hook:
-        print("cleat: %d quality gate(s) failed — fix what each names, then stop again:" % len(failures), file=sys.stderr)
-        for g, out in failures:
-            print("[%s]\n%s" % (g.name, out), file=sys.stderr)
-        return 2
-    return 1 if failures else 0
+    the agent's harness hands back to it. Exit 2 blocks the stop once; on the stop after
+    that the failures are reported but the agent may stop, and CI holds the line."""
+    if not failures or not hook:
+        return 1 if failures else 0
+    again = stop_hook_active()
+    print("cleat: %d quality gate(s) failed%s:" % (len(failures), " — still, after one round of fixes" if again else " — fix what each names, then stop again"), file=sys.stderr)
+    for g, out in failures:
+        print("[%s]\n%s" % (g.name, out), file=sys.stderr)
+    if again:
+        print("cleat: not blocking a second time; the failure stands and CI will refuse it.", file=sys.stderr)
+        return 0
+    return 2
 
 
 def main():

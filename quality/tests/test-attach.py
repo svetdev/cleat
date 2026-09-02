@@ -61,6 +61,7 @@ try:
     check("--dry-run writes nothing", not os.path.exists(os.path.join(root, "quality.json")) and not os.path.isdir(os.path.join(root, "quality")), out)
 
     code, out = run("--into", root)
+    out_first = out
     check("attach succeeds", code == 0, out)
     check("quality/ is copied into the project", os.path.isfile(os.path.join(root, "quality", "bin", "gate.py")) and os.path.isfile(os.path.join(root, "quality", "README.md")), out)
     check("without the template's own plan or baselines", not os.path.exists(os.path.join(root, "quality", "REFACTOR.md"))
@@ -192,6 +193,21 @@ try:
     check("an .xcodeproj beside a *Tests root gets a manifests gate", code == 0 and ios_config.get("manifests") == [{"file": "App.xcodeproj/project.pbxproj", "roots": ["AppTests"], "extensions": [".swift"]}], str(ios_config.get("manifests")))
     code, gout, gerr = gate(ios, "--strict", "--skip-missing-tools")
     check("and it is green on day one", code == 0, gout + gerr)
+
+    # ---- the closing lines: the ruleset command filled in, and the identity advice
+    check("attach ends with the gh ruleset command for this repository's origin, naming the check",
+          "gh api -X POST repos/acme-org/proj/rulesets" in out_first and '"context": "gates"' in out_first and "require_code_owner_review" in out_first, out_first)
+    check("and says the agent needs its own identity", "own GitHub identity" in out_first, out_first)
+
+    # ---- --git-hooks: a pre-push hook, once, and never over someone else's
+    code, out = run("--into", root, "--git-hooks")
+    hook = os.path.join(root, ".git", "hooks", "pre-push")
+    check("--git-hooks writes an executable pre-push hook that runs the gates", code == 0 and os.access(hook, os.X_OK) and "gate.py" in read(hook), out)
+    code, out = run("--into", root, "--git-hooks")
+    check("and keeps it on a second run", "kept (already cleat's)" in out, out)
+    write(hook, "#!/bin/sh\necho mine\n")
+    code, out = run("--into", root, "--git-hooks")
+    check("a hook of someone else's is kept, with the line to add", read(hook) == "#!/bin/sh\necho mine\n" and "add `python3 quality/bin/gate.py`" in out, out)
 
     code, out = run("--into", os.path.join(tmp, "missing"))
     check("a directory that does not exist is refused", code == 2, out)

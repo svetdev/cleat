@@ -13,6 +13,7 @@ attached too.
   python3 quality/bin/attach.py --force                  # rewrite a quality.json that already exists
   python3 …/cleat/quality/bin/attach.py --into ~/proj --refresh   # replace a vendored quality/ with this one
   python3 quality/bin/attach.py --add                    # add the gates attach would write that the config lacks
+  python3 quality/bin/attach.py --git-hooks              # also a pre-push git hook running the gates
 
 What it writes, and why each one:
 
@@ -29,6 +30,13 @@ What it writes, and why each one:
                                  feedback, required CI gives authority
   .github/CODEOWNERS             the control plane — quality.json, the baselines, the gates, the
                                  hooks — needs a person's review
+  .git/hooks/pre-push            with --git-hooks: the gates before code leaves the machine, for
+                                 whoever works without an agent harness
+
+It ends by printing the `gh api` command that makes the CI check required on
+the default branch with code-owner review and no bypass — the one step attach
+cannot take itself — and what the agent's own token must lack for that to
+mean anything.
 
 Every file that already exists is left alone (the settings file is merged),
 so attaching twice is safe. `--force` rewrites quality.json and the baselines.
@@ -466,6 +474,63 @@ def raise_ceiling_for_block(plan, config, config_path, doc, dry_run):
                     handle.write("\n")
 
 
+PRE_PUSH = """#!/bin/sh
+# cleat: the quality gates before code leaves the machine. Weaker than CI (--no-verify
+# exists) but seconds long, for whoever works without an agent harness.
+exec python3 quality/bin/gate.py
+"""
+
+
+def write_git_hook(plan, dry_run):
+    """A pre-push hook running the gates, when the project is a git repository and no
+    hook of someone else's is already there."""
+    hooks = os.path.join(plan.root, ".git", "hooks")
+    if not os.path.isdir(os.path.join(plan.root, ".git")):
+        plan.notes.append("--git-hooks: not a git repository, so no pre-push hook was written")
+        return
+    path = os.path.join(hooks, "pre-push")
+    existing = _read_if_exists(path)
+    if existing and "cleat" not in existing:
+        plan.say(".git/hooks/pre-push", "kept (a hook of yours is already there — add `python3 quality/bin/gate.py` to it)")
+        return
+    plan.say(".git/hooks/pre-push", "kept (already cleat's)" if existing else "written")
+    if not dry_run and not existing:
+        os.makedirs(hooks, exist_ok=True)
+        with open(path, "w") as handle:
+            handle.write(PRE_PUSH)
+        os.chmod(path, 0o755)
+
+
+def origin_repo(root):
+    """`owner/name` from the origin remote's GitHub path, or None."""
+    proc = subprocess.run(["git", "-C", root, "remote", "get-url", "origin"], capture_output=True, text=True)
+    match = re.search(r"github\.com[:/]([^/]+)/([^/\s]+?)(?:\.git)?$", proc.stdout.strip()) if proc.returncode == 0 else None
+    return "%s/%s" % (match.group(1), match.group(2)) if match else None
+
+
+RULESET = """{
+  "name": "cleat", "target": "branch", "enforcement": "active",
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "bypass_actors": [],
+  "rules": [
+    {"type": "pull_request", "parameters": {"required_approving_review_count": 1, "require_code_owner_review": true,
+      "dismiss_stale_reviews_on_push": true, "require_last_push_approval": true, "required_review_thread_resolution": false}},
+    {"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": true,
+      "required_status_checks": [{"context": "%(check)s"}]}},
+    {"type": "non_fast_forward"},
+    {"type": "deletion"}
+  ]
+}"""
+CHECK_NAME = "gates"   # the job name in the generated workflow, which is the status check's context
+
+
+def ruleset_command(root):
+    """The `gh api` call that makes the CI check required on the default branch, with
+    code-owner review and no bypass — filled in for this repository."""
+    repo = origin_repo(root) or "OWNER/REPO"
+    return "gh api -X POST repos/%s/rulesets --input - <<'EOF'\n%s\nEOF" % (repo, RULESET % {"check": CHECK_NAME})
+
+
 def owner_handle(root):
     """`@owner` from the origin remote's GitHub path, else a placeholder to fill in."""
     proc = subprocess.run(["git", "-C", root, "remote", "get-url", "origin"], capture_output=True, text=True)
@@ -559,7 +624,7 @@ def settle_config(plan, root, dry_run, force, add):
     return existing
 
 
-def attach(root, dry_run, force, do_refresh=False, add=False):
+def attach(root, dry_run, force, do_refresh=False, add=False, git_hooks=False):
     plan = Plan(root)
     plan.refreshing = do_refresh
     plan.force = force
@@ -573,6 +638,8 @@ def attach(root, dry_run, force, do_refresh=False, add=False):
     lizard_step = "      - run: pip install lizard\n" if "complexity" in config else ""
     write_text(plan, os.path.join(".github", "workflows", "cleat.yml"), CI_WORKFLOW % {"install": lizard_step}, dry_run)
     write_text(plan, os.path.join(".github", "CODEOWNERS"), CODEOWNERS % {"owner": owner_handle(root)}, dry_run)
+    if git_hooks:
+        write_git_hook(plan, dry_run)
     return plan, config
 
 
@@ -600,9 +667,15 @@ def report(plan, config, dry_run):
     print("cleat %s %s" % ("would attach to" if dry_run else "attached to", plan.root))
     for line in summary_lines(plan, config):
         print("  " + line)
-    if not dry_run:
-        print("Next: commit, protect the branch so CODEOWNERS review is required, and read quality/README.md "
-              "for the tiers above this one.")
+    if dry_run:
+        return
+    print("Next:")
+    print("  1. Commit. Then make the check required on the default branch, with code-owner review and no bypass:")
+    print("     " + ruleset_command(plan.root).replace("\n", "\n     "))
+    print("  2. Give the agent its own GitHub identity — a machine user or an App with contents and pull-request")
+    print("     write, no admin. A PR's author cannot approve it, so an agent that is you leaves nobody to approve;")
+    print("     an agent that holds admin can turn the rules off. With its own identity, you are the reviewer.")
+    print("  3. quality/README.md: the tiers above this one, and how each attachment point holds.")
 
 
 def main():
@@ -612,13 +685,14 @@ def main():
     parser.add_argument("--force", action="store_true", help="rewrite quality.json and the baselines")
     parser.add_argument("--refresh", action="store_true", help="replace a vendored quality/'s template files with this checkout's")
     parser.add_argument("--add", action="store_true", help="add the gates attach would write that an existing quality.json lacks")
+    parser.add_argument("--git-hooks", action="store_true", help="also write a pre-push git hook that runs the gates")
     args = parser.parse_args()
     root = os.path.abspath(args.into) if args.into else os.path.dirname(os.path.dirname(HERE))
     if not os.path.isdir(root):
         print("FAIL: no such directory: %s" % root, file=sys.stderr)
         return 2
     try:
-        plan, config = attach(root, args.dry_run, args.force, args.refresh, args.add)
+        plan, config = attach(root, args.dry_run, args.force, args.refresh, args.add, args.git_hooks)
     except Busy as problem:
         print("FAIL: %s" % problem, file=sys.stderr)
         return 2

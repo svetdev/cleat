@@ -47,6 +47,16 @@ Attaching again is safe: what exists is kept. `python3 quality/bin/gate.py` runs
 
 Nine languages have built-in escape patterns and conformance fixtures: Python, TypeScript/JavaScript, Swift, Rust, Go, Kotlin, Java, Ruby, shell. Every gate carries its own test, and every check is generic: a project's facts live in `quality.json` and nowhere else.
 
+## How cleat attaches
+
+Three places, in order of necessity. Attach writes the first two and, with `--git-hooks`, the third.
+
+1. **CI, required.** `gate.py --strict --skip-missing-tools` as a required status check on the default branch, with code-owner review over `quality.json`, the baselines and `quality/`, and no bypass. This is the only layer an agent cannot route around, so nothing else counts as attached without it. Attach prints the `gh api` ruleset command filled in for the repository.
+2. **Agent hooks, recommended.** A Stop hook that hands a failure back to the agent as its next task, while the context that produced the code is still loaded, and a PreToolUse guard that refuses the policy edits an agent reaches for when blocked. Per project in `.claude/settings.json`, or globally with `[ -f quality/bin/gate.py ] && python3 quality/bin/gate.py --hook || true`.
+3. **A pre-push git hook, optional.** The same run before code leaves the machine, for whoever works without an agent harness. Seconds long; `--no-verify` exists, which is why it is third.
+
+Hooks alone give feedback and no guarantee. And a protected branch only holds against an identity that cannot approve or bypass: an agent authenticated as you can approve nothing (a PR's author cannot) and reconfigure everything (admin scope). Give the agent its own GitHub identity with contents and pull-request write and nothing more; then you are the reviewer.
+
 ## How a gate holds against an agent
 
 1. **The ratchet is monotonic.** A baselined function that gets worse fails, not just a new one. A baseline looser than the code is a NOTE locally and a failure in CI, so the file always records exactly the debt that exists. Baselines carry their provenance, so a tool upgrade is noticed.

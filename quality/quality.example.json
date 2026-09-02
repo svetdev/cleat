@@ -35,11 +35,11 @@
   "doc_size": [
     {
       "file": "README.md",
-      "ceiling": 1000
+      "ceiling": 1200
     },
     {
       "file": "quality/README.md",
-      "ceiling": 1600
+      "ceiling": 1700
     },
     {
       "file": "quality/STRATEGY.md",
