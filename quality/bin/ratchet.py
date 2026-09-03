@@ -152,18 +152,33 @@ def compare(finding, entry, metrics):
 
 
 def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None):
-    """Sort `findings` against the baseline `entries` into the five outcomes."""
+    """Sort `findings` against the baseline `entries` into the five outcomes.
+
+    Identical `(file, text)` can repeat within a run — two functions over the
+    line sharing a declaration text. They are told apart by occurrence order:
+    the nth entry with a given `(file, text)` matches the nth such finding.
+    `write()` stores entries in finding order, so the positions line up."""
     verdict = Verdict()
-    by_key = {(e["file"], e["text"]): e for e in entries}
+    by_key = {}
+    counts = {}
+    for e in entries:
+        k = (e["file"], e["text"])
+        occ = counts.get(k, 0)
+        counts[k] = occ + 1
+        by_key[k + (occ,)] = e
     seen = set()
+    counts = {}
     for finding in findings:
-        entry = by_key.get(finding.key)
+        occ = counts.get(finding.key, 0)
+        counts[finding.key] = occ + 1
+        key = finding.key + (occ,)
+        entry = by_key.get(key)
         if entry is None:
             verdict.new.append(finding)
             continue
-        seen.add(finding.key)
+        seen.add(key)
         getattr(verdict, compare(finding, entry, metrics)).append((finding, entry))
-    verdict.stale = [e for e in entries if (e["file"], e["text"]) not in seen]
+    verdict.stale = [e for k, e in by_key.items() if k not in seen]
     verdict.drift = drift_between(stored_provenance, current_provenance)
     return verdict
 

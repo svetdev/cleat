@@ -133,7 +133,7 @@ LANGUAGES = {
 }
 
 DEFAULT_SKIP_DIRS = [".git", "node_modules", "vendor", "build", ".build", "dist", "target", "__pycache__",
-                     ".venv", "venv", "DerivedData", "Pods", "coverage", ".next", "out"]
+                     ".venv", "venv", "DerivedData", "Pods", "coverage", ".next", "out", "fixtures"]
 
 
 def language(name):
