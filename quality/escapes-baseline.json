@@ -79,7 +79,7 @@
   },
   {
    "file": "quality/tests/test-gate.py",
-   "text": "write(os.path.join(tmp, \"src\", \"a.py\"), \"x = 1  # noqa\\n\")",
+   "text": "ESCAPE = \"x = 1  # noqa\\n\"   # the one fixture escape every case below plants and expects",
    "escape": "noqa",
    "count": 1
   }

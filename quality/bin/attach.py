@@ -629,6 +629,23 @@ def settle_config(plan, root, dry_run, force, add):
     return existing
 
 
+IGNORED = ("quality/.running/", "quality/.events.jsonl")
+
+
+def ignore_runtime_files(plan, dry_run):
+    """The run registry and the event log are runtime state, not policy: gitignored."""
+    path = os.path.join(plan.root, ".gitignore")
+    existing = _read_if_exists(path)
+    missing = [entry for entry in IGNORED if entry not in existing.splitlines()]
+    if not missing:
+        plan.say(".gitignore", "kept (runtime files already ignored)")
+        return
+    plan.say(".gitignore", "added " + ", ".join(missing))
+    if not dry_run:
+        with open(path, "a") as handle:
+            handle.write(("" if not existing or existing.endswith("\n") else "\n") + "\n".join(missing) + "\n")
+
+
 def attach(root, dry_run, force, do_refresh=False, add=False, git_hooks=False, ci=False):
     plan = Plan(root)
     plan.refreshing = do_refresh
@@ -637,6 +654,7 @@ def attach(root, dry_run, force, do_refresh=False, add=False, git_hooks=False, c
     survey(plan)
     config = settle_config(plan, root, dry_run, force, add)
     merge_settings(plan, dry_run)
+    ignore_runtime_files(plan, dry_run)
     appended = append_agent_block(plan, dry_run)
     if appended and not dry_run:
         raise_ceiling_for_block(plan, config, os.path.join(root, "quality.json"), appended, dry_run)

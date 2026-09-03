@@ -19,16 +19,19 @@ sys.path.insert(0, HERE)
 from harness import Suite, write
 SCRIPT = os.path.join(os.path.dirname(HERE), "bin", "gate.py")
 suite = Suite("test-gate"); check = suite.check
+ESCAPE = "x = 1  # noqa\n"   # the one fixture escape every case below plants and expects
 
 
 
-def run(*args, stdin=None):
-    proc = subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True, input=stdin)
+def run(*args, stdin=None, cwd=None):
+    proc = subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True, input=stdin, cwd=cwd,
+                          stdin=subprocess.DEVNULL if stdin is None else None)
     return proc.returncode, proc.stdout, proc.stderr
 
 
 def guard(event):
-    return run("--guard", stdin=json.dumps(event) if not isinstance(event, str) else event)
+    # from the fixture tree, so a firing is logged there and never in this repository's own log
+    return run("--guard", stdin=json.dumps(event) if not isinstance(event, str) else event, cwd=tmp)
 
 
 tmp = tempfile.mkdtemp(prefix="gate-")
@@ -44,7 +47,7 @@ try:
     code, out, err = run("--config", config)
     check("a green tree passes with a row per gate", code == 0 and "ok    doc-size" in out and "ok    escapes" in out and "2 gate(s), all passed." in out, out + err)
 
-    write(os.path.join(tmp, "src", "a.py"), "x = 1  # noqa\n")
+    write(os.path.join(tmp, "src", "a.py"), ESCAPE)
     code, out, err = run("--config", config)
     check("a failing gate fails the run", code == 1 and "FAIL  escapes" in out and "1 failed." in out, out + err)
     check("with the gate's own output, indented under its row", "src/a.py:1  noqa" in out, out)
@@ -61,6 +64,45 @@ try:
     check("--hook does not block a second consecutive stop: the failures are reported and the agent may stop", code == 0 and "[escapes]" in err and "not blocking a second time" in err, err)
     code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": False}))
     check("with stop_hook_active false it blocks as before", code == 2, err)
+
+    # ---- the event log: every hook and guard firing is one JSON line; --stats reads them back
+    events_path = os.path.join(tmp, "quality", ".events.jsonl")
+    check("the failing hook runs above were recorded", os.path.isfile(events_path), events_path)
+    lines = [json.loads(l) for l in open(events_path).read().splitlines()]
+    hooks = [e for e in lines if e["mode"] == "hook"]
+    check("a hook event carries the verdict and each gate's result with its new-violation count",
+          hooks and hooks[0]["verdict"] == "fail" and any(g["name"] == "escapes" and g["status"] == "fail" and g["new"] == 1 for g in hooks[0]["gates"]), str(hooks[:1]))
+    check("the second-stop firing is marked", any(e.get("again") for e in hooks), str(hooks))
+    proc = subprocess.run([sys.executable, SCRIPT, "--guard"], capture_output=True, text=True, cwd=tmp,
+                          input=json.dumps({"tool_name": "Edit", "tool_input": {"file_path": os.path.join(tmp, "quality.json")}}))
+    guards = [json.loads(l) for l in open(events_path).read().splitlines() if '"guard"' in l]
+    check("a guard refusal is recorded with the target, and that a gate was red at the time",
+          proc.returncode == 2 and guards and guards[-1]["verdict"] == "blocked" and guards[-1]["target"].endswith("quality.json") and guards[-1]["while_red"] is True, str(guards[-1:]))
+    proc = subprocess.run([sys.executable, SCRIPT, "--guard"], capture_output=True, text=True, cwd=tmp,
+                          input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "curl -H 'Authorization: Bearer s3cret' https://x"}}))
+    allowed = json.loads(open(events_path).read().splitlines()[-1])
+    check("an allowed guard firing records the tool and never the command", proc.returncode == 0 and allowed["verdict"] == "allowed" and allowed["target"] is None and "s3cret" not in open(events_path).read(), str(allowed))
+    write(os.path.join(tmp, "src", "a.py"), "x = 1\n")
+    write(config, json.dumps({"escapes": {"roots": ["src"], "languages": ["python"], "baseline": "escapes-baseline.json"},
+                              "doc_size": [{"file": "README.md", "ceiling": 10}]}))
+    code, out, err = run("--config", config, "--hook")
+    check("a passing hook firing is recorded too", code == 0 and json.loads(open(events_path).read().splitlines()[-1])["verdict"] == "pass", err)
+    code, out, err = run("--config", config, "--stats")
+    check("--stats reports firings, the fail rate, the fixes and the refusals", code == 0 and "hook firings" in out and "fixed by the next firing" in out and "refused while a gate was red" in out and "gate failed: escapes" in out, out + err)
+    fixed = [l for l in out.splitlines() if "fixed by the next firing" in l][0]
+    check("the fix after the hook fed it back is counted", int(fixed.split()[-1]) >= 1, fixed)
+    code, out, err = run("--config", config, "--stats", "--since", "1m")
+    check("--since narrows the window", code == 0 and "since 1m" in out, out + err)
+    before_lines = len(open(events_path).read().splitlines())
+    write(config, json.dumps({"events": False, "escapes": {"roots": ["src"], "languages": ["python"], "baseline": "escapes-baseline.json"}}))
+    run("--config", config, "--hook")
+    subprocess.run([sys.executable, SCRIPT, "--guard"], capture_output=True, text=True, cwd=tmp, input=json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "quality.json"}}))
+    check('"events": false records nothing, for the hook or the guard', len(open(events_path).read().splitlines()) == before_lines)
+    write(config, json.dumps({"escapes": {"roots": ["src"], "languages": ["python"], "baseline": "escapes-baseline.json"},
+                              "doc_size": [{"file": "README.md", "ceiling": 10}]}))
+    code, out, err = run("--config", config, "--stats", "--since", "soon")
+    check("a bad --since is refused", code == 2 and "7d, 24h, 30m" in err, err)
+    write(os.path.join(tmp, "src", "a.py"), ESCAPE)
 
     write(config, json.dumps({"project": "x"}))
     code, out, err = run("--config", config)

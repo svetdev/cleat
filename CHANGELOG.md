@@ -4,6 +4,7 @@ Newest first. A line per gate or behavior change; policy changes to this reposit
 
 ## Unreleased
 
+- Every hook and guard firing is one line in `quality/.events.jsonl`; `gate.py --stats [--since 7d]` reports firings, fail rate, fixes after the hook fed a failure back, and what the guard refused while a gate was red. An allowed call records only the tool, never the command; `"events": false` turns the log off. Attach gitignores it.
 - The mark: `assets/cleat-mark.svg` and a one-ink `assets/cleat-icon.svg`.
 - Attach is local by default; `--ci` adds the workflow, CODEOWNERS and prints the ruleset command. `--git-hooks` writes a pre-push hook. `--refresh` upgrades a vendored copy and migrates the retired complexity shape; `--add` merges the gates a config lacks.
 - The Stop hook blocks one stop, not every stop: on `stop_hook_active` the failures are reported and the agent may stop.

@@ -88,6 +88,7 @@ try:
     stop = json.dumps(settings["hooks"].get("Stop"))
     pre = json.dumps(settings["hooks"].get("PreToolUse"))
     check("the Stop hook runs the gates in hook mode", "gate.py --hook" in stop, stop)
+    check("the run registry and the event log are gitignored", all(e in read(os.path.join(root, ".gitignore")) for e in ("quality/.running/", "quality/.events.jsonl")), read(os.path.join(root, ".gitignore")))
     check("the PreToolUse guard is wired for the tools that change files", "gate.py --guard" in pre and "Bash" in pre and "Edit" in pre, pre)
     claude_md = read(os.path.join(root, "CLAUDE.md"))
     check("the agent block is appended to CLAUDE.md, after what was there", claude_md.startswith("# Project") and "## Quality gates (cleat)" in claude_md and "--write-baseline" in claude_md, claude_md)

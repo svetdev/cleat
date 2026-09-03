@@ -21,7 +21,7 @@ Seventeen checks, each a ratchet: a baseline records what was over the line the 
 | `bin/check-sarif.py` | a new result from any scanner that writes SARIF, keyed by file, rule and message | per report |
 | `bin/check-doc-citations.py` | a document citing a file that is not there | — |
 | `bin/check-guard-suites.py` | a guard suite (`test-*.py`/`test-*.sh`) under a swept `guard_suites.roots` that the project's test runner names in no `PREFLIGHT` entry | `guard_suites.exempt`, keyed by path with the reason it's there |
-| `bin/gate.py` | not a check: runs every gate the config names; `--strict` for CI, `--hook` and `--guard` for an agent's hooks | — |
+| `bin/gate.py` | not a check: runs every gate the config names; `--strict` for CI, `--hook` and `--guard` for an agent's hooks, `--stats` for what those two did (each firing is a line in `quality/.events.jsonl`, gitignored; a refused call records its target, an allowed one only the tool; `"events": false` in the config turns it off) | — |
 | `bin/attach.py` | not a check: attaches all of this to a project in one command | — |
 | `bin/mutate.py` | not a gate: flips operators one at a time and reports the mutants no test kills | — |
 | `bin/report-hotspots.py` | not a gate: ranks every measured function by churn × complexity, so refactoring effort goes where it actually pays for itself | — |

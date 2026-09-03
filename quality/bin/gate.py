@@ -16,6 +16,7 @@ twice.
   quality/bin/gate.py --list           # the gates this quality.json configures
   quality/bin/gate.py --hook           # for an agent's Stop hook: failures go to stderr, exit 2
   quality/bin/gate.py --guard          # for an agent's PreToolUse hook: refuse commands that rewrite policy
+  quality/bin/gate.py --stats [--since 7d]   # what the two hooks did: firings, fail rate, fixes, refusals
 
 Gates come from two places in quality.json. Each configured section is a gate
 (the sugar every existing config uses), and a `gates` list adds named ones —
@@ -53,6 +54,7 @@ import sys
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import events
 import quality_config
 import runlock
 
@@ -176,23 +178,52 @@ def run(gate, config_path, strict):
     return proc.returncode, (proc.stdout + proc.stderr).rstrip("\n")
 
 
+def guard_decision(event_text):
+    """(tool, target, refused) for a PreToolUse event, or None when it cannot be read."""
+    try:
+        event = json.loads(event_text or "{}")
+    except ValueError:
+        return None
+    tool_input = event.get("tool_input") or {}
+    command = tool_input.get("command") or ""
+    target = tool_input.get("file_path") or ""
+    refused = bool(GUARDED_COMMAND_RE.search(command) or GUARDED_PATH_RE.search(target))
+    return event.get("tool_name"), target or command, refused
+
+
 def guard(event_text):
     """Exit 2 with a reason when the PreToolUse event on stdin is a command that would
     rewrite policy; 0 otherwise. A malformed event is allowed through — the guard
     refuses what it can read, it does not block the agent on its own bugs."""
-    try:
-        event = json.loads(event_text or "{}")
-    except ValueError:
+    decision = guard_decision(event_text)
+    if decision is None:
         return 0
-    tool_input = event.get("tool_input") or {}
-    command = tool_input.get("command") or ""
-    target = tool_input.get("file_path") or ""
-    if not (GUARDED_COMMAND_RE.search(command) or GUARDED_PATH_RE.search(target)):
+    tool, target, refused = decision
+    record_guard(tool, target, refused)
+    if not refused:
         return 0
     print("cleat: refused — this would change quality policy (a baseline, quality.json, the gates, or the hooks). "
           "Fix the code the gate names instead; policy changes are made by a person in a reviewed commit.",
           file=sys.stderr)
     return 2
+
+
+def record_guard(tool, target, refused):
+    """A refusal records what was refused; an allowed call records only the tool — a
+    command the agent was allowed to run may carry a secret, and it is not this log's
+    business. Nothing is recorded when the config says "events": false."""
+    root = project_root()
+    if not root or not events.enabled(root):
+        return
+    events.record(root, {"mode": "guard", "verdict": "blocked" if refused else "allowed", "tool": tool,
+                         "target": target[:200] if refused else None, "head": events.head(root),
+                         "while_red": events.last_hook_failed(root)})
+
+
+def project_root():
+    """The directory of the nearest quality.json, or None — where the event log lives."""
+    found = quality_config.find()
+    return os.path.dirname(found) if found else None
 
 
 def select(args, gates):
@@ -221,20 +252,26 @@ def _status(code):
 def run_all(gates, config_path, strict, skip_missing=False, config=None):
     """Run each gate, print its status row and output, and return the failures. With
     `skip_missing`, a gate whose tool is not installed is reported as skipped, not run."""
-    failures = []
+    failures, results = [], []
     for g in gates:
         absent = missing_tools(g, config) if skip_missing else []
         if absent:
             print("  skip  %s (%s not installed)" % (g.name, ", ".join(absent)))
+            results.append({"name": g.name, "status": "skip", "new": 0, "worsened": 0})
             continue
         code, out = run(g, config_path, strict)
         print("  %s  %s" % (_status(code), g.name))
         for line in out.splitlines():
             print("        " + line)
+        results.append(events.gate_result(g.name, code, out))
         if code != 0:
             failures.append((g, out))
     print("gate: %d gate(s), %s" % (len(gates), "all passed." if not failures else "%d failed." % len(failures)))
+    RESULTS[:] = results
     return failures
+
+
+RESULTS = []   # every gate's result of the last run_all, for the hook's event line
 
 
 def _complexity_tool(spec):
@@ -272,6 +309,18 @@ def missing_tools(gate, config):
     return [tool for tool in tools_for(section, spec) if not shutil.which(tool)]
 
 
+def print_stats(root, since):
+    try:
+        cutoff = events.parse_since(since) if since else None
+    except ValueError as problem:
+        return fail(str(problem))
+    found = events.read(root, cutoff)
+    print("cleat events: %d in %s%s" % (len(found), events.path_for(root), " since %s" % since if since else ""))
+    for label, value in events.stats(found):
+        print("  %-36s %s" % (label, value))
+    return 0
+
+
 def fail(message):
     print("FAIL: %s" % message, file=sys.stderr)
     return 2
@@ -289,20 +338,32 @@ def stop_hook_active():
         return False
 
 
-def finish(failures, hook):
-    """The exit code — and, in hook mode, the failures again on stderr, which is what
-    the agent's harness hands back to it. Exit 2 blocks the stop once; on the stop after
-    that the failures are reported but the agent may stop, and CI holds the line."""
-    if not failures or not hook:
-        return 1 if failures else 0
-    again = stop_hook_active()
+def record_hook(root, failures, again):
+    events.record(root, {"mode": "hook", "verdict": "fail" if failures else "pass", "again": again,
+                         "head": events.head(root), "changed_files": events.changed_files(root), "gates": RESULTS})
+
+
+def print_failures(failures, again):
     print("cleat: %d quality gate(s) failed%s:" % (len(failures), " — still, after one round of fixes" if again else " — fix what each names, then stop again"), file=sys.stderr)
     for g, out in failures:
         print("[%s]\n%s" % (g.name, out), file=sys.stderr)
     if again:
         print("cleat: not blocking a second time; the failure stands and CI will refuse it.", file=sys.stderr)
+
+
+def finish(failures, hook, root=None):
+    """The exit code — and, in hook mode, the failures again on stderr, which is what
+    the agent's harness hands back to it. Exit 2 blocks the stop once; on the stop after
+    that the failures are reported but the agent may stop, and CI holds the line."""
+    if not hook:
+        return 1 if failures else 0
+    again = stop_hook_active() if failures else False
+    if root and events.enabled(root):
+        record_hook(root, failures, again)
+    if not failures:
         return 0
-    return 2
+    print_failures(failures, again)
+    return 0 if again else 2
 
 
 def main():
@@ -315,11 +376,15 @@ def main():
     parser.add_argument("--list", action="store_true", help="print the configured gates and exit")
     parser.add_argument("--hook", action="store_true", help="agent Stop hook mode: failures to stderr, exit 2")
     parser.add_argument("--guard", action="store_true", help="agent PreToolUse hook mode: refuse policy-changing commands")
+    parser.add_argument("--stats", action="store_true", help="what the hook and the guard did: firings, fail rate, fixes, refusals")
+    parser.add_argument("--since", help="with --stats: only events this recent — 7d, 24h, 30m")
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
     if args.guard:
         return guard(sys.stdin.read())
     config = quality_config.load(args.config)
+    if args.stats:
+        return print_stats(config.root, args.since)
     try:
         gates = select(args, configured(config))
     except KeyError as problem:
@@ -331,7 +396,7 @@ def main():
         return fail("%s configures no gate — see quality/README.md" % config.file)
     with runlock.held(os.path.dirname(HERE), "gate.py"):
         failures = run_all(gates, config.file, args.strict, args.skip_missing_tools, config)
-    return finish(failures, args.hook)
+    return finish(failures, args.hook, config.root)
 
 
 if __name__ == "__main__":
