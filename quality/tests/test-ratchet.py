@@ -45,6 +45,31 @@ check("the verdict fails on new or worse", v.failed and v.loose)
 check("a clean verdict neither fails nor is loose",
       not ratchet.judge([findings[4]], [entries[3]], ["cc"]).failed and not ratchet.judge([findings[4]], [entries[3]], ["cc"]).loose)
 
+# Two findings in one file sharing a declaration text — `def check(` twice — are
+# told apart by occurrence order, so an unedited tree stays green (they would
+# otherwise collide on the dict key and compare against each other).
+dup = [F("x.py", 3, "def check():", {"cc": 9}),
+       F("x.py", 30, "def check():", {"cc": 12})]
+dup_entries = [f.entry() for f in dup]
+vA = ratchet.judge(dup, dup_entries, ["cc"])
+check("Regression A: identical same-(file,text) findings all hold, none new/stale",
+      len(vA.held) == 2 and not vA.new and not vA.worsened and not vA.stale, str(vars(vA)))
+
+worse = [F("x.py", 3, "def check():", {"cc": 9}),
+         F("x.py", 30, "def check():", {"cc": 14})]  # second one grew
+vB = ratchet.judge(worse, dup_entries, ["cc"])
+check("Regression B: worsening one of a same-(file,text) pair worsens exactly it, the other holds",
+      [f.line for f, _ in vB.worsened] == [30] and [f.line for f, _ in vB.held] == [3]
+      and not vB.new and not vB.stale, str(vars(vB)))
+
+triple = [F("y.py", 3, "def check():", {"cc": 9}),
+          F("y.py", 20, "def check():", {"cc": 10}),
+          F("y.py", 40, "def check():", {"cc": 11})]
+triple_entries = [f.entry() for f in triple]
+vC = ratchet.judge(triple, triple_entries, ["cc"])
+check("Regression C: a same-(file,text) triple all holds on an identical re-run",
+      len(vC.held) == 3 and not vC.new and not vC.worsened and not vC.stale, str(vars(vC)))
+
 tmp = tempfile.mkdtemp(prefix="ratchet-")
 try:
     legacy = os.path.join(tmp, "legacy.json")
