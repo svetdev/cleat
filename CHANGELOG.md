@@ -4,6 +4,8 @@ Newest first. A line per gate or behavior change; policy changes to this reposit
 
 ## Unreleased
 
+- Ratchet: two baselined findings in one file with an identical declaration line (`def check(` twice) no longer collide on the baseline key and compare against each other, which failed the gate on an unedited tree. Matched by occurrence order within the file (#1, #2, by @michaeldtimpe). Insertions between them are tracked in #3.
+- Escapes: `fixtures` joins the default skip directories (#2).
 - Every hook and guard firing is one line in `quality/.events.jsonl`; `gate.py --stats [--since 7d]` reports firings, fail rate, fixes after the hook fed a failure back, and what the guard refused while a gate was red. An allowed call records only the tool, never the command; `"events": false` turns the log off. Attach gitignores it.
 - The mark: `assets/cleat-mark.svg` and a one-ink `assets/cleat-icon.svg`.
 - Attach is local by default; `--ci` adds the workflow, CODEOWNERS and prints the ruleset command. `--git-hooks` writes a pre-push hook. `--refresh` upgrades a vendored copy and migrates the retired complexity shape; `--add` merges the gates a config lacks.
