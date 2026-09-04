@@ -24,7 +24,6 @@ stack's test command writes.
 """
 
 import argparse
-import glob
 import os
 import sys
 
@@ -54,11 +53,6 @@ def ranges(numbers):
     return ", ".join("%d-%d" % (r[0], r[-1]) if len(r) > 1 else str(r[0]) for r in out)
 
 
-def newest(pattern):
-    matches = sorted(glob.glob(pattern), key=os.path.getmtime)
-    return matches[-1] if matches else None
-
-
 def judge(changed_lines, lines_by_file, root):
     """({rel: uncovered set}, judged count, covered count, changed files the report
     does not know)."""
@@ -82,7 +76,7 @@ def report_path_for(args, section, config):
     pattern = args.report or section.get("report")
     if not pattern:
         raise KeyError("%s: \"%s\" has no \"report\" — see quality.example.json" % (config.file, SECTION))
-    path = args.report or newest(config.path(pattern))
+    path = args.report or coverage.newest(config.path(pattern))
     if path is None or not os.path.isfile(path):
         raise KeyError("no coverage report matches %s — run the tests with coverage first" % pattern)
     return path

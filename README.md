@@ -41,6 +41,8 @@ The failure names the file, the line and the escape, and says what fixes it. It 
 | doc-citations | a document citing a file that is not there | — |
 | test-hygiene | a test habit the suite was cleaned of growing back | — |
 | escapes | a new `any`, `unwrap()`, `# type: ignore`, `.skip`, `\|\| true`… keyed by site | — |
+| conventions | a new site breaking one of your own rules, your message at the site | — |
+| dead-symbols | a symbol nothing references; reports first | ast-grep |
 | duplication | a copied block in the lines you changed; the duplicated share rising | — |
 | guard-suites | a test suite on disk that nothing runs | — |
 | layering | a reference from a lower layer to a higher one | imports, or ast-grep |
@@ -54,7 +56,7 @@ The failure names the file, the line and the escape, and says what fixes it. It 
 | crap | complexity the tests do not pay for | a coverage report |
 | hotspots, mutation | reports: churn × complexity; mutants no test kills | — / a per-stack tool |
 
-Nine languages have built-in escape patterns and conformance fixtures: Python, TypeScript/JavaScript, Swift, Rust, Go, Kotlin, Java, Ruby, shell. Every gate carries its own test, and every check is generic: a project's facts live in `quality.json` and nowhere else.
+Nine languages have escape patterns and conformance fixtures: Python, TypeScript/JavaScript, Swift, Rust, Go, Kotlin, Java, Ruby, shell. Every gate carries its own test, and every check is generic: a project's facts live in `quality.json` and nowhere else.
 
 ## How cleat attaches
 

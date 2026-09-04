@@ -108,6 +108,25 @@ try:
     code, out, err = run("--config", config)
     check("a config with no gate is refused", code == 2 and "configures no gate" in err, err)
 
+    # ---- --changed: the scoped gates judge the files changed against the base only
+    repo = os.path.join(tmp, "repo")
+    write(os.path.join(repo, "src", "old.py"), ESCAPE)     # committed, never baselined: CI's problem, not the hook's
+    write(os.path.join(repo, "src", "same.py"), "y = 2\n")
+    write(os.path.join(repo, "quality.json"), json.dumps({"escapes": {"roots": ["src"], "languages": ["python"], "baseline": "escapes-baseline.json"},
+                                                          "duplication": {"roots": ["src"], "languages": ["python"], "baseline": "dup.json"}}))
+    subprocess.run(["git", "-C", repo, "init", "-q", "-b", "main"], check=True)
+    subprocess.run(["git", "-C", repo, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", "base"], check=True)
+    subprocess.run(["git", "-C", repo, "add", "-A"], check=True)
+    subprocess.run(["git", "-C", repo, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", "files"], check=True)
+    write(os.path.join(repo, "src", "new.py"), "z = 3  # type: " + "ignore\n")   # split so this repository's own escapes gate does not read a fixture as a site
+    code, out, err = run("--config", os.path.join(repo, "quality.json"), "--changed")
+    check("--changed says how many files it judges", "changed: 1 file(s)" in out, out + err)
+    check("the changed file's new escape fails", code == 1 and "src/new.py:1  type ignore" in out, out + err)
+    check("an unchanged file's unbaselined escape is not judged in changed mode", "src/old.py" not in out, out)
+    check("duplication judges changed lines only and needs no baseline", "ok    duplication" in out, out)
+    code, out, err = run("--config", os.path.join(repo, "quality.json"))
+    check("the full run judges the unchanged file too", code == 1 and "src/old.py:1  noqa" in out, out + err)
+
     # ---- a section's old name beside its new one is one gate, not two
     write(config, json.dumps({"complexity": {"tool": "lizard", "sources": ["src"], "languages": ["python"], "ceilings": {"cc": 8, "lines": 60}, "baseline": "c.json"},
                               "complexity_lizard": {"sources": ["src"], "languages": ["python"], "ceilings": {"cc": 8, "lines": 60}, "baseline": "c.json"}}))

@@ -36,7 +36,6 @@ complexity gate itself would flag.
 import argparse
 import json
 import os
-import subprocess
 import sys
 from shutil import which
 

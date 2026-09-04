@@ -300,19 +300,27 @@ def _skipped(path, root, skip_dirs):
     return any(part in skip_dirs for part in os.path.relpath(path, root).split(os.sep)[:-1])
 
 
-def _declared_names(decls, idents):
-    """{name: file}: each declaration's name is the first identifier token inside it."""
+def declared_symbols(decls, idents):
+    """[(file, line, name)] per declaration: its name is the first identifier token
+    inside it, in document order."""
     by_file = {}
-    for path, _line, start, end, _text in idents:
-        by_file.setdefault(path, []).append((start, end, _text))
+    for path, _line, start, end, text in idents:
+        by_file.setdefault(path, []).append((start, end, text))
     for path in by_file:
         by_file[path].sort()
+    out = []
+    for path, line, start, end, _text in sorted(decls, key=lambda d: (d[0], d[2])):
+        name = next((text for s, e, text in by_file.get(path, []) if s >= start and e <= end), None)
+        if name:
+            out.append((path, line, name))
+    return out
+
+
+def _declared_names(decls, idents):
+    """{name: file}: the first file that declares each name."""
     owner = {}
-    for path, _line, start, end, _text in sorted(decls, key=lambda d: (d[0], d[2])):
-        for tok_start, tok_end, text in by_file.get(path, []):
-            if tok_start >= start and tok_end <= end:
-                owner.setdefault(text, path)
-                break
+    for path, _line, name in declared_symbols(decls, idents):
+        owner.setdefault(name, path)
     return owner
 
 

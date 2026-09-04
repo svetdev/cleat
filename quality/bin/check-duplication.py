@@ -132,6 +132,7 @@ def parse_args():
     parser.add_argument("--write-baseline", action="store_true")
     parser.add_argument("--base", help="the ref changed lines are measured against")
     parser.add_argument("--repo-only", action="store_true", help="judge the density only")
+    parser.add_argument("--changed-only", action="store_true", help="judge the changed-lines clones only, no baseline needed (gate.py --changed)")
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     return parser.parse_args()
@@ -162,6 +163,14 @@ def main():
     except (KeyError, OSError, ValueError) as problem:
         print("FAIL: %s" % (problem.args[0] if problem.args else problem), file=sys.stderr)
         return 2
+    if args.changed_only:
+        touching, changed_count = judge_changed(clones, config, changed.base_ref(config.root, args.base or section.get("base_ref")))
+        if touching:
+            print_touching(touching, changed_count)
+            return 1
+        if not args.quiet:
+            print("OK: none of %d clone pair(s) overlap the %d changed line(s)" % (len(clones), changed_count))
+        return 0
     if args.write_baseline:
         ratchet.write(baseline_path, [finding], measured)
         v = finding.values

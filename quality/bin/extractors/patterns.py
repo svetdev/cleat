@@ -99,10 +99,3 @@ def rust_test_ranges(path):
 
 def in_ranges(ranges, line):
     return any(start <= line <= end for start, end in ranges)
-
-
-def rust_test_boundary(path):
-    """The first line of the first `#[cfg(test)]` item, or None — kept for callers that
-    only need to know whether a file has inline tests; judge lines with `rust_test_ranges`."""
-    ranges = rust_test_ranges(path)
-    return ranges[0][0] if ranges else None

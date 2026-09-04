@@ -212,6 +212,7 @@ def main():
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--write-baseline", action="store_true")
     parser.add_argument("--list-languages", action="store_true", help="print the built-in pattern sets and exit")
+    ratchet.add_only_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
@@ -229,6 +230,7 @@ def main():
         return 0
 
     entries, stored = ratchet.read(baseline_path)
+    found, entries = ratchet.restrict(found, entries, args.only)
     verdict = ratchet.judge(found, entries, ["count"], stored, measured)
     def with_count(v):
         return "%s%s" % (v.get("escape", "?"), " x%d" % v["count"] if v.get("count", 1) > 1 else "")

@@ -422,7 +422,7 @@ def merge_settings(plan, dry_run):
         with open(path) as handle:
             settings = json.load(handle)
     hooks = settings.setdefault("hooks", {})
-    stop = {"hooks": [{"type": "command", "command": "python3 quality/bin/gate.py --hook"}]}
+    stop = {"hooks": [{"type": "command", "command": "python3 quality/bin/gate.py --hook --changed"}]}
     guard = {"matcher": "Bash|Edit|Write|MultiEdit",
              "hooks": [{"type": "command", "command": "python3 quality/bin/gate.py --guard"}]}
     changed = False

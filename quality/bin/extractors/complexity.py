@@ -44,9 +44,6 @@ class ToolError(Exception):
     """A tool is missing or refused to run; printed as FAIL, exit 2."""
 
 
-rust_test_ranges = patterns.rust_test_ranges  # one reading of inline tests for every gate that reads Rust
-
-
 # `r"` or `r#"`, not the tail of an identifier or of a string such as "owner".
 RAW_STRING_RE = re.compile(r'(?<![\w"])b?r(#*)"(.*?)"\1', re.S)
 
@@ -144,7 +141,7 @@ def functions_from_csv(text, skip_rust_tests=True):
         path = os.path.realpath(row[6])
         if skip_rust_tests and path.endswith(".rs"):
             if path not in test_ranges:
-                test_ranges[path] = rust_test_ranges(path)
+                test_ranges[path] = patterns.rust_test_ranges(path)
             if patterns.in_ranges(test_ranges[path], start):
                 skipped += 1
                 continue

@@ -14,7 +14,7 @@ twice.
   quality/bin/gate.py --postflight     # also the gates that read a coverage run (crap)
   quality/bin/gate.py --gate escapes   # one gate, by name
   quality/bin/gate.py --list           # the gates this quality.json configures
-  quality/bin/gate.py --hook           # for an agent's Stop hook: failures go to stderr, exit 2
+  quality/bin/gate.py --hook --changed # for an agent's Stop hook: the changed files, failures to stderr, exit 2
   quality/bin/gate.py --guard          # for an agent's PreToolUse hook: refuse commands that rewrite policy
   quality/bin/gate.py --stats [--since 7d]   # what the two hooks did: firings, fail rate, fixes, refusals
 
@@ -57,6 +57,7 @@ sys.path.insert(0, HERE)
 import events
 import quality_config
 import runlock
+from extractors import changed
 
 # section → (gate name, script, accepts --strict, postflight), ladder order
 GATES = [
@@ -64,6 +65,7 @@ GATES = [
     ("doc_citations", "doc-citations", "check-doc-citations.py", False, False),
     ("hygiene", "test-hygiene", "check-test-hygiene.py", False, False),
     ("escapes", "escapes", "check-escapes.py", True, False),
+    ("conventions", "conventions", "check-conventions.py", True, False),
     ("guard_suites", "guard-suites", "check-guard-suites.py", False, False),
     ("duplication", "duplication", "check-duplication.py", True, False),
     ("sarif", "sarif", "check-sarif.py", True, False),
@@ -74,10 +76,14 @@ GATES = [
     ("complexity_lizard", "complexity", "check-complexity.py", True, False),   # the section's old name
     ("layering", "layering", "check-layering.py", False, False),
     ("reachability", "reachability", "check-reachability.py", False, False),
+    ("dead_symbols", "dead-symbols", "check-dead-symbols.py", False, False),
     ("changed_coverage", "changed-coverage", "check-changed-coverage.py", False, True),
     ("crap", "crap", "check-crap.py", True, True),
 ]
 BY_SECTION = {section: (name, script, strict, postflight) for section, name, script, strict, postflight in GATES}
+# Gates that take --only FILES (the changed files, under --changed), and the one that takes --changed-only.
+SCOPED = {"complexity", "escapes", "conventions"}
+CHANGED_ONLY = {"duplication"}
 # The sections that may be a list of named entries, each its own gate selected with --gate.
 LISTABLE = {"crap", "sarif", "public_api", "inventory"}
 # Sections whose check was retired, and what replaced them.
@@ -105,11 +111,16 @@ class Gate:
         self.section = section   # for a `gates` entry: the section key its check reads …
         self.spec = spec         # … and the object to put there
 
-    def command(self, config_path, strict):
+    def command(self, config_path, strict, changed=None):
         cmd = [self.script] if self.script.endswith(".sh") else [sys.executable, self.script]
         cmd += ["--config", config_path, "--quiet"] + self.extra
         if strict and self.strict:
             cmd.append("--strict")
+        base = self.name.split(":")[0]
+        if changed is not None and base in SCOPED:
+            cmd += ["--only"] + changed
+        if changed is not None and base in CHANGED_ONLY:
+            cmd.append("--changed-only")
         return cmd
 
 
@@ -158,7 +169,7 @@ def configured(config):
     return from_sections(config) + from_list(config)
 
 
-def run(gate, config_path, strict):
+def run(gate, config_path, strict, changed=None):
     """Run one gate. A `gates` entry gets a config of its own beside quality.json — the
     check reads its usual section, filled from the entry's `with`, paths relative to the
     same directory — and that file is removed after."""
@@ -171,7 +182,7 @@ def run(gate, config_path, strict):
         with open(path, "w") as handle:
             json.dump({"project": base.get("project", ""), gate.section: gate.spec}, handle)
     try:
-        proc = subprocess.run(gate.command(path, strict), capture_output=True, text=True, cwd=root)
+        proc = subprocess.run(gate.command(path, strict, changed), capture_output=True, text=True, cwd=root)
     finally:
         if path != config_path and os.path.exists(path):
             os.remove(path)
@@ -249,17 +260,29 @@ def _status(code):
     return "ok  " if code == 0 else ("FAIL" if code == 1 else "ERR ")
 
 
-def run_all(gates, config_path, strict, skip_missing=False, config=None):
+def changed_files(root):
+    """The repo-relative files changed against the base — what --changed scopes the heavy
+    gates to. Untracked files count; a tree that is not a repository changes nothing."""
+    try:
+        return sorted(changed.changed_lines(root, changed.base_ref(root)))
+    except changed.ChangedError:
+        return []
+
+
+def run_all(gates, config_path, strict, skip_missing=False, config=None, changed_only=None):
     """Run each gate, print its status row and output, and return the failures. With
-    `skip_missing`, a gate whose tool is not installed is reported as skipped, not run."""
+    `skip_missing`, a gate whose tool is not installed is reported as skipped, not run.
+    With `changed_only` (a file list), the scoped gates judge those files only."""
     failures, results = [], []
+    if changed_only is not None:
+        print("  changed: %d file(s) against the base — complexity, escapes and conventions judge those; CI judges everything" % len(changed_only))
     for g in gates:
         absent = missing_tools(g, config) if skip_missing else []
         if absent:
             print("  skip  %s (%s not installed)" % (g.name, ", ".join(absent)))
             results.append({"name": g.name, "status": "skip", "new": 0, "worsened": 0})
             continue
-        code, out = run(g, config_path, strict)
+        code, out = run(g, config_path, strict, changed_only)
         print("  %s  %s" % (_status(code), g.name))
         for line in out.splitlines():
             print("        " + line)
@@ -280,6 +303,15 @@ def _complexity_tool(spec):
     return "lizard" if spec.get("languages") else "swiftlint"
 
 
+NEEDS_ASTGREP = {"dead_symbols"}
+
+
+def _needs_astgrep(section, spec):
+    if section in NEEDS_ASTGREP:
+        return True
+    return section in ("layering", "reachability") and spec.get("references") == "ast-grep"
+
+
 def tools_for(section, spec):
     """The executables a gate over `spec` (the section's object) needs on the PATH."""
     if not isinstance(spec, dict):
@@ -288,9 +320,7 @@ def tools_for(section, spec):
         return [_complexity_tool(spec)]
     if section == "crap":
         return [_complexity_tool(spec.get("complexity") or {"tool": "swiftlint"})] + (["xcrun"] if "xccov" in spec else [])
-    if section in ("layering", "reachability") and spec.get("references") == "ast-grep":
-        return ["ast-grep"]
-    return []
+    return ["ast-grep"] if _needs_astgrep(section, spec) else []
 
 
 def _spec_of(gate, config):
@@ -375,6 +405,8 @@ def main():
     parser.add_argument("--gate", action="append", help="run only this gate (repeatable)")
     parser.add_argument("--list", action="store_true", help="print the configured gates and exit")
     parser.add_argument("--hook", action="store_true", help="agent Stop hook mode: failures to stderr, exit 2")
+    parser.add_argument("--changed", action="store_true",
+                        help="scope complexity, escapes, conventions and duplication to the files changed against the base — the fast loop; CI runs the full pass")
     parser.add_argument("--guard", action="store_true", help="agent PreToolUse hook mode: refuse policy-changing commands")
     parser.add_argument("--stats", action="store_true", help="what the hook and the guard did: firings, fail rate, fixes, refusals")
     parser.add_argument("--since", help="with --stats: only events this recent — 7d, 24h, 30m")
@@ -394,8 +426,9 @@ def main():
         return 0
     if not gates:
         return fail("%s configures no gate — see quality/README.md" % config.file)
+    scope = changed_files(config.root) if args.changed else None
     with runlock.held(os.path.dirname(HERE), "gate.py"):
-        failures = run_all(gates, config.file, args.strict, args.skip_missing_tools, config)
+        failures = run_all(gates, config.file, args.strict, args.skip_missing_tools, config, scope)
     return finish(failures, args.hook, config.root)
 
 

@@ -66,8 +66,6 @@ def source_files(roots, skip_dirs, extensions=DEFAULT_EXTENSIONS):
     return patterns.files(roots, extensions, skip_dirs)
 
 
-swift_files = source_files  # the name the tests drove before extensions existed
-
 
 def test_files_in(mixed_roots, skip_dirs):
     """Files under trees that mix production and test code, kept by test suffix —

@@ -4,6 +4,8 @@ Newest first. A line per gate or behavior change; policy changes to this reposit
 
 ## Unreleased
 
+- New gates: conventions (a project's own rules as regexes with a message at the site, ratcheted by site) and dead-symbols (declared names nothing references, through ast-grep; a report by default).
+- `gate.py --changed` scopes complexity, escapes, conventions and duplication to the files changed against the base; the Stop hook attach writes uses it, CI still runs everything.
 - Mutation: a filtered (narrow) suite run that executed no tests is inconclusive, not survival; the full suite decides. It made CI flaky on Linux, where the filter sometimes matched nothing.
 - #3: identical `(file, text)` findings are matched by the values they still share with an entry, then by nearest recorded line (entries now record their line), so a function inserted between two baselined twins is the new one, not a neighbour.
 - #4: the Rust test skip is the `#[cfg(test)]` item's own braces, not the rest of the file; production code appended below the test module is judged by complexity, escapes and duplication.

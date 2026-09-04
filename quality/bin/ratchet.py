@@ -138,6 +138,20 @@ def drift_between(stored, current):
     return None
 
 
+def restrict(findings, entries, files):
+    """The findings and entries for `files` only (repo-relative paths) — how a gate
+    judges the files an agent changed without every other file's entry reading as stale."""
+    if files is None:
+        return findings, entries
+    wanted = set(files)
+    return [f for f in findings if f.file in wanted], [e for e in entries if e.get("file") in wanted]
+
+
+def add_only_argument(parser):
+    parser.add_argument("--only", nargs="*", metavar="FILE",
+                        help="judge only these repo-relative files, against only their baseline entries (gate.py --changed passes the changed files)")
+
+
 # ---------------------------------------------------------------- the judgment
 
 def compare(finding, entry, metrics):

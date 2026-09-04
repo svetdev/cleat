@@ -84,7 +84,7 @@ def judge(functions, cc_ceiling, line_ceiling, repo):
     return over
 
 
-def read_functions(args, section, config):
+def read_functions(args, name, section, config):
     """(functions, skipped, tool, version) from a saved report when a flag names one, else
     from the tool over the configured sources."""
     if args.csv:
@@ -94,11 +94,13 @@ def read_functions(args, section, config):
     if args.lint:
         with open(args.lint) as handle:
             return complexity.functions_from_swiftlint(json.load(handle)), 0, "swiftlint", None
-    roots = config.paths(config.get(SECTION_NAME[0], "sources"))
+    roots = config.paths(config.get(name, "sources"))
+    if args.only is not None:
+        roots = [config.path(f) for f in args.only if os.path.isfile(config.path(f))]
+        if not roots:
+            return [], 0, complexity.tool_of(section), None
     return complexity.measure(section, roots, config.paths(section.get("exclude_except", [])))
 
-
-SECTION_NAME = ["complexity"]
 
 
 def main():
@@ -108,17 +110,18 @@ def main():
     parser.add_argument("--csv", help="a saved lizard --csv output to judge instead of running a tool")
     parser.add_argument("--lint", help="a saved SwiftLint JSON report to judge instead of running a tool")
     parser.add_argument("--repo", help="paths are reported relative to this (default: the directory of quality.json)")
+    ratchet.add_only_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
 
     config = quality_config.load(args.config)
     try:
-        SECTION_NAME[0], section = section_of(config)
-        ceilings = config.get(SECTION_NAME[0], "ceilings")
-        baseline_path = config.path(config.get(SECTION_NAME[0], "baseline"))
+        name, section = section_of(config)
+        ceilings = config.get(name, "ceilings")
+        baseline_path = config.path(config.get(name, "baseline"))
         cc_ceiling, line_ceiling = int(ceilings["cc"]), int(ceilings["lines"])
-        functions, skipped, tool, version = read_functions(args, section, config)
+        functions, skipped, tool, version = read_functions(args, name, section, config)
     except (KeyError, complexity.ToolError) as problem:
         print("FAIL: %s" % (problem.args[0] if problem.args else problem), file=sys.stderr)
         return 2
@@ -135,6 +138,7 @@ def main():
         return 0
 
     entries, stored = ratchet.read(baseline_path)
+    over, entries = ratchet.restrict(over, entries, args.only)
     verdict = ratchet.judge(over, entries, ["cc", "lines"], stored, measured)
     gate = ratchet.Gate(
         noun="production function(s)",
