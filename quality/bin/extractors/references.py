@@ -264,6 +264,8 @@ ASTGREP = {
     "ruby": (("class", "module", "method"), ("constant", "identifier")),
     "csharp": (("class_declaration", "interface_declaration", "struct_declaration", "enum_declaration", "method_declaration"),
                ("identifier",)),
+    "php": (("class_declaration", "interface_declaration", "trait_declaration", "enum_declaration",
+             "function_definition", "method_declaration"), ("name",)),
 }
 
 

@@ -130,6 +130,15 @@ LANGUAGES = {
             "shellcheck disable": r"shellcheck\s+disable",
         },
     },
+    "php": {
+        "suffixes": [".php"],
+        "patterns": {
+            "phpstan-ignore": r"@phpstan-ignore",
+            "psalm-suppress": r"@psalm-suppress",
+            "error suppression": r"(?:^|[\s=(,.])@[a-z_]\w*\(",
+            "skipped test": r"markTest(?:Skipped|Incomplete)\(",
+        },
+    },
 }
 
 DEFAULT_SKIP_DIRS = [".git", "node_modules", "vendor", "build", ".build", "dist", "target", "__pycache__",
