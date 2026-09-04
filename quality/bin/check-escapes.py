@@ -147,13 +147,13 @@ def language(name):
 def _collect(seen, roots, suffixes, regexes, skip, exclude, repo_root, skip_rust_tests, skipped):
     """Record every site; a site inside an inline Rust test module is counted in
     `skipped` instead when `skip_rust_tests` is on."""
-    boundaries = {}
+    ranges = {}
     for site in patterns.sites(patterns.files(roots, suffixes, skip, exclude), regexes, repo_root):
         rel, line = site[0], site[1]
         if skip_rust_tests and rel.endswith(".rs"):
-            if rel not in boundaries:
-                boundaries[rel] = patterns.rust_test_boundary(os.path.join(repo_root, rel))
-            if boundaries[rel] is not None and line >= boundaries[rel]:
+            if rel not in ranges:
+                ranges[rel] = patterns.rust_test_ranges(os.path.join(repo_root, rel))
+            if patterns.in_ranges(ranges[rel], line):
                 skipped[0] += 1
                 continue
         _record(seen, *site)

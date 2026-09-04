@@ -40,13 +40,13 @@ class Clone:
         return False
 
 
-def significant(text, stop_at=None):
-    """[(line number, normalised text)] for the lines worth comparing — up to `stop_at`,
-    the first line of an inline test module, when given."""
+def significant(text, skip_ranges=()):
+    """[(line number, normalised text)] for the lines worth comparing — those inside
+    `skip_ranges` (inline test modules) left out."""
     out = []
     for number, raw in enumerate(text.split("\n"), 1):
-        if stop_at is not None and number >= stop_at:
-            break
+        if patterns.in_ranges(skip_ranges, number):
+            continue
         line = " ".join(raw.split())
         if len(line) < 3 or set(line) <= PUNCTUATION_ONLY:
             continue
@@ -57,7 +57,7 @@ def significant(text, stop_at=None):
 def significant_in(path, skip_rust_tests=True):
     """The significant lines of a file, an inline Rust test module dropped when asked."""
     with open(path, errors="replace") as handle:
-        return significant(handle.read(), patterns.rust_test_boundary(path) if skip_rust_tests else None)
+        return significant(handle.read(), patterns.rust_test_ranges(path) if skip_rust_tests else ())
 
 
 def _windows(lines, min_lines):

@@ -107,6 +107,11 @@ try:
     test_block = "#[cfg(test)]\nmod tests {\n" + "\n".join("    fn t%d() { assert_eq!(compute(%d), %d); }" % (i, i, i) for i in range(8)) + "\n}\n"
     write(rs_a, "pub fn a() -> i32 { 1 }\n\n" + test_block)
     write(rs_b, "pub fn b() -> i32 { 2 }\n\n" + test_block)
+    after = "\n" + "\n".join("pub fn after_%d(x: i32) -> i32 { x * %d + 1 }" % (i, i) for i in range(8)) + "\n"
+    write(os.path.join(repo, "rs", "c.rs"), "pub fn c() -> i32 { 3 }\n\n" + test_block + after)
+    write(os.path.join(repo, "rs", "d.rs"), "pub fn d() -> i32 { 4 }\n\n" + test_block + after)
+    tail = duplication.find([os.path.join(repo, "rs", "c.rs"), os.path.join(repo, "rs", "d.rs")], repo)
+    check("#4: a block copied below the test module's closing brace is a production clone", len(tail) == 1 and tail[0].locations[0][1] > 11, str([(c.locations, c.lines) for c in tail]))
     check("clones inside inline #[cfg(test)] modules are not production clones", duplication.find([rs_a, rs_b], repo) == [], str([(c.locations, c.lines) for c in duplication.find([rs_a, rs_b], repo)]))
     check("but count when skip_rust_tests is off", len(duplication.find([rs_a, rs_b], repo, skip_rust_tests=False)) == 1)
     check("and density counts production lines only", duplication.density([], [rs_a, rs_b], repo) == (0, 2), str(duplication.density([], [rs_a, rs_b], repo)))

@@ -49,6 +49,7 @@ try:
         "mod tests {",
         "    fn test_branchy() {}",                          # 7  (cc 12 — but a test)
         "}",
+        "fn after_tests() {}",                               # 9  (cc 14 — production, below the module)
         "",
     ]))
     web = os.path.join(tmp, "apps", "web", "src", "thing.ts")
@@ -60,6 +61,7 @@ try:
         (1, 9, 20, 1, 1, "branchy@2-2@%s" % knot, knot, "branchy", "branchy ( a )", 2, 2),
         (2, 1, 5, 0, 61, "long_one@3-4@%s" % knot, knot, "long_one", "long_one ( )", 3, 4),
         (1, 12, 5, 0, 1, "test_branchy@7-7@%s" % knot, knot, "test_branchy", "test_branchy ( )", 7, 7),
+        (1, 14, 5, 0, 1, "after_tests@9-9@%s" % knot, knot, "after_tests", "after_tests ( )", 9, 9),
         (1, 10, 8, 1, 1, "tangled@1-1@%s" % web, web, "tangled", "tangled ( a )", 1, 1),
     ]
     write(csv_path, "\n".join(",".join('"%s"' % c if isinstance(c, str) else str(c) for c in row) for row in rows) + "\n")
@@ -68,6 +70,7 @@ try:
     check("the reader keys functions by realpath and start line", (os.path.realpath(knot), 2) in complexity.complexities(functions))
     check("a function inside a Rust #[cfg(test)] module is skipped, and counted as skipped",
           skipped == 1 and all(f.name != "test_branchy" for f in functions), str([f.name for f in functions]))
+    check("#4: a function after the module's closing brace is production, and judged", any(f.name == "after_tests" for f in functions), str([f.name for f in functions]))
     functions_all, _ = complexity.functions_from_csv(open(csv_path).read(), skip_rust_tests=False)
     check("with skip_rust_tests off the test function is judged like any other", any(f.name == "test_branchy" for f in functions_all))
 
@@ -103,14 +106,14 @@ try:
     check("the baseline count is in the message", "beyond the 0 the baseline holds" in out, out)
 
     code, out = run(config, "--csv", csv_path, "--write-baseline")
-    check("--write-baseline accepts what is over the gate", code == 0 and "3 function(s) over the gate" in out, out)
+    check("--write-baseline accepts what is over the gate", code == 0 and "4 function(s) over the gate" in out, out)
     entries, _ = ratchet.read(baseline)
     check("the baseline keys by file and declaration text",
-          sorted(e["text"] for e in entries) == sorted(["fn branchy(a: i32) -> i32 { if a > 0 { 1 } else { 2 } }", "fn long_one() {", "export function tangled(a: number) { return a }"]), str(entries))
+          sorted(e["text"] for e in entries) == sorted(["fn branchy(a: i32) -> i32 { if a > 0 { 1 } else { 2 } }", "fn long_one() {", "fn after_tests() {}", "export function tangled(a: number) { return a }"]), str(entries))
 
     code, out = run(config, "--csv", csv_path)
     check("with everything baselined the check passes", code == 0, out)
-    check("the success line carries the counts, tests skipped included", "4 functions judged (1 inline tests skipped), 3 over the gate, all 3 in the baseline" in out, out)
+    check("the success line carries the counts, tests skipped included", "5 functions judged (1 inline tests skipped), 4 over the gate, all 4 in the baseline" in out, out)
     code, out = run(config, "--csv", csv_path, "--quiet")
     check("--quiet prints nothing on success", out == "", repr(out))
 
@@ -174,7 +177,7 @@ try:
         "ceilings": {"cc": 8, "lines": 60}, "baseline": "complexity-baseline.json"}}))
     code, out = run(config, "--csv", csv_path, "--write-baseline")
     code, out = run(config, "--csv", csv_path)
-    check("a complexity_lizard section is read as the complexity section", code == 0 and "3 over the gate" in out, out)
+    check("a complexity_lizard section is read as the complexity section", code == 0 and "4 over the gate" in out, out)
 
     # --- the retired SwiftLint-native shape is refused with the migration in the message
     write(config, json.dumps({"complexity": {"cwd": ".", "config": ".swiftlint.yml", "baseline": "b.json", "sources": ["App"]}}))
@@ -186,7 +189,7 @@ try:
                               "complexity_lizard": {"sources": ["apps/api/src", "apps/web/src"], "languages": ["rust", "typescript"],
                                                     "ceilings": {"cc": 8, "lines": 60}, "baseline": "complexity-baseline.json"}}))
     code, out = run(config, "--csv", csv_path)
-    check("a retired complexity beside a live complexity_lizard reads the live one", code == 0 and "3 over the gate" in out, out)
+    check("a retired complexity beside a live complexity_lizard reads the live one", code == 0 and "4 over the gate" in out, out)
     write(config, json.dumps({"complexity": {"tool": "lizard", "sources": ["apps/api/src"], "languages": ["rust"], "ceilings": {"cc": 8, "lines": 60}, "baseline": "complexity-baseline.json"},
                               "complexity_lizard": {"sources": ["apps/web/src"], "languages": ["typescript"], "ceilings": {"cc": 8, "lines": 60}, "baseline": "other.json"}}))
     code, out = run(config, "--csv", csv_path)

@@ -61,8 +61,9 @@ class Finding:
         return (self.file, self.text)
 
     def entry(self):
-        """The baseline entry for this finding — key first, then every value."""
-        out = {"file": self.file, "text": self.text}
+        """The baseline entry for this finding — key first, its line (a tie-breaker between
+        identical declarations, never part of the key), then every value."""
+        out = {"file": self.file, "text": self.text, "line": self.line}
         out.update(self.values)
         return out
 
@@ -151,34 +152,55 @@ def compare(finding, entry, metrics):
     return "held"
 
 
-def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None):
-    """Sort `findings` against the baseline `entries` into the five outcomes.
+def _affinity(finding, entry, metrics, f_index, e_index):
+    """How well a finding fits an entry with the same (file, text): the more recorded
+    values it still shares the better, then the nearer its line, then document order."""
+    shared = sum(1 for m in metrics if m in entry and entry[m] == finding.values.get(m))
+    distance = abs(entry["line"] - finding.line) if "line" in entry else 0
+    return (-shared, distance, f_index, e_index)
 
-    Identical `(file, text)` can repeat within a run — two functions over the
-    line sharing a declaration text. They are told apart by occurrence order:
-    the nth entry with a given `(file, text)` matches the nth such finding.
-    `write()` stores entries in finding order, so the positions line up."""
+
+def _assign(candidates, findings, entries):
+    """Greedy assignment in affinity order: each finding and entry is paired at most once."""
+    pairs, used_f, used_e = [], set(), set()
+    for _score, i, j in candidates:
+        if i not in used_f and j not in used_e:
+            pairs.append((findings[i], entries[j]))
+            used_f.add(i)
+            used_e.add(j)
+    return pairs, used_f, used_e
+
+
+def _match_group(findings, entries, metrics):
+    """Pair the findings and entries sharing one (file, text). Two `def check(` functions
+    in one file are told apart by what they still share with their entry — an untouched
+    function shares every value — then by nearest recorded line, so inserting a third
+    between them leaves the inserted one unmatched, not one of its neighbours."""
+    candidates = sorted((_affinity(f, e, metrics, i, j), i, j)
+                        for i, f in enumerate(findings) for j, e in enumerate(entries))
+    pairs, used_f, used_e = _assign(candidates, findings, entries)
+    unmatched = [f for i, f in enumerate(findings) if i not in used_f]
+    stale = [e for j, e in enumerate(entries) if j not in used_e]
+    return pairs, unmatched, stale
+
+
+def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None):
+    """Sort `findings` against the baseline `entries` into the five outcomes. Identical
+    `(file, text)` can repeat within a run; `_match_group` tells them apart."""
     verdict = Verdict()
-    by_key = {}
-    counts = {}
+    groups = {}
     for e in entries:
-        k = (e["file"], e["text"])
-        occ = counts.get(k, 0)
-        counts[k] = occ + 1
-        by_key[k + (occ,)] = e
-    seen = set()
-    counts = {}
-    for finding in findings:
-        occ = counts.get(finding.key, 0)
-        counts[finding.key] = occ + 1
-        key = finding.key + (occ,)
-        entry = by_key.get(key)
-        if entry is None:
-            verdict.new.append(finding)
-            continue
-        seen.add(key)
-        getattr(verdict, compare(finding, entry, metrics)).append((finding, entry))
-    verdict.stale = [e for k, e in by_key.items() if k not in seen]
+        groups.setdefault((e["file"], e["text"]), ([], []))[1].append(e)
+    for f in findings:
+        groups.setdefault(f.key, ([], []))[0].append(f)
+    for key in sorted(groups, key=lambda k: min([f.line for f in groups[k][0]] or [0])):
+        group_findings, group_entries = groups[key]
+        pairs, unmatched, stale = _match_group(group_findings, group_entries, metrics)
+        for finding, entry in sorted(pairs, key=lambda fe: fe[0].line):
+            getattr(verdict, compare(finding, entry, metrics)).append((finding, entry))
+        verdict.new += unmatched
+        verdict.stale += stale
+    verdict.new.sort(key=lambda f: (f.file, f.line))
     verdict.drift = drift_between(stored_provenance, current_provenance)
     return verdict
 

@@ -10,8 +10,9 @@ Swift, Go, Kotlin, Java, Ruby and more, and prints one CSV row per function:
 
 Inline Rust tests are the one wrinkle: `#[cfg(test)] mod tests { … }` lives in
 the production file, and a test's complexity is not production complexity.
-`rust_test_start(path)` finds the first `#[cfg(test)]` line; functions
-starting after it are dropped when `skip_rust_tests` is on.
+`rust_test_ranges(path)` finds each `#[cfg(test)]` item's lines; a function
+starting inside one is dropped when `skip_rust_tests` is on, and a function
+after the module's closing brace is production.
 
 SwiftLint reads Swift natively: `cyclomatic_complexity` and
 `function_body_length` at threshold 1 report every function's numbers, and
@@ -43,7 +44,7 @@ class ToolError(Exception):
     """A tool is missing or refused to run; printed as FAIL, exit 2."""
 
 
-rust_test_start = patterns.rust_test_boundary  # one boundary for every gate that reads Rust
+rust_test_ranges = patterns.rust_test_ranges  # one reading of inline tests for every gate that reads Rust
 
 
 # `r"` or `r#"`, not the tail of an identifier or of a string such as "owner".
@@ -132,7 +133,7 @@ def functions_from_csv(text, skip_rust_tests=True):
     """[Function] from lizard CSV; inline Rust test modules dropped when asked.
     Returns (functions, skipped_as_tests)."""
     functions, skipped = [], 0
-    test_starts = {}
+    test_ranges = {}
     for row in csv.reader(io.StringIO(text)):
         if len(row) < 11:
             continue
@@ -142,10 +143,9 @@ def functions_from_csv(text, skip_rust_tests=True):
             continue  # a header line, if lizard ever prints one
         path = os.path.realpath(row[6])
         if skip_rust_tests and path.endswith(".rs"):
-            if path not in test_starts:
-                test_starts[path] = rust_test_start(path)
-            boundary = test_starts[path]
-            if boundary is not None and start >= boundary:
+            if path not in test_ranges:
+                test_ranges[path] = rust_test_ranges(path)
+            if patterns.in_ranges(test_ranges[path], start):
                 skipped += 1
                 continue
         functions.append(Function(path, start, end, cc, length, row[7]))

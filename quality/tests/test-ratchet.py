@@ -70,6 +70,23 @@ vC = ratchet.judge(triple, triple_entries, ["cc"])
 check("Regression C: a same-(file,text) triple all holds on an identical re-run",
       len(vC.held) == 3 and not vC.new and not vC.worsened and not vC.stale, str(vars(vC)))
 
+# --- identical (file, text): an insertion between two baselined twins is the new one (#3)
+twins = [{"file": "m.py", "text": "def check(", "line": 3, "cc": 9, "lines": 10},
+         {"file": "m.py", "text": "def check(", "line": 20, "cc": 12, "lines": 14}]
+inserted = [F("m.py", 3, "def check(", {"cc": 9, "lines": 10}), F("m.py", 12, "def check(", {"cc": 15, "lines": 30}),
+            F("m.py", 40, "def check(", {"cc": 12, "lines": 14})]
+v3 = ratchet.judge(inserted, twins, ["cc", "lines"])
+check("#3: a third twin inserted between two baselined ones is the new one, by line", [f.line for f in v3.new] == [12], str([f.line for f in v3.new]))
+check("#3: and both neighbours are held, even though one moved 20 lines", sorted(f.line for f, _ in v3.held) == [3, 40] and not v3.worsened and not v3.stale, str(v3.worsened))
+worse_and_inserted = [F("m.py", 3, "def check(", {"cc": 9, "lines": 10}), F("m.py", 12, "def check(", {"cc": 15, "lines": 30}),
+                      F("m.py", 40, "def check(", {"cc": 13, "lines": 14})]
+v3 = ratchet.judge(worse_and_inserted, twins, ["cc", "lines"])
+check("#3: with the moved twin also worse on one value, what it still shares (its length) keeps it matched", [f.line for f in v3.new] == [12] and [f.line for f, _ in v3.worsened] == [40], str((v3.new, v3.worsened)))
+legacy = [{"file": "m.py", "text": "def check(", "cc": 9, "lines": 10}, {"file": "m.py", "text": "def check(", "cc": 12, "lines": 14}]
+v3 = ratchet.judge(inserted, legacy, ["cc", "lines"])
+check("#3: entries written before lines were recorded still match by their values", [f.line for f in v3.new] == [12] and len(v3.held) == 2, str(v3.new))
+check("the baseline entry now records the line, beside the key and the values", inserted[1].entry()["line"] == 12)
+
 tmp = tempfile.mkdtemp(prefix="ratchet-")
 try:
     legacy = os.path.join(tmp, "legacy.json")

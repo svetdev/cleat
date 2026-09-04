@@ -52,19 +52,57 @@ def sites(paths, patterns, repo_root, prepare=None):
 
 
 TEST_ATTRIBUTE = re.compile(r"^\s*#\[cfg\(test\)\]")
+CODE_ONLY = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*')
+
+
+def _ends_without_block(code):
+    """A block-less item — `#[cfg(test)] use …;` — ends on the line of its `;`."""
+    return ";" in code and "{" not in code and not code.strip().startswith("#[")
+
+
+def _item_end(lines, start):
+    """The last line of the item that begins after the attribute at `start`: the closing
+    brace of its block, or the line of the `;` that ends a block-less item."""
+    depth, opened = 0, False
+    for number in range(start, len(lines)):
+        code = CODE_ONLY.sub("", lines[number])
+        if not opened and _ends_without_block(code):
+            return number + 1
+        depth += code.count("{") - code.count("}")
+        opened = opened or "{" in code
+        if opened and depth <= 0:
+            return number + 1
+    return len(lines)
+
+
+def rust_test_ranges(path):
+    """[(first line, last line)] of every `#[cfg(test)]` item in a Rust file — the inline
+    test module, and nothing after its closing brace: production code appended below
+    the tests is production code. Shared by every gate that reads Rust."""
+    if not path.endswith(".rs"):
+        return []
+    try:
+        with open(path, errors="replace") as handle:
+            lines = handle.read().split("\n")
+    except OSError:
+        return []
+    ranges, number = [], 0
+    while number < len(lines):
+        if TEST_ATTRIBUTE.match(lines[number]):
+            end = _item_end(lines, number + 1)
+            ranges.append((number + 1, end))
+            number = end
+        else:
+            number += 1
+    return ranges
+
+
+def in_ranges(ranges, line):
+    return any(start <= line <= end for start, end in ranges)
 
 
 def rust_test_boundary(path):
-    """The line of the first `#[cfg(test)]` in a Rust file — an inline test module lives
-    in the production file, and what is inside it is test code — or None. Shared by
-    every gate that reads Rust so they agree on what is production."""
-    if not path.endswith(".rs"):
-        return None
-    try:
-        with open(path, errors="replace") as handle:
-            for number, line in enumerate(handle, 1):
-                if TEST_ATTRIBUTE.match(line):
-                    return number
-    except OSError:
-        return None
-    return None
+    """The first line of the first `#[cfg(test)]` item, or None — kept for callers that
+    only need to know whether a file has inline tests; judge lines with `rust_test_ranges`."""
+    ranges = rust_test_ranges(path)
+    return ranges[0][0] if ranges else None

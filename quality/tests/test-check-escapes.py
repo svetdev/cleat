@@ -104,10 +104,11 @@ try:
     check("a section naming nothing to look for is refused", code == 2 and "nothing to look for" in out, out)
 
     rs = os.path.join(tmp, "src", "lib.rs")
-    write(rs, "pub fn read() -> i32 { let v: Result<i32, ()> = Ok(1); v.unwrap() }\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let x: Result<i32, ()> = Ok(1); x.unwrap(); x.expect(\"no\"); }\n}\n")
+    write(rs, "pub fn read() -> i32 { let v: Result<i32, ()> = Ok(1); v.unwrap() }\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let x: Result<i32, ()> = Ok(1); x.unwrap(); x.expect(\"no\"); }\n}\n\npub fn after() -> i32 { let v: Result<i32, ()> = Ok(1); v.expect(\"appended below the tests\") }\n")
     write(config, json.dumps({"escapes": {"roots": ["src"], "languages": ["rust"], "baseline": "rs-baseline.json"}}))
     code, out = run(config)
-    check("escapes inside an inline #[cfg(test)] module are not production sites", code == 1 and "1 new escape site(s)" in out and "src/lib.rs:1  unwrap" in out and ":6" not in out, out)
+    check("escapes inside an inline #[cfg(test)] module are not production sites", code == 1 and "2 new escape site(s)" in out and "src/lib.rs:1  unwrap" in out and ":6" not in out, out)
+    check("#4: production code appended after the test module's closing brace is judged", "src/lib.rs:9  expect" in out, out)
     code, out = run(config, "--write-baseline"); code, out = run(config)
     check("and the success line says how many were skipped as tests", code == 0 and "(2 in inline Rust tests skipped)" in out, out)
     write(config, json.dumps({"escapes": {"roots": ["src"], "languages": ["rust"], "skip_rust_tests": False, "baseline": "rs-baseline.json"}}))

@@ -8,60 +8,63 @@
   {
    "file": "quality/bin/mutate.py",
    "text": "def main():",
+   "line": 217,
    "cc": 24,
    "lines": 63
   },
   {
    "file": "quality/bin/mutate.py",
    "text": "def mutate_file(package, sources, relative, list_only=False, log=print, tests_root=None):",
+   "line": 149,
    "cc": 16,
    "lines": 44
   },
   {
    "file": "quality/bin/mutate.py",
    "text": "def run_suite(package, filters=None, test_command=None, filter_flag=None):",
+   "line": 127,
    "cc": 14,
    "lines": 20
   },
   {
    "file": "quality/bin/check-crap.py",
    "text": "def complexities_for(args, settings):",
+   "line": 198,
    "cc": 11,
    "lines": 23
   },
   {
    "file": "quality/bin/check-reachability.py",
    "text": "def judge(rules, config):",
+   "line": 107,
    "cc": 11,
    "lines": 11
   },
   {
    "file": "quality/bin/check-doc-size.py",
    "text": "def main():",
+   "line": 70,
    "cc": 10,
    "lines": 32
   },
   {
    "file": "quality/bin/report-hotspots.py",
    "text": "def lizard_spec(settings):",
+   "line": 103,
    "cc": 10,
    "lines": 15
   },
   {
-   "file": "quality/bin/extractors/complexity.py",
-   "text": "def functions_from_csv(text, skip_rust_tests=True):",
-   "cc": 9,
-   "lines": 22
-  },
-  {
    "file": "quality/bin/extractors/coverage.py",
    "text": "def from_codecov(export, sources_root, path_map=None):",
+   "line": 284,
    "cc": 9,
    "lines": 19
   },
   {
    "file": "quality/bin/ratchet.py",
    "text": "def _print_notes(verdict, gate, offer_remedy):",
+   "line": 257,
    "cc": 9,
    "lines": 18
   }
