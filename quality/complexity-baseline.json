@@ -8,23 +8,16 @@
   {
    "file": "quality/bin/mutate.py",
    "text": "def main():",
-   "line": 217,
+   "line": 232,
    "cc": 24,
    "lines": 63
   },
   {
    "file": "quality/bin/mutate.py",
    "text": "def mutate_file(package, sources, relative, list_only=False, log=print, tests_root=None):",
-   "line": 149,
+   "line": 164,
    "cc": 16,
    "lines": 44
-  },
-  {
-   "file": "quality/bin/mutate.py",
-   "text": "def run_suite(package, filters=None, test_command=None, filter_flag=None):",
-   "line": 127,
-   "cc": 14,
-   "lines": 20
   },
   {
    "file": "quality/bin/check-crap.py",

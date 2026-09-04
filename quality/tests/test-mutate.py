@@ -27,6 +27,15 @@ def write(p, text):
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w") as h: h.write(text)
 
+# --- what a suite run says, without running one
+sys.path.insert(0, os.path.dirname(SCRIPT))
+import mutate
+check("a filtered run that executed no tests is unrun, not survived — the full suite decides", mutate.verdict_of(0, "Test Suite 'Selected tests' passed\n\t Executed 0 tests, with 0 failures\n", True) == "unrun")
+check("a filtered run that ran tests and passed is survival", mutate.verdict_of(0, "Executed 3 tests, with 0 failures", True) == "survived")
+check("an unfiltered run that ran nothing is still survival — there is nothing wider to fall back to", mutate.verdict_of(0, "Executed 0 tests", False) == "survived")
+check("a failing run is a kill", mutate.verdict_of(1, "Executed 3 tests, with 1 failure", True) == "killed")
+check("a build failure is uncompilable", mutate.verdict_of(1, "Compiling Fixture\nerror: cannot convert", False) == "uncompilable")
+
 cache = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), "Library", "Caches")
 os.makedirs(cache, exist_ok=True)
 tmp = tempfile.mkdtemp(prefix="mutate.", dir=cache)

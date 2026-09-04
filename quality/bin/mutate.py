@@ -124,15 +124,33 @@ SUITE = {"test_command": None, "filter_flag": None}
 MUTATE_TIMEOUT_SECONDS = int(os.environ.get("MUTATE_TIMEOUT_SECONDS", "600"))
 
 
+UNRUN_RE = re.compile(r"Executed 0 tests|\b0 tests? (?:ran|executed|passed)|No matching test cases")
+
+
+def _did_not_compile(returncode, out):
+    return returncode != 0 and "error:" in out and "Compiling" in out and "Test Suite" not in out and "Executed" not in out
+
+
+def verdict_of(returncode, out, filtered):
+    """What one suite run says about a mutant: `killed`, `survived`, `uncompilable` — or
+    `unrun`, a filtered run that executed no tests at all (a filter the runner did not
+    match: exit 0 with nothing run is not survival, and the full suite decides)."""
+    if _did_not_compile(returncode, out):
+        return "uncompilable"
+    if returncode != 0:
+        return "killed"
+    return "unrun" if filtered and UNRUN_RE.search(out) else "survived"
+
+
 def run_suite(package, filters=None, test_command=None, filter_flag=None):
-    test_command = test_command or SUITE["test_command"]
-    filter_flag = filter_flag or SUITE["filter_flag"]
     """One run of the suite; `test_command` replaces `swift test` for a package whose
     app target does not build on the host (an iOS package tested through
     `xcodebuild test` on a simulator), and `filter_flag` is that runner's spelling
-    of a test-class filter with `{name}` in it — `-only-testing:KiuTests/{name}`.
+    of a test-class filter with `{name}` in it — `-only-testing:AcmeTests/{name}`.
     A run past `MUTATE_TIMEOUT_SECONDS` is ended and reported as `timed-out`
     rather than left to hang the caller."""
+    test_command = test_command or SUITE["test_command"]
+    filter_flag = filter_flag or SUITE["filter_flag"]
     command = list(test_command) if test_command else ["swift", "test"]
     for name in filters or []:
         command += [filter_flag.format(name=name)] if filter_flag else ["--filter", name]
@@ -140,10 +158,7 @@ def run_suite(package, filters=None, test_command=None, filter_flag=None):
         proc = subprocess.run(command, cwd=package, capture_output=True, text=True, timeout=MUTATE_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         return "timed-out"
-    out = proc.stdout + proc.stderr
-    if proc.returncode != 0 and "error:" in out and "Compiling" in out and "Test Suite" not in out and "Executed" not in out:
-        return "uncompilable"
-    return "killed" if proc.returncode != 0 else "survived"
+    return verdict_of(proc.returncode, proc.stdout + proc.stderr, bool(filters))
 
 
 def mutate_file(package, sources, relative, list_only=False, log=print, tests_root=None):
@@ -173,7 +188,7 @@ def mutate_file(package, sources, relative, list_only=False, log=print, tests_ro
                 verdict = run_suite(package, narrow) if narrow else run_suite(package)
                 if narrow and verdict == "killed":
                     how = "narrow"
-                elif narrow and verdict == "survived":
+                elif narrow and verdict in ("survived", "unrun"):
                     verdict = run_suite(package)
             finally:
                 restore()
