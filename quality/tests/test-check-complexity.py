@@ -84,9 +84,9 @@ try:
     check("a byte raw string is masked like any other", complexity.masked_raw_strings('br"a?b"') == 'br"   "')
     mirror = os.path.join(tmp, "mirror")
     mirrored = complexity._mirror_rust([src, web], mirror)
-    copy = mirror + os.path.realpath(knot)
-    check("the Rust mirror holds every .rs file at its own absolute path, and nothing else",
-          os.path.exists(copy) and not os.path.exists(mirror + os.path.realpath(web)) and mirrored == [mirror + os.path.realpath(src), mirror + os.path.realpath(web)],
+    copy = mirror + os.path.abspath(knot)
+    check("the Rust mirror holds every .rs file at its own absolute path (as spelled, symlinks kept), and nothing else",
+          os.path.exists(copy) and not os.path.exists(mirror + os.path.abspath(web)) and mirrored == [mirror + os.path.abspath(src), mirror + os.path.abspath(web)],
           str(mirrored))
     check("the mirrored file has the same line count", open(copy).read().count("\n") == open(knot).read().count("\n"))
 
@@ -320,6 +320,40 @@ try:
     else:
         check("lizard is not installed, so exclude_except is not exercised against a real run", True)
 
+    # --- an exclude glob matches the path as the repository knows it, not the checkout's
+    # absolute path: a tree under a directory literally named tmp, excluding "*/tmp/*", still
+    # judges its own sources (a checkout under /tmp or .claude/worktrees used to match the
+    # glob on its prefix, judge nothing and pass), while the tree's own tmp stays excluded.
+    if shutil.which("lizard"):
+        under_tmp = os.path.join(tmp, "tmp", "proj")
+        write(os.path.join(under_tmp, "src", "deep.py"), "def deep_fn(a):\n" + branchy_body)
+        write(os.path.join(under_tmp, "tmp", "scratch.py"), "def scratch_fn(a):\n" + branchy_body)
+        write(os.path.join(under_tmp, "-dash", "d.py"), "def dash_fn(a):\n" + branchy_body)
+        write(os.path.join(under_tmp, "real", "keep", "k.py"), "def keep_fn(a):\n" + branchy_body)
+        write(os.path.join(under_tmp, "real", "generated", "g.py"), "def gen_fn(a):\n" + branchy_body)
+        os.symlink(os.path.join(under_tmp, "real"), os.path.join(under_tmp, "vendor"))
+        rust_body = "\n".join(["    if a == %d { return %d; }" % (i, i) for i in range(1, 10)] + ["    0", "}", ""])
+        outside = os.path.join(tmp, "outside")
+        write(os.path.join(outside, "lib.rs"), "fn outside_fn(a: i32) -> i32 {\n" + rust_body)
+        rust_real = os.path.join(tmp, "x", "tmp", "rustreal")   # resolves under a tmp directory
+        write(os.path.join(rust_real, "lib2.rs"), "fn linked_fn(a: i32) -> i32 {\n" + rust_body)
+        os.symlink(rust_real, os.path.join(under_tmp, "rustlink"))
+        ut_config = os.path.join(under_tmp, "quality.json")
+        write(ut_config, json.dumps({"complexity": {
+            "sources": ["src", "tmp", "-dash", "vendor", outside, "rustlink"], "languages": ["python", "rust"],
+            "exclude": ["*/tmp/*", "tmp/*", "vendor/generated/*"],
+            "ceilings": {"cc": 8, "lines": 60}, "baseline": "ut-baseline.json"}}))
+        code, out = run(ut_config)
+        check("a checkout under a directory named tmp still judges its sources", "deep.py" in out, out)
+        check("the tree's own tmp directory is still excluded", "scratch.py" not in out, out)
+        check("a root-relative source beginning with - is a path to lizard, not a flag", "d.py" in out, out)
+        check("a symlinked source keeps its repository name, so its glob still excludes", "k.py" in out and "g.py" not in out, out)
+        check("a Rust source outside the root is judged, not a crash", "lib.rs" in out and "Traceback" not in out, out)
+        # judged, not excluded: the mirror pass sees rustlink/lib2.rs, not ../../x/tmp/rustreal/lib2.rs
+        # (findings are then keyed by realpath, as every reader does)
+        check("a symlinked Rust source is judged by its repository name in the mirror pass too", "lib2.rs" in out, out)
+    else:
+        check("lizard is not installed, so root-relative excludes are not exercised", True)
     # --- --only keeps to the configured sources: a changed file outside them is not judged.
     if shutil.which("lizard"):
         only_src = os.path.join(tmp, "apps", "svc", "src")

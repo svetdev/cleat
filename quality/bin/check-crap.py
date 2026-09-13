@@ -226,7 +226,8 @@ def functions_for(args, settings):
         return _saved_functions(args.lizard_csv, settings)
     if settings.has("complexity", "tool") and settings.value(None, "complexity", "tool") == "lizard":
         spec = settings.value(None, "complexity")
-        text = complexity_readers.run_lizard(settings.config.paths(spec["sources"]), spec["languages"], spec.get("exclude", []))
+        text = complexity_readers.run_lizard(settings.config.paths(spec["sources"]), spec["languages"], spec.get("exclude", []),
+                                             root=settings.config.root)
         return complexity_readers.functions_from_csv(text, skip_rust_tests=spec.get("skip_rust_tests", True))[0]
     return None
 

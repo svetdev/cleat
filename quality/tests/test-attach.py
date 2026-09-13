@@ -113,6 +113,28 @@ try:
     after = {p: read(os.path.join(root, p)) for p in before}
     check("attaching again changes nothing", code == 0 and before == after and "kept" in out, out)
     check("and the agent block is not appended twice", after["CLAUDE.md"].count("## Quality gates (cleat)") == 1)
+    # a project that wrapped the hooks (a PATH prefix, an existence guard) has them wired all the same
+    settings_path = os.path.join(root, ".claude", "settings.json")
+    wrapped = json.load(open(settings_path))
+    prefix = "PATH=\"$HOME/.local/bin:$PATH\"; if [ -f quality/bin/gate.py ]; then python3 quality/bin/gate.py %s; fi"
+    wrapped["hooks"] = {"Stop": [{"hooks": [{"type": "command", "command": prefix % "--hook --changed"}]}],
+                        "PreToolUse": [{"matcher": "Bash|Edit|Write|MultiEdit", "hooks": [{"type": "command", "command": prefix % "--guard"}]}]}
+    write(settings_path, json.dumps(wrapped))
+    code, out = run("--into", root)
+    check("a wrapped hook that already runs gate.py counts as wired, not appended again",
+          code == 0 and "hooks already wired" in out and json.load(open(settings_path))["hooks"] == wrapped["hooks"], out)
+    check("and attach names the command it trusted", "then python3 quality/bin/gate.py --guard" in out, out)
+    # a command that only MENTIONS the gate, or a guard scoped to the wrong tools, is not wired
+    neutered = json.load(open(settings_path))
+    neutered["hooks"] = {"Stop": [{"hooks": [{"type": "command", "command": "true || python3 quality/bin/gate.py --hook --changed"}]}],
+                         "PreToolUse": [{"matcher": "Read", "hooks": [{"type": "command", "command": "python3 quality/bin/gate.py --guard"}]},
+                                        {"matcher": "Bash|Edit|Write", "hooks": [{"type": "command", "command": "echo gate.py --guard"}]}]}
+    write(settings_path, json.dumps(neutered))
+    code, out = run("--into", root)
+    fixed = json.load(open(settings_path))["hooks"]
+    check("a short-circuited Stop command and a mis-scoped or echoed guard get a real hook appended",
+          code == 0 and "hooks added" in out and len(fixed["Stop"]) == 2 and len(fixed["PreToolUse"]) == 3, out + json.dumps(fixed))
+    write(settings_path, json.dumps(wrapped))
 
     # ---- --refresh: the template's files replaced, the project's kept
     vendored_gate = os.path.join(root, "quality", "bin", "gate.py")

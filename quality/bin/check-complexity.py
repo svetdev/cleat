@@ -103,7 +103,7 @@ def read_functions(args, name, section, config):
         roots = only_roots(args.only, roots, section, config)
         if not roots:
             return [], 0, complexity.tool_of(section), None
-    return complexity.measure(section, roots, config.paths(section.get("exclude_except", [])))
+    return complexity.measure(section, roots, config.paths(section.get("exclude_except", [])), root=config.root)
 
 
 def only_roots(only, sources, section, config):

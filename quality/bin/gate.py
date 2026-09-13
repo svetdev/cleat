@@ -300,9 +300,19 @@ def changed_files(root):
     """The repo-relative files changed against the base — what --changed scopes the heavy
     gates to. Untracked files count; a tree that is not a repository changes nothing."""
     try:
-        return sorted(changed.changed_lines(root, changed.base_ref(root)))
+        files = sorted(changed.changed_lines(root, changed.base_ref(root)))
     except changed.ChangedError:
         return []
+    return files
+
+
+def flag_shaped(files):
+    """The changed paths that begin with "-" — they would be parsed as FLAGS by the
+    scoped checks (which take `--only FILE...`), so a file named `--write-baseline` in
+    the change set would rewrite the baselines from the Stop hook, the exact policy
+    change the guard exists to refuse. The caller drops the scope and runs the full pass
+    instead; the fix is a rename."""
+    return [f for f in files if f.startswith("-")]
 
 
 def _run_one(g, config_path, strict, changed_only):
@@ -506,6 +516,25 @@ def finish(failures, hook, root=None, results=()):
     return 0 if again else 2
 
 
+def scope_of(args, root):
+    """The files the heavy gates are scoped to under --changed; None for the full pass. A
+    changed path beginning with '-' would parse as a flag in the scoped checks (`--only
+    FILE...`), so with one in the change set the scope is dropped and the FULL pass runs,
+    said on stderr: nothing is skipped, nothing reaches a check as a flag, and the Stop
+    hook keeps its one-block contract (a refusal exiting 2 on every stop trapped the agent
+    until the file was renamed, and never reached the event log)."""
+    if not args.changed:
+        return None
+    scope = changed_files(root)
+    flagged = flag_shaped(scope or [])
+    if not flagged:
+        return scope
+    sys.stderr.write("gate: %d changed path(s) begin with '-' and would parse as flags in the scoped "
+                     "checks; running the full pass instead. Rename them: %s\n"
+                     % (len(flagged), " ".join(flagged)))
+    return None
+
+
 def hooks_off():
     """`CLEAT_HOOKS=off`: a session that only reads — a reviewer an autopilot spawned —
     is not the one to hand failures to, and its edits are not the agent's."""
@@ -557,7 +586,7 @@ def main():
     gates, early = selected_gates(args, config)
     if gates is None:
         return early
-    scope = changed_files(config.root) if args.changed else None
+    scope = scope_of(args, config.root)
     with runlock.held(os.path.dirname(HERE), "gate.py"):
         failures, results = run_all(gates, config.file, args.strict, args.skip_missing_tools, config, scope)
     return finish(failures, args.hook, config.root, results)

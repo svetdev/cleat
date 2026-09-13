@@ -145,6 +145,13 @@ try:
     check("duplication judges changed lines only and needs no baseline", "ok    duplication" in out, out)
     code, out, err = run("--config", os.path.join(repo, "quality.json"))
     check("the full run judges the unchanged file too", code == 1 and "src/old.py:1  noqa" in out, out + err)
+    # a changed path beginning with "-" would reach the scoped checks as a flag: the scope is
+    # dropped and the full pass runs (nothing skipped, and the Stop hook is not trapped)
+    write(os.path.join(repo, "-flag.py"), "w = 4\n")
+    code, out, err = run("--config", os.path.join(repo, "quality.json"), "--changed")
+    check("a flag-shaped changed path drops the scope and says so", "running the full pass instead" in err and "-flag.py" in err, err)
+    check("the full pass then judges the unchanged file", code == 1 and "src/old.py:1  noqa" in out and "changed:" not in out, out + err)
+    os.remove(os.path.join(repo, "-flag.py"))
 
     # ---- CLEAT_HOOKS=off: both hook modes stand down — the switch for a reviewer session
     write(os.path.join(tmp, "src", "a.py"), ESCAPE)

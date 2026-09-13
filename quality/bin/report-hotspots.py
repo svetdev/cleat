@@ -118,10 +118,12 @@ def lizard_spec(settings):
 
 def complexities_from_lizard(settings, spec, roots=None):
     """lizard over the configured `spec` — its sources, or `roots` when --sources
-    overrides them — as check-complexity.py runs it."""
+    overrides them — as check-complexity.py runs it: from the repository root when a
+    quality.json names one, so the exclude globs match repository-relative paths."""
+    root = settings.config.root if settings.explicit or quality_config.find() else None
     try:
         return complexity.lizard_complexities(roots or settings.config.paths(spec["sources"]), spec["languages"],
-                                              spec.get("exclude", []), spec.get("skip_rust_tests", True))
+                                              spec.get("exclude", []), spec.get("skip_rust_tests", True), root=root)
     except complexity.ToolError as problem:
         raise GateError(str(problem))
 

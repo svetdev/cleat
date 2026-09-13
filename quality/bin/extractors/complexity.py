@@ -60,11 +60,13 @@ def masked_raw_strings(text):
 
 
 def _mirror_rust(paths, mirror):
-    """Every .rs file under `paths`, masked, at its own absolute path under `mirror`;
-    returns the mirror-side paths to hand lizard, one per entry of `paths`."""
+    """Every .rs file under `paths`, masked, at its own absolute path under `mirror` — the
+    path as the repository spells it, a symlinked source kept by name, so the root-relative
+    excludes match the same names in both passes; returns the mirror-side paths to hand
+    lizard, one per entry of `paths`."""
     mirrored = []
     for path in paths:
-        real = os.path.realpath(path)
+        real = os.path.abspath(path)
         files = [real] if os.path.isfile(real) else [os.path.join(d, f) for d, _, fs in os.walk(real) for f in fs]
         os.makedirs(mirror + (os.path.dirname(real) if os.path.isfile(real) else real), exist_ok=True)
         for file in files:
@@ -78,44 +80,68 @@ def _mirror_rust(paths, mirror):
     return mirrored
 
 
-def _lizard_csv(paths, languages, excludes):
+def _lizard_csv(paths, languages, excludes, root=None):
     """One lizard --csv run per reader over `paths`, or a ToolError: the other
     languages over the tree as it is, Rust over a masked mirror of it."""
     others = [language for language in languages if language != "rust"]
-    output = _lizard(paths, others, excludes) if others else ""
+    output = _lizard(paths, others, excludes, root) if others else ""
     if "rust" in languages:
         with tempfile.TemporaryDirectory(prefix="lizard-rust-") as tmp:
             mirror = os.path.realpath(tmp)
-            output += _lizard(_mirror_rust(paths, mirror), ["rust"], excludes).replace(mirror, "")
+            mirror_root = mirror + os.path.abspath(root) if root else None
+            if mirror_root:
+                os.makedirs(mirror_root, exist_ok=True)  # a source outside the root mirrors nothing under it
+            output += _lizard(_mirror_rust(paths, mirror), ["rust"], excludes, mirror_root).replace(mirror, "")
     return output
 
 
-def _lizard(paths, languages, excludes):
-    """One lizard --csv run over `paths`, or a ToolError."""
+def _lizard(paths, languages, excludes, root=None):
+    """One lizard --csv run over `paths`, or a ToolError. With `root`, lizard runs from
+    there over root-relative paths, so an exclude glob matches the path as the repository
+    knows it: "*/tmp/*" is a tmp directory in the tree, not a checkout that happens to live
+    under /tmp (which used to match on its prefix and judge nothing). Paths are taken as
+    the repository spells them (a symlinked source keeps its name, so a glob written
+    against it still matches). The CSV comes back with absolute paths either way."""
     command = ["lizard", "--csv"]
     for language in languages:
         command += ["-l", language]
     for pattern in excludes:
         command += ["-x", pattern]
-    command += list(paths)
+    command.append("--")  # a root-relative path may begin with "-"; without this lizard reads it as a flag
+    if root:
+        root = os.path.abspath(root)
+        command += [os.path.relpath(os.path.abspath(p), root) for p in paths]
+    else:
+        command += list(paths)
     try:
-        proc = subprocess.run(command, capture_output=True, text=True, timeout=LIZARD_TIMEOUT_SECONDS)
+        proc = subprocess.run(command, capture_output=True, text=True, timeout=LIZARD_TIMEOUT_SECONDS, cwd=root)
     except subprocess.TimeoutExpired:
         raise ToolError("lizard ran past its %ds time limit — ended" % LIZARD_TIMEOUT_SECONDS)
     if proc.returncode not in (0, 1):  # 1 is lizard's own "over its thresholds" — not ours to act on
         raise ToolError("lizard exited %d: %s" % (proc.returncode, proc.stderr.strip()[:300]))
-    return proc.stdout
+    return _absolute(proc.stdout, root) if root else proc.stdout
 
 
-def run_lizard(sources, languages, excludes, exclude_except=None):
+def _absolute(csv_text, root):
+    """lizard's CSV with its path column (the seventh) joined back onto `root`."""
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    for row in csv.reader(io.StringIO(csv_text)):
+        if len(row) > 6:
+            row[6] = os.path.normpath(os.path.join(root, row[6]))
+        writer.writerow(row)
+    return out.getvalue()
+
+
+def run_lizard(sources, languages, excludes, exclude_except=None, root=None):
     """lizard's CSV over `sources` with `excludes` applied, plus — for `exclude_except`,
     paths an exclude glob would otherwise drop by name but that are production code —
     a second pass over exactly those paths with no exclude at all. Raises ToolError."""
     if not shutil.which("lizard"):
         raise ToolError("lizard is not installed — brew install lizard (or pip install lizard)")
-    output = _lizard_csv(sources, languages, excludes)
+    output = _lizard_csv(sources, languages, excludes, root)
     if exclude_except:
-        output += _lizard_csv(exclude_except, languages, [])
+        output += _lizard_csv(exclude_except, languages, [], root)
     return output
 
 
@@ -228,8 +254,8 @@ def swiftlint_complexities(roots):
     return complexities_from_swiftlint(swiftlint_violations(roots))
 
 
-def lizard_complexities(roots, languages, excludes, skip_rust_tests=True):
-    functions, _ = functions_from_csv(run_lizard(roots, languages, excludes), skip_rust_tests=skip_rust_tests)
+def lizard_complexities(roots, languages, excludes, skip_rust_tests=True, root=None):
+    functions, _ = functions_from_csv(run_lizard(roots, languages, excludes, root=root), skip_rust_tests=skip_rust_tests)
     return complexities(functions)
 
 
@@ -256,11 +282,12 @@ def tool_of(spec):
     return spec.get("tool") or ("lizard" if spec.get("languages") else "swiftlint")
 
 
-def measure(spec, roots, exclude_except=()):
+def measure(spec, roots, exclude_except=(), root=None):
     """(functions, skipped as tests, tool, version) for the `complexity` section `spec`
-    over the absolute `roots`. Raises ToolError."""
+    over the absolute `roots`; `root` is the repository the exclude globs are written
+    against (the directory of quality.json). Raises ToolError."""
     if tool_of(spec) == "swiftlint":
         return functions_from_swiftlint(swiftlint_violations(roots)), 0, "swiftlint", swiftlint_version()
-    text = run_lizard(roots, spec.get("languages", []), spec.get("exclude", []), list(exclude_except))
+    text = run_lizard(roots, spec.get("languages", []), spec.get("exclude", []), list(exclude_except), root=root)
     functions, skipped = functions_from_csv(text, skip_rust_tests=spec.get("skip_rust_tests", True))
     return functions, skipped, "lizard", lizard_version()

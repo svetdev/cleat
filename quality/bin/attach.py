@@ -464,31 +464,70 @@ def vendor(plan, dry_run, do_refresh=False):
 GATE_IN_HOOK = ('python3 "$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --show-toplevel 2>/dev/null '
                 '|| printf %s "${CLAUDE_PROJECT_DIR:-.}")/quality/bin/gate.py"')
 
-def has_cleat_hook(entries, mode):
-    """Whether one of an event's hook entries already runs `gate.py <mode>` — however the
-    project spelled the path in front of it (a hand-edited hook stays as it is)."""
-    return any("gate.py" in h.get("command", "") and mode in h.get("command", "")
-               for e in entries for h in e.get("hooks", []))
+GUARDED_TOOLS = ("Bash", "Edit", "Write")
+
+
+def _squash(match):
+    return re.sub(r"[\s;&|]", "_", match.group(0))
+
+
+def _one_word(command):
+    """`command` with the whitespace and separators inside a `$( )` or double quotes squashed
+    to `_`, so a path spelled through a subshell — attach's own, anchored on the git top
+    level — reads as one word to `invoked`, and a `||` inside it is not a short-circuit."""
+    return re.sub(r'"[^"]*"', _squash, re.sub(r"\$\([^()]*\)", _squash, command))
+
+
+def invoked(command, mode):
+    """Whether `command` actually runs gate.py in `mode`: as the command, or after `;`, `&&`,
+    `then` or `do` — a PATH prefix, an existence guard or a subshell-anchored path around it
+    still counts. Not after `||`, inside a comment, or as the argument of echo: a string
+    that only mentions the gate must not pass for a hook that runs it."""
+    return re.search(r'(?:^|;|&&|\bthen|\bdo)\s*(?:PATH=\S+;?\s*)?python3?\s+\S*gate\.py"?\s+%s\b' % re.escape(mode),
+                     _one_word(command)) is not None
+
+
+def covers(entry, tools):
+    """Whether a hook entry's matcher reaches every tool in `tools` (no matcher: every tool)."""
+    matcher = entry.get("matcher")
+    return not tools or not matcher or all(t in matcher.split("|") for t in tools)
+
+
+def wired(entries, mode, tools=()):
+    """The command of the hook entry that already runs gate.py in `mode` (and, for a
+    matcher-bearing event, matches every tool in `tools`); None when none does."""
+    for entry in entries:
+        if not covers(entry, tools):
+            continue
+        for hook in entry.get("hooks", []):
+            if invoked(hook.get("command") or "", mode):
+                return hook["command"]
+    return None
 
 
 def merge_settings(plan, dry_run):
-    """Add the Stop and PreToolUse hooks to .claude/settings.json, keeping what is there —
-    including a cleat hook the project already wired its own way."""
+    """Add the Stop and PreToolUse hooks to .claude/settings.json, keeping what is there. A
+    hook that already runs gate.py in that mode counts as wired however the project wrapped
+    it (a PATH prefix, an existence guard, another path spelling): attach never appends a
+    second, and names the command it trusted so a person can see what it took for the gate."""
     rel = os.path.join(".claude", "settings.json")
     path = os.path.join(plan.root, rel)
     settings = json.loads(_read_if_exists(path) or "{}")
     hooks = settings.setdefault("hooks", {})
-    wanted = (("Stop", "--hook", {"hooks": [{"type": "command", "command": GATE_IN_HOOK + " --hook --changed"}]}),
-              ("PreToolUse", "--guard", {"matcher": "Bash|Edit|Write|MultiEdit",
-                                         "hooks": [{"type": "command", "command": GATE_IN_HOOK + " --guard"}]}))
-    added = []
-    for event, mode, entry in wanted:
+    wanted = (("Stop", "--hook", (), {"hooks": [{"type": "command", "command": GATE_IN_HOOK + " --hook --changed"}]}),
+              ("PreToolUse", "--guard", GUARDED_TOOLS,
+               {"matcher": "Bash|Edit|Write|MultiEdit", "hooks": [{"type": "command", "command": GATE_IN_HOOK + " --guard"}]}))
+    added, trusted = [], []
+    for event, mode, tools, entry in wanted:
         existing = hooks.setdefault(event, [])
-        if not has_cleat_hook(existing, mode):
+        command = wired(existing, mode, tools)
+        if command is None:
             existing.append(entry)
             added.append(event)
+        else:
+            trusted.append("%s: `%s`" % (event, command))
     if not added:
-        plan.say(rel, "kept (hooks already wired)")
+        plan.say(rel, "kept (hooks already wired — %s)" % "; ".join(trusted))
         return
     plan.say(rel, "%s hook%s added" % (" and ".join(added), "s" if len(added) > 1 else "") if os.path.isfile(path) else "written")
     if not dry_run:
