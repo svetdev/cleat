@@ -43,15 +43,21 @@ script has to list gates:
 `--hook` is how the ratchet sits inside an agent's loop. Claude Code's Stop
 hook treats exit 2 as "not done" and hands stderr back to the model, so a
 failing gate becomes the next thing the agent works on, with the fix in
-front of it. It blocks one stop, not every stop: when the event says
-`stop_hook_active` — the agent is already continuing because of this hook —
-the failures are reported and the agent may stop, so a failure it cannot
-fix does not loop it forever; CI refuses the result instead. `--guard` reads a PreToolUse event from stdin and exits 2 —
+front of it. It blocks once per distinct failure set, not once per stop:
+the report that blocked is fingerprinted under `quality/.running/`, and a
+later stop carrying the identical report gets one line and exit 0 rather
+than the whole report again, so a failure the agent cannot fix — a policy
+question for a person — stops costing a report every turn. The event's
+`stop_hook_active` (the agent is already continuing because of this hook)
+reads the same way. Any change in any gate's output — a file fixed, a file
+broken, a count moved — is a new report and blocks again; CI refuses
+whatever stays red. `--guard` reads a PreToolUse event from stdin and exits 2 —
 refusing the call — when the command would write a baseline, edit
 quality.json, or edit the gates: those are policy changes for a person.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -402,31 +408,101 @@ def stop_hook_active():
         return False
 
 
+def _last_report_path(root):
+    """Where the fingerprint of the last blocked report is kept: beside the run locks,
+    under `quality/.running/`, which every consumer already gitignores. This is run
+    state, not policy, and losing it only costs one extra report."""
+    return os.path.join(root, "quality", runlock.DIRNAME, "hook-last-report") if root else None
+
+
+def _report_digest(failures):
+    """A fingerprint of exactly what the agent would be shown — every gate's name and its
+    whole output — so a file fixed, a file broken or a count that moved is a new report."""
+    body = "\n".join("%s\n%s" % (g.name, out) for g, out in failures)
+    return hashlib.sha256(body.encode("utf-8", "replace")).hexdigest()
+
+
+def same_as_last_report(failures, root):
+    """Whether these failures are the report that already blocked a stop. No memory of
+    one — absent, unreadable, no root — means no, so the hook blocks: the safe direction."""
+    path = _last_report_path(root)
+    if not path:
+        return False
+    try:
+        with open(path) as handle:
+            return handle.read().strip() == _report_digest(failures)
+    except OSError:
+        return False
+
+
+def remember_report(failures, root):
+    """Record the report just sent, so the next stop carrying it can stay quiet. A write
+    that fails is not worth a verdict: the hook simply reports once more."""
+    path = _last_report_path(root)
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as handle:
+            handle.write("%s\n" % _report_digest(failures))
+    except OSError:
+        pass
+
+
+def forget_report(root):
+    """Green: whatever fails next is news again, and blocks."""
+    path = _last_report_path(root)
+    if not path:
+        return
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def record_hook(root, failures, again, results):
+    """One line in the event log per firing; nothing when the project turned the log off."""
+    if not root or not events.enabled(root):
+        return
     events.record(root, {"mode": "hook", "verdict": "fail" if failures else "pass", "again": again,
                          "head": events.head(root), "changed_files": events.changed_files(root), "gates": results})
 
 
-def print_failures(failures, again):
-    print("cleat: %d quality gate(s) failed%s:" % (len(failures), " — still, after one round of fixes" if again else " — fix what each names, then stop again"), file=sys.stderr)
+def print_failures(failures, again, repeat=False):
+    """The failures on stderr, which the harness hands back to the agent — but only once.
+    A report already sent is a single line: repeating it buys nothing and costs the agent
+    its context every turn. `repeat` separates the two ways a report can be old, because
+    a line that claimed sameness on a stop that is merely a continuation would be a lie."""
+    if again:
+        print("cleat: %d gate(s) still failing (%s) — %s, not blocking again; CI holds the line."
+              % (len(failures), ", ".join(g.name for g, _ in failures),
+                 "same report as the last blocked stop" if repeat else "this stop is already a continuation"),
+              file=sys.stderr)
+        return
+    print("cleat: %d quality gate(s) failed — fix what each names, then stop again:" % len(failures), file=sys.stderr)
     for g, out in failures:
         print("[%s]\n%s" % (g.name, out), file=sys.stderr)
-    if again:
-        print("cleat: not blocking a second time; the failure stands and CI will refuse it.", file=sys.stderr)
 
 
 def finish(failures, hook, root=None, results=()):
-    """The exit code — and, in hook mode, the failures again on stderr, which is what
-    the agent's harness hands back to it. Exit 2 blocks the stop once; on the stop after
-    that the failures are reported but the agent may stop, and CI holds the line."""
+    """The exit code — and, in hook mode, the failures on stderr, which is what the
+    agent's harness hands back to it. Exit 2 blocks the stop once per distinct failure
+    set: a later stop that would send the identical report gets one line and exit 0, so a
+    failure the agent cannot fix does not re-send its report every turn. Any change in
+    any gate's output — a file fixed, a file broken, a count moved — blocks again, and
+    CI holds the line for whatever stays red."""
     if not hook:
         return 1 if failures else 0
-    again = stop_hook_active() if failures else False
-    if root and events.enabled(root):
-        record_hook(root, failures, again, list(results))
     if not failures:
+        forget_report(root)
+        record_hook(root, failures, False, list(results))
         return 0
-    print_failures(failures, again)
+    repeat = same_as_last_report(failures, root)
+    again = stop_hook_active() or repeat
+    record_hook(root, failures, again, list(results))
+    print_failures(failures, again, repeat)
+    if not again:
+        remember_report(failures, root)
     return 0 if again else 2
 
 

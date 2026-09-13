@@ -4,6 +4,7 @@ Newest first. A line per gate or behavior change; policy changes to this reposit
 
 ## Unreleased
 
+- The Stop hook reports a failure set once: the report that blocked is fingerprinted under `quality/.running/`, and a later stop that would send the identical report gets one line and exit 0 rather than the whole report again. On the pilot codebase a failure the agent could not fix (a policy question for a person) blocked every stop and re-sent the same report eight times in one session. Any change in any gate's output — a file fixed, a file broken, a count moved — is a new report and blocks again. `--stats` renames the row this feeds from "blocked twice in a row" to "report already sent", which is what it now counts.
 - The CRAP suite's summary moved to its end: a failure in its lizard/istanbul half had printed and then been reported as passed.
 - CRAP over istanbul: a nested arrow function or closure lizard enumerates but istanbul folds into its parent is judged by the statements in its own range (then by the enclosing function), not read as 0% for want of a record.
 - An end-to-end fixture for the Rust raw-string mask: a `r#"…"#` whose quotes and apostrophes interleave makes lizard lose every function after it; the reader reports all of them, and the fixture asserts it is still hostile unmasked.

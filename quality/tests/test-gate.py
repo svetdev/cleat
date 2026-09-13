@@ -6,7 +6,9 @@ an escapes gate: --list names the gates in ladder order; a green tree passes
 with a status row per gate; a failing gate is reported with its output and the
 run exits 1; --gate runs one; an unknown --gate is refused naming the
 configured ones; --hook sends the failures to stderr and exits 2 (what an
-agent's Stop hook hands back); --guard refuses a PreToolUse event that writes a
+agent's Stop hook hands back) once per distinct failure set, and a later stop
+that would re-send the identical report gets one line and exit 0; --guard
+refuses a PreToolUse event that writes a
 baseline, edits quality.json or the gates, and allows running a gate, reading
 the config, or a malformed event. Writes nothing outside a temporary directory.
 
@@ -56,14 +58,31 @@ try:
     check("--gate runs one gate", code == 0 and "escapes" not in out, out + err)
     code, out, err = run("--config", config, "--gate", "nope")
     check("an unknown --gate is refused naming the configured ones", code == 2 and "nope" in err and "doc-size, escapes" in err, err)
+    # ---- the hook reports a failure set once: a later stop that would re-send it is one line
+    state = os.path.join(tmp, "quality", ".running", "hook-last-report")
     code, out, err = run("--config", config, "--hook")
     check("--hook exits 2 with the failures on stderr", code == 2 and "[escapes]" in err and "src/a.py:1  noqa" in err and "fix what each names" in err, err)
+    check("and remembers the report it sent", os.path.isfile(state), state)
+    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": False}))
+    check("a later stop carrying the identical report does not block again", code == 0, err)
+    check("and gets one line, never the report a second time",
+          len(err.strip().splitlines()) == 1 and "not blocking again" in err and "escapes" in err and "src/a.py:1  noqa" not in err, err)
+    check("naming why it stayed quiet: it is the report that already blocked", "same report as the last blocked stop" in err, err)
+    write(os.path.join(tmp, "src", "b.py"), ESCAPE)
+    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": False}))
+    check("a failure set that changed blocks again, with the whole report",
+          code == 2 and "src/b.py:1  noqa" in err and "fix what each names" in err, err)
+    os.remove(os.path.join(tmp, "src", "b.py"))
+    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": True, "hook_event_name": "Stop"}))
+    check("--hook does not block a second consecutive stop either, whatever the report says",
+          code == 0 and "not blocking again" in err and "src/a.py:1  noqa" not in err, err)
+    check("and says that, rather than claiming a sameness this changed report does not have",
+          "this stop is already a continuation" in err and "same report as the last" not in err, err)
     code, out, err = run("--config", config, "--hook", "--gate", "doc-size")
     check("--hook exits 0 when everything passes", code == 0 and err == "", err)
-    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": True, "hook_event_name": "Stop"}))
-    check("--hook does not block a second consecutive stop: the failures are reported and the agent may stop", code == 0 and "[escapes]" in err and "not blocking a second time" in err, err)
-    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": False}))
-    check("with stop_hook_active false it blocks as before", code == 2, err)
+    check("and forgets the report, so the failure is news again", not os.path.exists(state), state)
+    code, out, err = run("--config", config, "--hook")
+    check("which the next failing stop shows: the whole report, exit 2", code == 2 and "src/a.py:1  noqa" in err, err)
 
     # ---- the event log: every hook and guard firing is one JSON line; --stats reads them back
     events_path = os.path.join(tmp, "quality", ".events.jsonl")

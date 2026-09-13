@@ -44,10 +44,10 @@ Local by default: the gates, the baselines and the agent hooks. `--git-hooks` ad
 | Where | Stops | Does not stop |
 |---|---|---|
 | CI: `gate.py --strict --skip-missing-tools` as a required check, code-owner review on the control plane, no bypass | a merge with a failing or loosened gate; a baseline or ceiling changed without a person | nothing it can see — it is the authority |
-| Agent hooks: Stop runs the gates and blocks one stop; PreToolUse refuses `--write-baseline` and edits to `quality.json`, the baselines, the gates, the hooks | the agent finishing with a red gate; the agent loosening policy mid-task | a session with different settings; a plain terminal |
+| Agent hooks: Stop runs the gates and blocks once per failure set; PreToolUse refuses `--write-baseline` and edits to `quality.json`, the baselines, the gates, the hooks | the agent finishing with a red gate; the agent loosening policy mid-task | a session with different settings; a plain terminal |
 | Git pre-push hook (`attach --git-hooks`) | a push with a red gate, from a human or an agent with no hook harness | `--no-verify` |
 
-The Stop hook blocks once per stop: on the stop after that (`stop_hook_active`) it reports and lets the agent go, so an unfixable failure does not loop it; CI refuses the result. Branch protection assumes an identity that cannot approve or bypass — an agent authenticated as you can do both — so the agent should hold its own GitHub identity with contents and pull-request write only. Attach prints the ruleset command that makes the check required.
+The Stop hook blocks once per distinct failure set: a later stop that would send the identical report (or one where `stop_hook_active` says the agent is already continuing) gets a single line and exit 0 instead, so a failure the agent cannot fix neither loops it nor re-sends its whole report every turn. Any change in any gate's output is a new report and blocks again; CI refuses whatever stays red. Branch protection assumes an identity that cannot approve or bypass — an agent authenticated as you can do both — so the agent should hold its own GitHub identity with contents and pull-request write only. Attach prints the ruleset command that makes the check required.
 
 ## The ratchet, precisely
 

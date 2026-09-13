@@ -135,7 +135,7 @@ def _hook_rows(hooks):
     rate = "%.0f%%" % (100.0 * len(fails) / len(hooks)) if hooks else "-"
     return [("hook firings", len(hooks)), ("  failed", len(fails)), ("  fail rate", rate),
             ("  fixed by the next firing", _resolved_next(hooks)),
-            ("  blocked twice in a row (let go)", sum(1 for e in fails if e.get("again")))]
+            ("  report already sent (let go)", sum(1 for e in fails if e.get("again")))]
 
 
 def _guard_rows(guards):
