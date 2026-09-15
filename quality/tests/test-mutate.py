@@ -36,6 +36,35 @@ check("an unfiltered run that ran nothing is still survival — there is nothing
 check("a failing run is a kill", mutate.verdict_of(1, "Executed 3 tests, with 1 failure", True) == "killed")
 check("a build failure is uncompilable", mutate.verdict_of(1, "Compiling Fixture\nerror: cannot convert", False) == "uncompilable")
 
+# --- every write of the source moves its clock on, so a same-length mutant is never taken for an unchanged file
+stamp_dir = tempfile.mkdtemp(prefix="mutate-stamp-")
+try:
+    stamped = os.path.join(stamp_dir, "Gate.swift")
+    write(stamped, "a && b\n")
+    first = os.stat(stamped).st_mtime
+    mutate.write_source(stamped, "a || b\n")
+    second = os.stat(stamped).st_mtime
+    mutate.write_source(stamped, "a && b\n")
+    third = os.stat(stamped).st_mtime
+    check("a same-length rewrite in the same clock tick still moves the file's modification time on by a second",
+          second >= first + 1 and third >= second + 1 and open(stamped).read() == "a && b\n", str((first, second, third)))
+    # a narrow verdict that falls through is explained in the log, with the run's last lines
+    src_dir = os.path.join(stamp_dir, "pkg", "Sources", "Fixture"); tests_dir = os.path.join(stamp_dir, "pkg", "Tests")
+    write(os.path.join(src_dir, "Gate.swift"), "func open(_ a: Bool, _ b: Bool) -> Bool { return a && b }\n")
+    write(os.path.join(tests_dir, "GateTests.swift"), "final class GateTests: XCTestCase {}\n")
+    runs = iter([("unrun", "Test Suite 'Selected tests' passed\n\t Executed 0 tests, with 0 failures\n"), ("killed", "Executed 2 tests, with 1 failure\n")])
+    real_run_suite, lines = mutate.run_suite, []
+    mutate.run_suite = lambda package, filters=None, **_: next(runs)
+    try:
+        result = mutate.mutate_file(os.path.join(stamp_dir, "pkg"), src_dir, "Gate.swift", log=lines.append, tests_root=tests_dir)
+    finally:
+        mutate.run_suite = real_run_suite
+    check("a narrow verdict that falls through to the full suite is logged with the run's last lines",
+          any("narrow run unrun (" in line and "Executed 0 tests" in line and "full suite decides" in line for line in lines), str(lines))
+    check("and the full suite's verdict stands", result["killed"] == 1 and "killed (full)" in lines[-1], str(lines))
+finally:
+    shutil.rmtree(stamp_dir, ignore_errors=True)
+
 cache = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), "Library", "Caches")
 os.makedirs(cache, exist_ok=True)
 tmp = tempfile.mkdtemp(prefix="mutate.", dir=cache)

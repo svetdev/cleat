@@ -8,16 +8,16 @@
   {
    "file": "quality/bin/mutate.py",
    "text": "def main():",
-   "line": 232,
+   "line": 253,
    "cc": 24,
    "lines": 63
   },
   {
    "file": "quality/bin/mutate.py",
    "text": "def mutate_file(package, sources, relative, list_only=False, log=print, tests_root=None):",
-   "line": 164,
+   "line": 187,
    "cc": 16,
-   "lines": 44
+   "lines": 42
   },
   {
    "file": "quality/bin/check-reachability.py",

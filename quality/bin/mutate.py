@@ -55,6 +55,7 @@ import os
 import re
 import signal
 import subprocess
+import time
 import sys
 
 sys.dont_write_bytecode = True
@@ -157,8 +158,30 @@ def run_suite(package, filters=None, test_command=None, filter_flag=None):
     try:
         proc = subprocess.run(command, cwd=package, capture_output=True, text=True, timeout=MUTATE_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        return "timed-out"
-    return verdict_of(proc.returncode, proc.stdout + proc.stderr, bool(filters))
+        return "timed-out", ""
+    out = proc.stdout + proc.stderr
+    return verdict_of(proc.returncode, out, bool(filters)), out
+
+
+def tail_of(out, lines=3):
+    """The last few non-empty lines of a suite's output, on one line each — what a
+    verdict that fell through to the full suite is explained by."""
+    kept = [line.strip() for line in out.splitlines() if line.strip()][-lines:]
+    return " | ".join(kept)[:300]
+
+
+def write_source(path, text):
+    """Write `text` to `path` with a modification time strictly later than the file had —
+    at least a second on, into the future if need be. A mutant the same length as what
+    it replaces (`&&` → `||`, `==` → `!=`), written in the same clock tick as the restore
+    before it, is otherwise a file the incremental build can take for unchanged: the
+    tests then run against the binary of the last mutant, and the verdict is noise (seen
+    on Linux CI, only ever on the same-length mutants)."""
+    before = os.stat(path).st_mtime if os.path.exists(path) else 0
+    with open(path, "w") as handle:
+        handle.write(text)
+    stamp = max(time.time(), before + 1)
+    os.utime(path, (stamp, stamp))
 
 
 def mutate_file(package, sources, relative, list_only=False, log=print, tests_root=None):
@@ -174,22 +197,20 @@ def mutate_file(package, sources, relative, list_only=False, log=print, tests_ro
     result = {"killed": 0, "survived": [], "uncompilable": 0, "timed_out": 0, "total": len(mutants)}
 
     def restore(*_):
-        with open(path, "w") as handle:
-            handle.write(original)
+        write_source(path, original)
 
     previous = signal.signal(signal.SIGINT, lambda *a: (restore(), sys.exit(130)))
     try:
         for index, (start, end, replacement, name, line) in enumerate(mutants, 1):
-            mutated = original[:start] + replacement + original[end:]
-            with open(path, "w") as handle:
-                handle.write(mutated)
+            write_source(path, original[:start] + replacement + original[end:])
             try:
                 how = "full"
-                verdict = run_suite(package, narrow) if narrow else run_suite(package)
+                verdict, out = run_suite(package, narrow) if narrow else run_suite(package)
                 if narrow and verdict == "killed":
                     how = "narrow"
                 elif narrow and verdict in ("survived", "unrun"):
-                    verdict = run_suite(package)
+                    log("        narrow run %s (%s); the full suite decides" % (verdict, tail_of(out)))
+                    verdict, out = run_suite(package)
             finally:
                 restore()
             if verdict == "killed":
@@ -260,7 +281,7 @@ def main():
             return 2
     if not args.list:
         # a suite that is already red kills every mutant for the wrong reason
-        pre = run_suite(package)
+        pre, _ = run_suite(package)
         if pre == "timed-out":
             print("FAIL: swift test ran past its %ds time limit before any mutation was applied — ended"
                   % MUTATE_TIMEOUT_SECONDS, file=sys.stderr)
