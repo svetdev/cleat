@@ -24,6 +24,10 @@ wall-clock ceiling (`LIZARD_TIMEOUT_SECONDS`, `SWIFTLINT_TIMEOUT_SECONDS`,
 `complexity` section — `tool` (lizard or swiftlint; lizard when `languages`
 is given), `sources`, `languages`, `exclude`, `exclude_except`,
 `skip_rust_tests` — and it returns (functions, skipped as tests, tool, version).
+
+TypeScript has one wrinkle of lizard's own: a `function` with a plain return type
+annotation is reported running past its closing brace. Every TypeScript span is
+cut back to the brace that closes its body (typescript.py), never lengthened.
 """
 
 import csv
@@ -35,7 +39,7 @@ import shutil
 import subprocess
 import tempfile
 
-from . import patterns
+from . import patterns, typescript
 
 LIZARD_TIMEOUT_SECONDS = int(os.environ.get("LIZARD_TIMEOUT_SECONDS", "600"))
 
@@ -172,7 +176,30 @@ def functions_from_csv(text, skip_rust_tests=True):
                 skipped += 1
                 continue
         functions.append(Function(path, start, end, cc, length, row[7]))
+    clamp_typescript(functions)
     return functions, skipped
+
+
+def clamp_typescript(functions):
+    """Shorten each TypeScript function lizard ran past its closing brace (see
+    typescript.py) to where its body ends; a span is never lengthened."""
+    lines = {}
+    for f in functions:
+        if not f.path.endswith(typescript.SUFFIXES):
+            continue
+        if f.path not in lines:
+            lines[f.path] = _code_lines(f.path)
+        end = typescript.body_end(lines[f.path], f.line, f.name) if lines[f.path] else None
+        if end is not None and f.line <= end < f.end:
+            f.end, f.length = end, end - f.line + 1
+
+
+def _code_lines(path):
+    try:
+        with open(path, errors="replace") as handle:
+            return typescript.code_lines(handle.read())
+    except OSError:
+        return None
 
 
 def complexities(functions):

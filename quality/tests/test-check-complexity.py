@@ -8,7 +8,7 @@ under --strict, a stale entry is noted, provenance drift is noted, a missing key
 lizard, writes nothing outside a temporary directory.
   quality/tests/test-check-complexity.py
 """
-import json, os, shutil, subprocess, sys, tempfile
+import csv, io, json, os, shutil, subprocess, sys, tempfile
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(os.path.dirname(HERE), "bin", "check-complexity.py")
@@ -150,6 +150,52 @@ try:
               sorted(f.name for f in unmasked) == ["before", "matcher"], str(sorted(f.name for f in unmasked)))
     else:
         check("lizard is not installed, so the raw-string fixture's end-to-end half is not exercised (CI installs it)", True)
+
+    # --- lizard runs a TypeScript `function` with a plain return type past its closing brace,
+    # through the interfaces after it; the reader cuts the span back to the body, and only shortens.
+    typed = os.path.join(tmp, "typed", "api.ts")
+    write(typed, "\n".join([
+        "function filterQuery(kind?: string): string {",   # 1
+        "  return kind ? `?kind=${encodeURIComponent(kind)}` : ''",
+        "}",                                                            # 3
+        "",
+        "export interface Dashboard {",
+        "  range: 'today' | '7d'",
+        "  money: { total: number } | null",
+        "}",
+        "",
+        "export function Page({ id }: { id: string }): { title: string } {",   # 10: an object return type
+        "  return { title: id }",
+        "}",                                                            # 12
+        "",
+        "export type Counts = { total: number }",
+        "",
+        "export const shop = {",                                        # 16
+        "  read: (range: string): string => {",                         # 17: an arrow, left as lizard read it
+        "    return range",
+        "  },",                                                         # 19
+        "}",
+        "",
+    ]))
+    typed_rows = [(2, 2, 20, 1, 15, "filterQuery@1-15@%s" % typed, typed, "filterQuery", "filterQuery ( kind )", 1, 15),
+                  (2, 1, 20, 1, 7, "Page@10-16@%s" % typed, typed, "Page", "Page ( id )", 10, 16),
+                  (3, 1, 9, 1, 5, "read@17-21@%s" % typed, typed, "read", "read ( range )", 17, 21),
+                  (3, 1, 9, 1, 2, "filterQuery@1-2@%s" % typed, typed, "filterQuery", "filterQuery ( kind )", 1, 2)]
+    out_csv = io.StringIO()
+    csv.writer(out_csv).writerows(typed_rows)
+    spans = [(f.name, f.line, f.end, f.length) for f in complexity.functions_from_csv(out_csv.getvalue())[0]]
+    check("a TypeScript function lizard ran through the interfaces after it is cut back to its closing brace",
+          spans[0] == ("filterQuery", 1, 3, 3), str(spans))
+    check("an object return type is not mistaken for the body", spans[1] == ("Page", 10, 12, 3), str(spans))
+    check("an arrow function is left as lizard read it", spans[2] == ("read", 17, 21, 5), str(spans))
+    check("and a span is never lengthened", spans[3] == ("filterQuery", 1, 2, 2), str(spans))
+    if shutil.which("lizard"):
+        proc = subprocess.run(["lizard", "--csv", "-l", "typescript", typed], capture_output=True, text=True)
+        measured = {f.name: f.length for f in complexity.functions_from_csv(proc.stdout)[0]}
+        check("end to end, the return-typed functions read at their real length", measured.get("filterQuery") == 3
+              and measured.get("Page") == 3, str(measured) + proc.stdout)
+    else:
+        check("lizard is not installed, so the TypeScript span fixture's end-to-end half is not exercised (CI installs it)", True)
 
     config = os.path.join(tmp, "quality.json")
     baseline = os.path.join(tmp, "complexity-baseline.json")
