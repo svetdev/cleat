@@ -5,7 +5,8 @@ Driven through `--config` over a throwaway quality.json this writes, with its ow
 small habits table, over throwaway test trees: a tree under every ceiling passes
 and the success line carries the counts; one site over a zero ceiling fails and
 names the habit, its count, the ceiling and the spelling to use; a site in a
-comment or under a skipped directory is not counted; `--tests` overrides the
+comment or under a skipped directory is not counted; a habit's `files`,
+`exclude` and `unless` narrow where it counts; `--tests` overrides the
 config's roots; a config missing the section fails naming it; and this checkout,
 under the quality.json at the repository root, passes, so a new sleep fails the
 preflight here — and every habit's `use` that names a path names one that
@@ -76,6 +77,25 @@ try:
     write(sleepy, "BazTests.swift", "func testA() async throws {\n    try await Task.sleep(for: .seconds(1))\n    try await Task.sleep(for: .seconds(1))\n}\n")
     code, out = run("--config", config, "--tests", sleepy)
     check("a count at its ceiling passes", code == 0 and "fixed sleeps 2/2" in out, out)
+    # a habit narrowed to some files: `files` and `exclude` globs, and an `unless` regex exempting a whole file
+    scoped = os.path.join(tmp, "scoped")
+    write(scoped, "src/Reschedule.test.tsx", "await userEvent.type(screen.getByLabelText('Day'), '2026-09-13')\nsetTimeout(done, 10)\n")
+    write(scoped, "src/Pinned.test.tsx", "vi.setSystemTime(new Date('2026-09-10T12:00:00'))\nawait userEvent.type(field, '2026-09-13')\n")
+    write(scoped, "src/Unpinned.test.tsx", "// vi.setSystemTime is not called here\nfireEvent.change(field, { target: { value: '2026-09-13' } })\n"
+                                           "vi.useFakeTimers({ shouldAdvanceTime: true })\n")
+    write(scoped, "e2e/stack/book.spec.ts", "test.setTimeout(300_000)\n")
+    scoped_config = write_config(scoped, {"roots": ["."], "skip_dirs": [], "extensions": [".ts", ".tsx"], "habits": {
+        "timer-driven waits in vitest": {"pattern": r"setTimeout\(", "files": ["*.test.ts", "*.test.tsx"], "ceiling": 0, "use": "vi.waitFor"},
+        "timers outside e2e": {"pattern": r"setTimeout\(", "exclude": ["e2e/*"], "ceiling": 0, "use": "vi.waitFor"},
+        "fixed dates typed without a pinned clock": {"pattern": r"\b(?:type|fill|change)\(.*['\"]\d{4}-\d{2}-\d{2}['\"]",
+                                                     "unless": r"setSystemTime|useFakeTimers\(\{[^)]*\bnow\b", "ceiling": 0, "use": "vi.setSystemTime"}}})
+    code, out = run("--config", scoped_config)
+    check("a habit's files globs keep it to those files: Playwright's test.setTimeout is not a vitest wait",
+          "timer-driven waits in vitest: 1, ceiling 0" in out and "book.spec.ts" not in out.split("timers outside e2e")[0], out)
+    check("a habit's exclude globs drop the files they match", "timers outside e2e: 1, ceiling 0" in out, out)
+    check("a habit's unless exempts a file whose code pins the clock; a comment naming it, or fake timers with no date, do not",
+          "fixed dates typed without a pinned clock: 2, ceiling 0" in out and "src/Reschedule.test.tsx:1" in out
+          and "src/Unpinned.test.tsx:2" in out and "Pinned.test.tsx:2" not in out.replace("Unpinned", ""), out)
     code, out = run("--config", config, cwd=dirty)
     check("--config wins over the nearest quality.json above the working directory", code == 0, out)
     missing = os.path.join(tmp, "missing"); os.makedirs(missing)

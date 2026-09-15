@@ -20,7 +20,24 @@ The habits, their ceilings and the test trees live in the `hygiene` section of
 `test_file_roots` (trees that mix production and test code, counted through
 their test files only: root → the test suffixes), and
 `habits`, name → a regex `pattern` over code, the `ceiling`, and `use`, the one
-spelling to write instead. A ceiling is raised only on purpose, with the reason
+spelling to write instead. A habit may narrow where it counts: `files`, globs a
+site's file must match (`["*.test.ts", "*.test.tsx"]` — a vitest habit that must
+not read Playwright's `test.setTimeout` in `e2e/*.spec.ts`); `exclude`, globs it
+must not; and `unless`, a regex that exempts a whole file when it matches its
+code anywhere — a habit that is only a habit without its antidote beside it. A
+glob matches a file's name or its repo-relative path. The fixed date typed into a
+date field, which breaks the night the date passes, is one:
+
+  "fixed dates typed without a pinned clock": {
+    "pattern": "\\b(?:type|fill|change)\\(.*['\"]\\d{4}-\\d{2}-\\d{2}['\"]",
+    "unless": "setSystemTime|setFixedTime|useFakeTimers\\(\\{[^)]*\\bnow\\b|clock\\.install\\(\\{[^)]*\\btime\\b",
+    "files": ["*.test.ts", "*.test.tsx", "*.spec.ts"], "ceiling": 0,
+    "use": "vi.setSystemTime (or page.clock) before typing the date"}
+
+Fake timers alone are not the antidote there: `vi.useFakeTimers()` keeps today's
+date unless it is given one, so `unless` names only what pins the clock.
+
+A ceiling is raised only on purpose, with the reason
 in the commit, and a raised ceiling should read as a ledger: each increment
 names the sites it admits and why each has no better spelling — a debounce that
 has to be waited out and nothing says when it has; a listener-readiness retry;
@@ -81,10 +98,33 @@ def count(roots, skip_dirs, habits, repo_root, extensions=DEFAULT_EXTENSIONS, mi
     sites = {name: [] for name in habits}
     files = list(source_files(roots, skip_dirs, extensions)) + list(test_files_in(mixed_roots or {}, skip_dirs))
     regexes = {name: habit["pattern"] for name, habit in habits.items()}
+    scope = Scope(repo_root)
     for rel, line, _text, name in patterns.sites(files, regexes, repo_root, prepare=strip_code):
-        totals[name] += 1
-        sites[name].append("%s:%d" % (rel, line))
+        if scope.counts(habits[name], rel):
+            totals[name] += 1
+            sites[name].append("%s:%d" % (rel, line))
     return totals, sites
+
+
+class Scope:
+    """Whether a habit counts a site in a file: its `files` globs, its `exclude` globs, and
+    its `unless` regex over the file's code (read once per file)."""
+
+    def __init__(self, repo_root):
+        self.repo_root, self.code = repo_root, {}
+
+    def counts(self, habit, rel):
+        if habit.get("files") and not patterns.excluded(rel, habit["files"]):
+            return False
+        if patterns.excluded(rel, habit.get("exclude", ())):
+            return False
+        return not (habit.get("unless") and re.search(habit["unless"], self._code(rel)))
+
+    def _code(self, rel):
+        if rel not in self.code:
+            with open(os.path.join(self.repo_root, rel), errors="replace") as handle:
+                self.code[rel] = strip_code(handle.read())
+        return self.code[rel]
 
 
 def resolve_roots(args, config):
