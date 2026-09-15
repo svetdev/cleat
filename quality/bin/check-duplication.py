@@ -38,7 +38,6 @@ nothing to install) or from a jscpd report when `report.jscpd` names one.
 """
 
 import argparse
-import importlib.util
 import json
 import os
 import sys
@@ -48,11 +47,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import quality_config
 import ratchet
-from extractors import changed, duplication, patterns
+from extractors import languages, changed, duplication, patterns
 
-_spec = importlib.util.spec_from_file_location("check_escapes", os.path.join(HERE, "check-escapes.py"))
-check_escapes = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(check_escapes)
 
 SECTION = "duplication"
 DENSITY_KEY = "duplicated share of significant lines"
@@ -62,7 +58,7 @@ def sources(section, config):
     roots = config.paths(section.get("roots", ["."]))
     skip = set(section.get("skip_dirs", []))
     suffixes = section.get("suffixes") or sorted(
-        {s for name in section.get("languages", []) for s in check_escapes.language(name)["suffixes"]})
+        set(languages.suffixes(section.get("languages", []))))
     if not suffixes:
         raise KeyError("%s: \"%s\" names no \"languages\" and no \"suffixes\" — nothing to read" % (config.file, SECTION))
     return list(patterns.files(roots, suffixes, skip, section.get("exclude", [])))

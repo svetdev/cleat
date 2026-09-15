@@ -28,7 +28,6 @@ sites that exist on adoption day are accepted once and a new one fails.
 """
 
 import argparse
-import importlib.util
 import os
 import sys
 
@@ -37,21 +36,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import quality_config
 import ratchet
-from extractors import patterns
+from extractors import languages, patterns
 
-_spec = importlib.util.spec_from_file_location("check_escapes", os.path.join(HERE, "check-escapes.py"))
-check_escapes = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(check_escapes)
 
 SECTION = "conventions"
-CODE_SUFFIXES = tuple(s for spec in check_escapes.LANGUAGES.values() if "suffixes" in spec for s in spec["suffixes"])
+CODE_SUFFIXES = languages.every_suffix()
 
 
 def suffixes_for(rule):
     if rule.get("extensions"):
         return tuple(rule["extensions"])
     if rule.get("languages"):
-        return tuple(s for name in rule["languages"] for s in check_escapes.language(name)["suffixes"])
+        return languages.suffixes(rule["languages"])
     return CODE_SUFFIXES
 
 

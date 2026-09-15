@@ -81,7 +81,6 @@ config lacks fails naming the key.
 """
 
 import argparse
-import importlib.util
 import json
 import os
 import sys
@@ -91,11 +90,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_config
 import ratchet
-from extractors import complexity as complexity_readers
+from extractors import languages, complexity as complexity_readers
 from extractors import coverage as coverage_reports
-_escapes_spec = importlib.util.spec_from_file_location("check_escapes", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-escapes.py"))
-check_escapes = importlib.util.module_from_spec(_escapes_spec)
-_escapes_spec.loader.exec_module(check_escapes)
 
 SECTION = "crap"
 
@@ -265,8 +261,8 @@ def narrowed(args, settings, sources, suffixes):
     return complexity_readers.only_files(args.only, sources, suffixes, settings.config.path)
 
 
-def lizard_suffixes(languages):
-    return tuple(s for name in languages for s in (check_escapes.language(name).get("suffixes") or []))
+def lizard_suffixes(names):
+    return languages.suffixes(names)
 
 
 def complexities_for(args, settings):

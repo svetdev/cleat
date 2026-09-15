@@ -68,13 +68,9 @@ import sys
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from extractors import patterns
-import importlib.util
+from extractors import languages, patterns
 import runlock
 
-_spec = importlib.util.spec_from_file_location("check_escapes", os.path.join(HERE, "check-escapes.py"))
-check_escapes = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(check_escapes)
 
 SKIP_DIRS = set(patterns.DEFAULT_SKIP_DIRS) | {"quality", ".claude", ".github", ".idea", ".vscode"}
 
@@ -82,7 +78,7 @@ SKIP_DIRS = set(patterns.DEFAULT_SKIP_DIRS) | {"quality", ".claude", ".github", 
 LIZARD_NAMES = {"python": "python", "typescript": "typescript", "javascript": "javascript", "swift": "swift",
                 "rust": "rust", "kotlin": "kotlin", "java": "java", "go": "go", "ruby": "ruby"}
 SUFFIX_LANGUAGE = {}
-for _name, _spec_ in check_escapes.LANGUAGES.items():
+for _name, _spec_ in languages.LANGUAGES.items():
     if "alias" in _spec_:
         continue
     for _suffix in _spec_["suffixes"]:
@@ -217,8 +213,8 @@ def ceiling_for(words):
     return max(200, int(math.ceil(words * 1.1 / 50.0)) * 50)
 
 
-def suffixes_of(languages):
-    return sorted({s for name in languages for s in check_escapes.language(name)["suffixes"]})
+def suffixes_of(names):
+    return sorted(set(languages.suffixes(names)))
 
 
 def sleep_count(plan, languages):

@@ -43,104 +43,16 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_config
 import ratchet
-from extractors import patterns
+from extractors import languages, patterns
 
 SECTION = "escapes"
 
-# Per language: the file suffixes it lives in, and the escapes worth a site each.
-# A pattern is a regex over the raw text — comments included, since most escapes
-# are comments — anchored loosely enough to survive spacing.
-LANGUAGES = {
-    "python": {
-        "suffixes": [".py"],
-        "patterns": {
-            "type ignore": r"#\s*type:\s*ignore",
-            "noqa": r"#\s*noqa\b",
-            "no cover": r"#\s*pragma:\s*no cover",
-            "skipped test": r"pytest\.mark\.skip|pytest\.skip\(|unittest\.skip|@skip\b",
-            "bare except": r"^\s*except\s*:",
-        },
-    },
-    "typescript": {
-        "suffixes": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
-        "patterns": {
-            "any": r":\s*any\b|\bas\s+any\b|<any>",
-            "ts-ignore": r"@ts-(?:ignore|expect-error|nocheck)",
-            "eslint-disable": r"eslint-disable",
-            "non-null assertion": r"[\w)\]]!\.",
-            "skipped test": r"\b(?:it|test|describe)\.(?:skip|only)\(|\bx(?:it|test|describe)\(",
-        },
-    },
-    "javascript": {"alias": "typescript"},
-    "swift": {
-        "suffixes": [".swift"],
-        "patterns": {
-            "force try": r"\btry!",
-            "force cast": r"\bas!",
-            "force unwrap": r"[\w)\]]!(?:\.|\s*[,;)\]]|$)",
-            "swiftlint:disable": r"swiftlint:disable",
-            "unchecked Sendable": r"@unchecked\s+Sendable",
-            "skipped test": r"\bXCTSkip|\bthrow\s+XCTSkip",
-        },
-    },
-    "rust": {
-        "suffixes": [".rs"],
-        "patterns": {
-            "unwrap": r"\.unwrap\(\)",
-            "expect": r"\.expect\(",
-            "unsafe": r"\bunsafe\s*\{",
-            "allow": r"#!?\[allow\(",
-            "todo": r"\b(?:todo|unimplemented)!\(",
-            "skipped test": r"#\[ignore\b",
-        },
-    },
-    "kotlin": {
-        "suffixes": [".kt", ".kts"],
-        "patterns": {
-            "not-null assertion": r"!!",
-            "suppress": r"@Suppress\(",
-            "skipped test": r"@(?:Ignore|Disabled)\b",
-        },
-    },
-    "java": {
-        "suffixes": [".java"],
-        "patterns": {
-            "suppress warnings": r"@SuppressWarnings\(",
-            "skipped test": r"@(?:Ignore|Disabled)\b",
-        },
-    },
-    "go": {
-        "suffixes": [".go"],
-        "patterns": {
-            "nolint": r"//\s*nolint",
-            "skipped test": r"\bt\.Skip(?:Now|f)?\(",
-        },
-    },
-    "ruby": {
-        "suffixes": [".rb"],
-        "patterns": {
-            "rubocop:disable": r"rubocop:disable",
-            "skipped test": r"\bskip\b|\bxit\b|\bpending\b",
-        },
-    },
-    "shell": {
-        "suffixes": [".sh", ".bash", ".zsh"],
-        "patterns": {
-            "errors ignored": r"\|\|\s*true\b|^\s*set\s+\+e\b",
-            "shellcheck disable": r"shellcheck\s+disable",
-        },
-    },
-}
+LANGUAGES = languages.LANGUAGES   # the table lives in extractors/languages.py; every gate with a `languages` list reads it
 
 DEFAULT_SKIP_DIRS = patterns.DEFAULT_SKIP_DIRS   # the walker prunes these; the name stays for callers
 
 
-def language(name):
-    """A language's suffixes and patterns, following an alias."""
-    spec = LANGUAGES.get(name)
-    if spec is None:
-        raise KeyError("no built-in escape patterns for \"%s\" — one of: %s" % (name, ", ".join(sorted(LANGUAGES))))
-    return LANGUAGES[spec["alias"]] if "alias" in spec else spec
+language = languages.language
 
 
 def _collect(seen, roots, suffixes, regexes, skip, exclude, repo_root, skip_rust_tests, skipped):

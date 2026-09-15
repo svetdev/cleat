@@ -39,7 +39,6 @@ two gates were one):
 """
 
 import argparse
-import importlib.util
 import json
 import os
 import sys
@@ -48,10 +47,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_config
 import ratchet
-from extractors import complexity
-_escapes_spec = importlib.util.spec_from_file_location("check_escapes", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-escapes.py"))
-check_escapes = importlib.util.module_from_spec(_escapes_spec)
-_escapes_spec.loader.exec_module(check_escapes)
+from extractors import languages, complexity
 
 SECTIONS = ("complexity", "complexity_lizard")
 RETIRED_KEYS = ("cwd", "config")   # the SwiftLint-native gate's shape, before the two gates were one
@@ -121,7 +117,7 @@ def language_suffixes(section):
     names = section.get("languages") or []
     if not names:
         return (".swift",)
-    return tuple(s for name in names for s in (check_escapes.language(name).get("suffixes") or []))
+    return languages.suffixes(names)
 
 
 
