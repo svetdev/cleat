@@ -72,7 +72,7 @@ sys.path.insert(0, HERE)
 import events
 import quality_config
 import runlock
-from extractors import changed
+from extractors import changed, shell
 
 # section → (gate name, script, accepts --strict, postflight), ladder order
 GATES = [
@@ -105,12 +105,15 @@ LISTABLE = {"crap", "sarif", "public_api", "inventory"}
 RETIRED = {"features_map": "split into \"doc_citations\" (the map's citations) and \"reachability\" (the services nothing constructs)"}
 
 # What --guard refuses: a command that rewrites accepted debt or edits policy —
-# writing a baseline, or a shell edit/copy/redirect aimed at quality.json, the
-# baselines, the gates, CODEOWNERS or the agent settings. Running a gate is fine.
+# running a program with --write-baseline, or a shell edit/copy/redirect aimed at
+# quality.json, the baselines, the gates, CODEOWNERS or the agent settings. Running a
+# gate is fine, and so is a command that only mentions the flag: a commit message, a
+# heredoc into a document, a grep (extractors/shell.py tells a call from a mention).
 POLICY_PATHS = r"(?:quality\.json|quality/|\.github/CODEOWNERS|\.claude/settings)"
+BASELINE_FLAG = "--write-baseline"
+BASELINE_FLAG_SHORTEST = "--wr"   # argparse expands an unambiguous prefix; --w is --web-sources in check-crap
 GUARDED_COMMAND_RE = re.compile(
-    r"--write-baseline"
-    r"|\b(?:sed\s+-[a-zA-Z]*i|tee|cp|mv|rm|truncate|install)\b[^\n|;&]*" + POLICY_PATHS +
+    r"\b(?:sed\s+-[a-zA-Z]*i|tee|cp|mv|rm|truncate|install)\b[^\n|;&]*" + POLICY_PATHS +
     r"|>{1,2}\s*['\"]?(?:\S*/)?" + POLICY_PATHS
 )
 GUARDED_PATH_RE = re.compile(r"(?:^|/)" + POLICY_PATHS)
@@ -234,8 +237,14 @@ def guard_decision(event_text):
     tool_input = event.get("tool_input") or {}
     command = tool_input.get("command") or ""
     target = tool_input.get("file_path") or ""
-    refused = bool(GUARDED_COMMAND_RE.search(command) or GUARDED_PATH_RE.search(target))
-    return event.get("tool_name"), target or command, refused
+    return event.get("tool_name"), target or command, refuses(command, target)
+
+
+def refuses(command, target):
+    """Whether a Bash `command` or an edit to `target` would change policy."""
+    if shell.runs_with_flag(command, BASELINE_FLAG, BASELINE_FLAG_SHORTEST):
+        return True
+    return bool(GUARDED_COMMAND_RE.search(command) or GUARDED_PATH_RE.search(target))
 
 
 def guard(event_text):

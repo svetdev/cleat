@@ -216,6 +216,12 @@ try:
 
     refused = [
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py --write-baseline"}},
+        {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py --write-base"}},
+        {"tool_name": "Bash", "tool_input": {"command": "cd quality/bin && python3 check-complexity.py --write-baseline"}},
+        {"tool_name": "Bash", "tool_input": {"command": "echo 'python3 quality/bin/check-crap.py --write-baseline' | sh"}},
+        {"tool_name": "Bash", "tool_input": {"command": "bash -c \"$(echo python3 quality/bin/check-crap.py --write-baseline)\""}},
+        {"tool_name": "Bash", "tool_input": {"command": "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['quality/bin/check-crap.py', '--write-baseline'])\nEOF"}},
+        {"tool_name": "Bash", "tool_input": {"command": "cat > notes.md <<EOF\n$(python3 quality/bin/check-crap.py --write-baseline)\nEOF"}},
         {"tool_name": "Bash", "tool_input": {"command": "cd /x && sed -i '' 's/8/80/' quality.json"}},
         {"tool_name": "Bash", "tool_input": {"command": "echo '[]' > quality/escapes-baseline.json"}},
         {"tool_name": "Bash", "tool_input": {"command": "cp /tmp/loose.json quality/complexity-baseline.json"}},
@@ -234,6 +240,11 @@ try:
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py"}},
         {"tool_name": "Bash", "tool_input": {"command": "cat quality.json"}},
         {"tool_name": "Bash", "tool_input": {"command": "git diff quality/"}},
+        # the flag mentioned, not run: a document through a heredoc, a commit message, a search
+        {"tool_name": "Bash", "tool_input": {"command": "cat > docs/decisions/0007.md <<'EOF'\nOnly a person runs `--write-baseline`.\nEOF"}},
+        {"tool_name": "Bash", "tool_input": {"command": "git commit -m \"$(cat <<'EOF'\nguard: why --write-baseline is a person's call\nEOF\n)\""}},
+        {"tool_name": "Bash", "tool_input": {"command": "grep -rn -- --write-baseline quality/bin | head -5"}},
+        {"tool_name": "Bash", "tool_input": {"command": "gh pr create --title guard --body \"run --write-baseline after review\""}},
         {"tool_name": "Edit", "tool_input": {"file_path": "/repo/src/quality_of_life.py"}},
         {"tool_name": "Write", "tool_input": {"file_path": "/repo/docs/quality.md"}},
     ]
