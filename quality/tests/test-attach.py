@@ -117,23 +117,26 @@ try:
     settings_path = os.path.join(root, ".claude", "settings.json")
     wrapped = json.load(open(settings_path))
     prefix = "PATH=\"$HOME/.local/bin:$PATH\"; if [ -f quality/bin/gate.py ]; then python3 quality/bin/gate.py %s; fi"
-    wrapped["hooks"] = {"Stop": [{"hooks": [{"type": "command", "command": prefix % "--hook --changed"}]}],
+    anchored = "cd \"$CLAUDE_PROJECT_DIR\" && python3 $(git rev-parse --show-toplevel)/quality/bin/gate.py --hook --changed"
+    wrapped["hooks"] = {"Stop": [{"hooks": [{"type": "command", "command": anchored}]}],
                         "PreToolUse": [{"matcher": "Bash|Edit|Write|MultiEdit", "hooks": [{"type": "command", "command": prefix % "--guard"}]}]}
     write(settings_path, json.dumps(wrapped))
     code, out = run("--into", root)
-    check("a wrapped hook that already runs gate.py counts as wired, not appended again",
+    check("a wrapped hook, or one anchored through an unquoted subshell, that already runs gate.py counts as wired, not appended again",
           code == 0 and "hooks already wired" in out and json.load(open(settings_path))["hooks"] == wrapped["hooks"], out)
     check("and attach names the command it trusted", "then python3 quality/bin/gate.py --guard" in out, out)
     # a command that only MENTIONS the gate, or a guard scoped to the wrong tools, is not wired
     neutered = json.load(open(settings_path))
-    neutered["hooks"] = {"Stop": [{"hooks": [{"type": "command", "command": "true || python3 quality/bin/gate.py --hook --changed"}]}],
+    neutered["hooks"] = {"Stop": [{"hooks": [{"type": "command", "command": "true || python3 quality/bin/gate.py --hook --changed"}]},
+                                  {"hooks": [{"type": "command", "command": "# python3 quality/bin/gate.py --hook --changed"}]},
+                                  {"hooks": [{"type": "command", "command": "echo $(python3 quality/bin/gate.py --hook)"}]}],
                          "PreToolUse": [{"matcher": "Read", "hooks": [{"type": "command", "command": "python3 quality/bin/gate.py --guard"}]},
                                         {"matcher": "Bash|Edit|Write", "hooks": [{"type": "command", "command": "echo gate.py --guard"}]}]}
     write(settings_path, json.dumps(neutered))
     code, out = run("--into", root)
     fixed = json.load(open(settings_path))["hooks"]
-    check("a short-circuited Stop command and a mis-scoped or echoed guard get a real hook appended",
-          code == 0 and "hooks added" in out and len(fixed["Stop"]) == 2 and len(fixed["PreToolUse"]) == 3, out + json.dumps(fixed))
+    check("a short-circuited, commented or subshell-swallowed Stop command and a mis-scoped or echoed guard get a real hook appended",
+          code == 0 and "hooks added" in out and len(fixed["Stop"]) == 4 and len(fixed["PreToolUse"]) == 3, out + json.dumps(fixed))
     write(settings_path, json.dumps(wrapped))
 
     # ---- --refresh: the template's files replaced, the project's kept

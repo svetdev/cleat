@@ -68,7 +68,7 @@ import sys
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from extractors import languages, patterns
+from extractors import languages, patterns, shell
 import runlock
 
 
@@ -463,24 +463,39 @@ GATE_IN_HOOK = ('python3 "$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --show-t
 GUARDED_TOOLS = ("Bash", "Edit", "Write")
 
 
-def _squash(match):
-    return re.sub(r"[\s;&|]", "_", match.group(0))
-
-
-def _one_word(command):
-    """`command` with the whitespace and separators inside a `$( )` or double quotes squashed
-    to `_`, so a path spelled through a subshell — attach's own, anchored on the git top
-    level — reads as one word to `invoked`, and a `||` inside it is not a short-circuit."""
-    return re.sub(r'"[^"]*"', _squash, re.sub(r"\$\([^()]*\)", _squash, command))
+INTERPRETERS = ("python", "python3")
 
 
 def invoked(command, mode):
-    """Whether `command` actually runs gate.py in `mode`: as the command, or after `;`, `&&`,
-    `then` or `do` — a PATH prefix, an existence guard or a subshell-anchored path around it
-    still counts. Not after `||`, inside a comment, or as the argument of echo: a string
-    that only mentions the gate must not pass for a hook that runs it."""
-    return re.search(r'(?:^|;|&&|\bthen|\bdo)\s*(?:PATH=\S+;?\s*)?python3?\s+\S*gate\.py"?\s+%s\b' % re.escape(mode),
-                     _one_word(command)) is not None
+    """Whether `command` runs gate.py in `mode`: as a command of its own, or after `;`, `&&`,
+    a newline, `then` or `do` — a PATH prefix, an existence guard or a subshell-anchored
+    path around it still counts. Not after `||` (it would run only once the guard had
+    failed), not as the argument of echo, not in a comment, not inside a subshell: a
+    string that only mentions the gate must not pass for a hook that runs it."""
+    for segment in shell.Scan(command).segments:
+        if segment["after"] != "||" and segment["depth"] == 1 and runs_gate("".join(segment["chars"]), mode):
+            return True
+    return False
+
+
+def runs_gate(text, mode):
+    """Whether one simple command is `gate.py <mode>`, run directly or through python."""
+    program, words = shell.command_word(text), shell.words(text)
+    at = next((i for i, word in enumerate(words) if os.path.basename(word) == program), None)
+    if program == "" or at is None:
+        return False
+    arguments = gate_arguments(program, words[at + 1:])
+    return arguments is not None and mode in arguments
+
+
+def gate_arguments(program, arguments):
+    """The arguments handed to gate.py when `program` runs it — directly, or through python
+    with the script as the first argument; None when what runs is not gate.py."""
+    if program.endswith("gate.py"):
+        return arguments
+    if program in INTERPRETERS and arguments and arguments[0].endswith("gate.py"):
+        return arguments[1:]
+    return None
 
 
 def covers(entry, tools):

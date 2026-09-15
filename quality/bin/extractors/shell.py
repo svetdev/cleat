@@ -16,6 +16,9 @@ them. An unquoted heredoc's body runs its own subshells, so those are judged too
 
 The direction of every doubt is refusal: a command word this does not know is a
 program, not prose.
+
+`Scan` is the reader underneath; attach uses it too, to tell a project's own hook
+that runs `gate.py` from one that only names it.
 """
 
 import os
@@ -26,6 +29,9 @@ PROSE_COMMANDS = frozenset({"cat", "echo", "printf", "tee", "grep", "egrep", "fg
                             "head", "tail", "less", "more", "wc", "jq", "gh", "git"})
 HEREDOC_RE = re.compile(r"<<(-?)[ \t]*(['\"]?)([A-Za-z_][\w.-]*)\2")
 ASSIGNMENT_RE = re.compile(r"^[A-Za-z_]\w*=")
+# Words that stand in front of the program a simple command runs.
+PREFIX_WORDS = frozenset({"then", "do", "else", "elif", "if", "while", "until", "exec", "env", "nohup", "time",
+                          "command", "builtin"})
 HEREDOC_TEXT = "heredoc"   # a frame's quote state for an unquoted heredoc's body: literal but for subshells
 
 
@@ -37,19 +43,25 @@ def mentions_prefix(text, flag, shortest):
 
 
 def command_word(text):
-    """The program a simple command runs: its first word past assignments and openers,
-    by basename; "" for none."""
+    """The program a simple command runs: its first word past assignments, openers and the
+    keywords that stand in front of one (`then`, `exec`, `env`), by basename; "" for none."""
     for word in re.split(r"[\s({]+", text):
         word = word.strip("'\"!")
-        if word and not ASSIGNMENT_RE.match(word):
+        if word and not ASSIGNMENT_RE.match(word) and word not in PREFIX_WORDS:
             return os.path.basename(word)
     return ""
 
 
+def words(text):
+    """A simple command's words, each stripped of the quotes around it."""
+    return [word.strip("'\"") for word in text.split()]
+
+
 class Scan:
-    """A command line as its simple commands: each a dict of its text, its pipeline, the
-    segment its output feeds (a subshell's parent), its depth, and whether it is literal
-    heredoc text."""
+    """A command line as its simple commands: each a dict of its text (`chars`), its
+    pipeline, the segment its output feeds (a subshell's `parent`), its `depth` (1 at the
+    top), the operator it came `after` (`;`, `&&`, `||`, `|`, a newline, or "" for the
+    first), and whether it is `literal` heredoc text."""
 
     def __init__(self, text, literal=False):
         self.text, self.segments, self.pipelines, self.pending = text, [], 0, []
@@ -59,9 +71,9 @@ class Scan:
         while index < len(text):
             index = self._step(index)
 
-    def _segment(self, frame):
+    def _segment(self, frame, after=""):
         seg = {"chars": [], "pipeline": frame["pipeline"], "parent": frame["parent"], "depth": len(self.frames),
-               "literal": frame["quote"] == HEREDOC_TEXT and len(self.frames) == 1, "bodies": []}
+               "after": after, "literal": frame["quote"] == HEREDOC_TEXT and len(self.frames) == 1, "bodies": []}
         self.segments.append(seg)
         return seg
 
@@ -130,22 +142,22 @@ class Scan:
             self._put(heredoc.group(0))
             return heredoc.end()
         if text[i] == "\n":
-            self._split(pipe=False)
+            self._split(pipe=False, after="\n")
             return self._bodies(i + 1)
         if text.startswith("||", i) or text.startswith("&&", i):
-            self._split(pipe=False)
+            self._split(pipe=False, after=text[i:i + 2])
             return i + 2
         if text[i] in "|;&":
-            self._split(pipe=text[i] == "|")
+            self._split(pipe=text[i] == "|", after=text[i])
             return i + 1
         return self._literal(i)
 
-    def _split(self, pipe):
+    def _split(self, pipe, after):
         frame = self.frames[-1]
         if not pipe:
             self.pipelines += 1
             frame["pipeline"] = self.pipelines
-        frame["segment"] = self._segment(frame)
+        frame["segment"] = self._segment(frame, after)
 
     def _bodies(self, i):
         """Past the bodies of the heredocs the line just ended declared, each handed to
