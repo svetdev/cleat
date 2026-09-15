@@ -5,7 +5,8 @@ A document citing files that exist passes counting them; one citing a moved
 file fails naming the document, line and path; a backticked span that is not a
 path (a word, a command with spaces, a suffix not in the list) is not read; a
 path with a line suffix resolves; --root chooses where; the config's list is
-read and a missing document is refused. Writes nothing outside a temporary directory.
+read and a missing document is refused; a sentence saying the file is to be added or
+is gone excuses its citation, and a cue inside backticks does not. Writes nothing outside a temporary directory.
 
   python3 quality/tests/test-check-doc-citations.py
 """
@@ -61,6 +62,20 @@ try:
     write(os.path.join(tmp, "src", "data", "store.py"), "x = 2\n")
     code, out = run("--file", doc, "--root", tmp, "--quiet")
     check("--quiet prints nothing on success", code == 0 and out == "", repr(out))
+    # a sentence that says the file is to be created, or is gone, cites it on purpose
+    write(doc, "Add `e2e/stack/new-flow.spec.ts` for the booking flow.\nThe retired `bin/old.py` is gone. See `src/store.py`.\n"
+               "The `bin/gone.py` script handles exports.\n")
+    code, out = run("--file", doc, "--root", tmp)
+    check("a citation whose sentence says the file is to be added or is gone is excused", "new-flow.spec.ts" not in out and "old.py" not in out, out)
+    check("but only in its own sentence: the next sentence on the line is judged alone, and resolves", "store.py" not in out, out)
+    check("a cue-less sentence citing a missing file still fails", code == 1 and "`bin/gone.py` — not under the roots" in out, out)
+    write(doc, "Add `e2e/stack/new-flow.spec.ts` for the booking flow. See `src/store.py`.\n")
+    code, out = run("--file", doc, "--root", tmp)
+    check("the success line counts the excused citations apart", code == 0 and "all 1 cited path(s) resolve (1 named as to be created or gone)" in out, out)
+    write(doc, "The script `bin/add.py` handles exports.\n")
+    code, out = run("--file", doc, "--root", tmp)
+    check("a cue word inside backticks is not a cue", code == 1 and "`bin/add.py`" in out, out)
+    write(doc, "The store is `src/data/store.py` and the page `src/views/page.ts`.\n")
     config = os.path.join(tmp, "quality.json")
     write(config, json.dumps({"doc_citations": [{"file": "docs/arch.md", "roots": ["."]}, {"file": "README.md", "roots": ["src"], "extensions": [".py"]}]}))
     code, out = run("--config", config)

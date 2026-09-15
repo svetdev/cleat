@@ -9,6 +9,14 @@ resolve nowhere under the document's roots — as written, or as a bare
 filename that exactly one file under the roots carries; two candidates is
 ambiguity, reported with both. No parser, no baseline.
 
+A sentence may cite a file that is not there on purpose: a backlog item that
+will create it ("Add `e2e/new-flow.spec.ts` …"), a note that it is gone ("the
+retired `bin/old.py`"). A citation that does not resolve is excused when its own
+sentence carries a creation cue (add, create, introduce) or an absence cue
+(missing, gone, removed, deleted, retired, no longer, formerly) outside
+backticks; the success line counts those. A citation that resolves is judged the
+same either way.
+
   "doc_citations": [
     {"file": "docs/architecture.md", "roots": ["src", "."]},
     {"file": "CLAUDE.md", "roots": ["."], "extensions": [".py", ".md"]}   # only paths with these suffixes are read
@@ -32,20 +40,43 @@ SECTION = "doc_citations"
 DEFAULT_EXTENSIONS = [".py", ".ts", ".tsx", ".js", ".jsx", ".swift", ".rs", ".go", ".kt", ".java", ".rb", ".sh",
                       ".md", ".json", ".yml", ".yaml", ".toml"]
 CITATION_RE = re.compile(r"`([^`\n]+?)`")
+SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z`*_(\[])")
+# Words that say a cited file is meant not to be there yet, or any more.
+CUE_RE = re.compile(r"\b(?:add|adds|adding|create|creates|creating|introduce|introduces|introducing"
+                    r"|missing|gone|removed|deleted|retired|no\s+longer|formerly)\b", re.IGNORECASE)
+
+
+def sentences(line):
+    """A line's sentences, split where one ends and a capital, a backtick or a bracket starts the next."""
+    return SENTENCE_END_RE.split(line)
+
+
+def cued(sentence):
+    """Whether a sentence, outside its backticks, says a file is to be created or is gone."""
+    return bool(CUE_RE.search(CITATION_RE.sub(" ", sentence)))
 
 
 def citations(text, extensions):
-    """(path, line) for every backticked span that looks like a file path with one of
-    `extensions` — no spaces, and a slash or a suffix."""
+    """(path, line, cued) for every backticked span that looks like a file path with one
+    of `extensions` — no spaces, and a slash or a suffix — and whether its sentence
+    carries a creation or absence cue."""
     out = []
     for number, line in enumerate(text.split("\n"), 1):
-        for span in CITATION_RE.findall(line):
-            candidate = span.strip().split(":")[0]
-            if " " in candidate or "*" in candidate or not candidate.endswith(tuple(extensions)):
-                continue
-            if "/" in candidate or "." in candidate:
-                out.append((candidate, number))
+        for sentence in sentences(line):
+            out += [(path, number, cued(sentence)) for path in paths_in(sentence, extensions)]
     return out
+
+
+def paths_in(sentence, extensions):
+    """The backticked spans in `sentence` that look like file paths."""
+    found = []
+    for span in CITATION_RE.findall(sentence):
+        candidate = span.strip().split(":")[0]
+        if " " in candidate or "*" in candidate or not candidate.endswith(tuple(extensions)):
+            continue
+        if "/" in candidate or "." in candidate:
+            found.append(candidate)
+    return found
 
 
 def basenames_under(roots):
@@ -79,12 +110,14 @@ def judge(doc_path, roots, extensions):
     with open(doc_path, errors="replace") as handle:
         cited = citations(handle.read(), extensions)
     index = basenames_under(roots)
-    missing = []
-    for path, line in cited:
+    missing, excused = [], 0
+    for path, line, is_cued in cited:
         why = resolves(path, roots, index)
-        if why:
+        if why and is_cued:
+            excused += 1
+        elif why:
             missing.append((path, line, why))
-    return cited, missing
+    return cited, missing, excused
 
 
 def entries_for(args):
@@ -119,17 +152,18 @@ def main():
     return 1 if failed else 0
 
 
-def report(shown, roots, cited, missing, quiet):
+def report(shown, roots, cited, missing, excused, quiet):
     """Print one document's result; 1 when it failed."""
     if not missing:
         if not quiet:
-            print("OK: %s — all %d cited path(s) resolve" % (shown, len(cited)))
+            planned = " (%d named as to be created or gone)" % excused if excused else ""
+            print("OK: %s — all %d cited path(s) resolve%s" % (shown, len(cited) - excused, planned))
         return 0
     print("FAIL: %s cites %d path(s) that resolve nowhere under %s:" % (shown, len(missing), ", ".join(os.path.relpath(r) for r in roots)))
     for cited_path, line, why in missing[:20]:
         print("  %s:%d  `%s` — %s" % (shown, line, cited_path, why))
     print("Point the citation at where the file is now (a bare filename resolves when exactly one file under the "
-          "roots has that name), or delete the sentence that cites it.")
+          "roots has that name), say in its sentence that the file is to be added or is gone, or delete the sentence.")
     return 1
 
 
