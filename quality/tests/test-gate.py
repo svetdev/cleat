@@ -253,6 +253,32 @@ try:
         check("--guard allows: %s" % (event["tool_input"].get("command") or event["tool_input"].get("file_path")), code == 0, err)
     code, out, err = guard("not json")
     check("--guard lets a malformed event through rather than blocking on its own bug", code == 0, err)
+
+    # ---- the preflight looks ahead at CRAP: each crap gate's --estimate is a note, never a failure
+    if shutil.which("lizard"):
+        ahead = os.path.join(tmp, "ahead")
+        web = os.path.join(ahead, "web", "money.ts")
+        write(web, "export function tangled(a: number) {\n" + "".join("  if (a === %d) { return %d }\n" % (i, i) for i in range(9)) + "  return 0\n}\n")
+        write(os.path.join(ahead, "coverage-final.json"), json.dumps({web: {"path": web,
+            "statementMap": {"0": {"start": {"line": 2}, "end": {"line": 2}}, "1": {"start": {"line": 11}, "end": {"line": 11}}},
+            "fnMap": {"0": {"name": "tangled", "decl": {"start": {"line": 1}}, "loc": {"start": {"line": 1}, "end": {"line": 12}}}},
+            "s": {"0": 1, "1": 0}, "f": {"0": 1}}}))
+        write(os.path.join(ahead, "README.md"), "short\n")
+        ahead_config = os.path.join(ahead, "quality.json")
+        write(ahead_config, json.dumps({"doc_size": [{"file": "README.md", "ceiling": 100}], "crap": [
+            {"name": "web", "threshold": 8, "baseline": "crap-web.json",
+             "complexity": {"tool": "lizard", "sources": ["web"], "languages": ["typescript"]},
+             "istanbul": {"sources": "web", "exports": "coverage-final.json"}}]}))
+        code, out, err = run("--config", ahead_config)
+        check("the preflight runs each crap gate's estimate and prints what it would say as a note",
+              "note  crap:web (estimate)" in out and "would fail CRAP 8 at the postflight" in out and "web/money.ts:1" in out, out + err)
+        check("and the estimate neither fails the run nor counts as a gate", code == 0 and "gate: 1 gate(s), all passed." in out, out + err)
+        code, out, err = run("--config", ahead_config, "--postflight")
+        check("--postflight runs the gate itself, not the estimate", code == 1 and "FAIL  crap:web" in out and "(estimate)" not in out, out + err)
+        code, out, err = run("--config", ahead_config, "--list")
+        check("--list names the configured gates, not the estimates", "(estimate)" not in out, out)
+    else:
+        check("lizard is not installed, so the preflight's CRAP estimate is not exercised (CI installs it)", True)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

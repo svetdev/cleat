@@ -38,6 +38,14 @@ the suite rather than before it — a postflight — and by hand:
   quality/bin/check-crap.py --write-baseline      # accept what is over the gate today
   quality/bin/check-crap.py --xccov F --codecov F --lint F [--baseline F]   # the tests use these
   quality/bin/check-crap.py --bundle PATH         # score this .xcresult, not the newest on the machine
+  quality/bin/check-crap.py --estimate [--only F…]   # what gate.py's preflight runs: WARN, never fail
+
+A postflight gate is too late for a branch: debt merged clean surfaces only when
+the release runs coverage. So `gate.py`'s preflight also runs each CRAP gate with
+`--estimate` — from the last coverage run on disk, over only the functions that run
+has a record for (an older run cannot tell an uncovered function from a moved one),
+under `--changed` only the changed files. What would fail is a WARN; the exit is
+0; with no coverage run on disk it says nothing.
 
 Everything that names the project is the `crap` section of `quality.json`,
 found by walking up from the working directory or named with `--config` (see
@@ -73,9 +81,11 @@ config lacks fails naming the key.
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
+import time
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -83,6 +93,9 @@ import quality_config
 import ratchet
 from extractors import complexity as complexity_readers
 from extractors import coverage as coverage_reports
+_escapes_spec = importlib.util.spec_from_file_location("check_escapes", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-escapes.py"))
+check_escapes = importlib.util.module_from_spec(_escapes_spec)
+_escapes_spec.loader.exec_module(check_escapes)
 
 SECTION = "crap"
 
@@ -174,12 +187,19 @@ def _from_spans(coverage, path, line, end):
 
 
 def coverage_at(coverage, path, line, end=None):
-    """The coverage for the declaration at `line`: a record on its own line; else, for a
-    function the report never listed (a nested arrow function or closure lizard
+    """The coverage for the declaration at `line`, 0.0 when nothing recorded it (see
+    `coverage_record`)."""
+    cov = coverage_record(coverage, path, line, end)
+    return 0.0 if cov is None else cov
+
+
+def coverage_record(coverage, path, line, end=None):
+    """The coverage recorded for the declaration at `line`: a record on its own line; else,
+    for a function the report never listed (a nested arrow function or closure lizard
     enumerates but istanbul folds into its parent), the statements in its own range or
     the function holding it; else a record on an attribute line above or the line a
     multi-line signature opens the body on (SwiftLint reports the `func` line, xccov
-    records the function elsewhere); 0.0 when nothing recorded anything."""
+    records the function elsewhere); None when nothing recorded anything."""
     cov = coverage.get((path, line))
     if cov is not None:
         return cov
@@ -189,18 +209,22 @@ def coverage_at(coverage, path, line, end=None):
     for candidate in coverage_reports.nearby_declaration_lines(path, line):
         if (path, candidate) in coverage:
             return coverage[(path, candidate)]
-    return 0.0
+    return None
 
 
-def judge(complexities, coverage, threshold, repo, ends=None):
-    """[(file relative to `repo`, line, text, cc, cov, crap)] for every function over the gate."""
+def judge(complexities, coverage, threshold, repo, ends=None, recorded_only=False):
+    """[(file relative to `repo`, line, text, cc, cov, crap)] for every function over the gate.
+    With `recorded_only`, a function the coverage run holds no record for is not judged —
+    an estimate from an older run cannot tell an uncovered function from a moved one."""
     repo = os.path.realpath(repo)  # the files are realpaths; a symlinked repo must not relativise to ../../
     over = []
     for (path, line), cc in complexities.items():
-        cov = coverage_at(coverage, path, line, (ends or {}).get((path, line)))
-        score = crap(cc, cov)
+        cov = coverage_record(coverage, path, line, (ends or {}).get((path, line)))
+        if cov is None and recorded_only:
+            continue
+        score = crap(cc, cov or 0.0)
         if score > threshold:
-            over.append((os.path.relpath(path, repo), line, complexity_readers.declaration_text(path, line), cc, cov, score))
+            over.append((os.path.relpath(path, repo), line, complexity_readers.declaration_text(path, line), cc, cov or 0.0, score))
     over.sort(key=lambda o: (-o[5], o[0], o[1]))
     return over
 
@@ -226,10 +250,23 @@ def functions_for(args, settings):
         return _saved_functions(args.lizard_csv, settings)
     if settings.has("complexity", "tool") and settings.value(None, "complexity", "tool") == "lizard":
         spec = settings.value(None, "complexity")
-        text = complexity_readers.run_lizard(settings.config.paths(spec["sources"]), spec["languages"], spec.get("exclude", []),
-                                             root=settings.config.root)
+        roots = narrowed(args, settings, settings.config.paths(spec["sources"]), lizard_suffixes(spec["languages"]))
+        if not roots:
+            return []
+        text = complexity_readers.run_lizard(roots, spec["languages"], spec.get("exclude", []), root=settings.config.root)
         return complexity_readers.functions_from_csv(text, skip_rust_tests=spec.get("skip_rust_tests", True))[0]
     return None
+
+
+def narrowed(args, settings, sources, suffixes):
+    """`sources`, or under `--only` just the changed files inside them that the reader reads."""
+    if args.only is None:
+        return sources
+    return complexity_readers.only_files(args.only, sources, suffixes, settings.config.path)
+
+
+def lizard_suffixes(languages):
+    return tuple(s for name in languages for s in (check_escapes.language(name).get("suffixes") or []))
 
 
 def complexities_for(args, settings):
@@ -242,7 +279,8 @@ def complexities_for(args, settings):
         functions = functions_for(args, settings)
         if functions is not None:
             return complexity_readers.complexities(functions), complexity_readers.ends(functions)
-        return complexity_readers.swiftlint_complexities(settings.config.paths(settings.value(None, "sources"))), {}
+        roots = narrowed(args, settings, settings.config.paths(settings.value(None, "sources")), (".swift",))
+        return (complexity_readers.swiftlint_complexities(roots) if roots else {}), {}
     except complexity_readers.ToolError as problem:
         raise GateError(str(problem))
 
@@ -355,13 +393,16 @@ def main():
     parser.add_argument("--app-sources", help="the root the xccov reader keeps (default: crap.xccov.sources)")
     parser.add_argument("--package-sources", help="the root the llvm-cov reader keeps (default: crap.llvm_cov.sources)")
     parser.add_argument("--repo", help="paths are reported relative to this (default: the directory of quality.json)")
+    parser.add_argument("--estimate", action="store_true",
+                        help="the preflight's look ahead: warn (never fail) on what would fail CRAP, from the last coverage run on disk")
+    ratchet.add_only_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
     settings = Settings(args.config)
     settings.gate = args.gate
     try:
-        return gate(args, settings)
+        return estimate(args, settings) if args.estimate else gate(args, settings)
     except (GateError, KeyError, coverage_reports.CoverageError) as problem:
         print("FAIL: %s" % (problem.args[0] if problem.args else problem), file=sys.stderr)
         return 2
@@ -391,6 +432,47 @@ def gather_coverage(args, settings):
         raise GateError("no coverage reader is configured — give the gate an \"xccov\", \"llvm_cov\", \"istanbul\", "
                         "\"lcov\" or \"cobertura\" key")
     return coverage, sources_read
+
+
+def estimate(args, settings):
+    """`--estimate`: the preflight's look ahead at the postflight. CRAP from the last coverage
+    run on disk, over the functions (under `--only`, the changed files' functions) that run
+    holds a record for, against the baseline; a function that would fail is a WARN, and the
+    exit is 0 whatever it finds. No coverage run on disk, or none this gate can read, is
+    silence: the postflight decides. So debt a branch adds is named at merge, not at release."""
+    try:
+        coverage, sources_read = gather_coverage(args, settings)
+        complexities, ends = complexities_for(args, settings)
+    except (GateError, KeyError, coverage_reports.CoverageError):
+        return 0
+    threshold = float(settings.value(args.threshold, "threshold"))
+    repo = os.path.abspath(args.repo) if args.repo else settings.root
+    over = [ratchet.Finding(f, line, t, {"cc": cc, "coverage": round(cov, 2), "crap": round(score, 1)})
+            for f, line, t, cc, cov, score in judge(complexities, coverage, threshold, repo, ends, recorded_only=True)]
+    entries, _ = ratchet.read(settings.path(args.baseline, "baseline"))
+    verdict = ratchet.judge(*ratchet.restrict(over, entries, args.only), ["crap"])
+    if verdict.failed:
+        print_estimate(verdict, threshold, sources_read)
+    return 0
+
+
+def print_estimate(verdict, threshold, sources_read):
+    rows = verdict.new + [finding for finding, _ in verdict.worsened]
+    print("WARN: %d function(s) would fail CRAP %g at the postflight — estimated from %s:"
+          % (len(rows), threshold, " and ".join(_aged(s) for s in sources_read)))
+    for f in sorted(rows, key=lambda f: (f.file, f.line)):
+        v = f.values
+        print("  %s:%d  crap %.0f (cc %d, coverage %.0f%%)  %s" % (f.file, f.line, v["crap"], v["cc"], v["coverage"] * 100, f.text))
+    print("Cover the untested paths or split the function now; the postflight reads a fresh coverage run and decides.")
+
+
+def _aged(source):
+    """"istanbul export PATH" with how old the file is, when it is one."""
+    path = source.split(" ", 2)[-1]
+    if not os.path.exists(path):
+        return source
+    hours = (time.time() - os.path.getmtime(path)) / 3600
+    return "%s (%s old)" % (source, "%.0fh" % hours if hours < 48 else "%.0fd" % (hours / 24))
 
 
 def gate(args, settings):

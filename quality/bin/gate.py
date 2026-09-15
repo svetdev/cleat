@@ -120,8 +120,9 @@ GUARDED_PATH_RE = re.compile(r"(?:^|/)" + POLICY_PATHS)
 
 
 class Gate:
-    def __init__(self, name, script, strict, postflight, extra=(), section=None, spec=None, shell=None, needs=()):
+    def __init__(self, name, script, strict, postflight, extra=(), section=None, spec=None, shell=None, needs=(), advisory=False):
         self.name = name
+        self.advisory = advisory  # a look ahead (CRAP's --estimate): its output is shown, it never fails the run
         self.script = os.path.join(HERE, script) if script else None
         self.strict = strict
         self.postflight = postflight
@@ -136,7 +137,7 @@ class Gate:
         base = self.name.split(":")[0]
         if changed is None:
             return []
-        if base in SCOPED:
+        if base in SCOPED or self.advisory:
             return ["--only"] + changed
         return ["--changed-only"] if base in CHANGED_ONLY else []
 
@@ -333,25 +334,54 @@ def _run_one(g, config_path, strict, changed_only):
 def run_all(gates, config_path, strict, skip_missing=False, config=None, changed_only=None):
     """Run each gate, print its status row and output; return (failures, every result).
     With `skip_missing`, a gate whose tool is not installed is reported as skipped, not
-    run. With `changed_only` (a file list), the scoped gates judge those files only."""
+    run. With `changed_only` (a file list), the scoped gates judge those files only. An
+    advisory gate (a CRAP estimate) prints a note when it has one and is neither."""
     failures, results = [], []
     if changed_only is not None:
         print("  changed: %d file(s) against the base — complexity, escapes and conventions judge those; CI judges everything" % len(changed_only))
-    for g in gates:
-        absent = missing_tools(g, config) if skip_missing else []
-        if absent:
-            print("  skip  %s (%s not installed)" % (g.name, ", ".join(absent)))
-            results.append({"name": g.name, "status": "skip", "new": 0, "worsened": 0})
-            continue
-        code, out = _run_one(g, config_path, strict, changed_only)
-        print("  %s  %s" % (_status(code), g.name))
+    judged = only(gates, lambda g: not g.advisory)
+    for g in judged:
+        result, output = run_gate(g, config_path, strict, skip_missing, config, changed_only)
+        results.append(result)
+        if output is not None:
+            failures.append((g, output))
+    for g in only(gates, lambda g: g.advisory):
+        run_advisory(g, config_path, config, changed_only)
+    print("gate: %d gate(s), %s" % (len(judged), "all passed." if not failures else "%d failed." % len(failures)))
+    return failures, results
+
+
+def run_gate(g, config_path, strict, skip_missing, config, changed_only):
+    """(its event result, its output when it failed else None) for one gate, its row printed."""
+    absent = missing_tools(g, config) if skip_missing else []
+    if absent:
+        print("  skip  %s (%s not installed)" % (g.name, ", ".join(absent)))
+        return {"name": g.name, "status": "skip", "new": 0, "worsened": 0}, None
+    code, out = _run_one(g, config_path, strict, changed_only)
+    print("  %s  %s" % (_status(code), g.name))
+    for line in out.splitlines():
+        print("        " + line)
+    return events.gate_result(g.name, code, out), (out if code != 0 else None)
+
+
+def run_advisory(gate, config_path, config, changed_only):
+    """A look ahead: run only when its tools are here, print a row only when it says
+    something, and never count as a failure or an event."""
+    if missing_tools(gate, config):
+        return
+    _, out = _run_one(gate, config_path, False, changed_only)
+    if out.strip():
+        print("  note  %s" % gate.name)
         for line in out.splitlines():
             print("        " + line)
-        results.append(events.gate_result(g.name, code, out))
-        if code != 0:
-            failures.append((g, out))
-    print("gate: %d gate(s), %s" % (len(gates), "all passed." if not failures else "%d failed." % len(failures)))
-    return failures, results
+
+
+def estimates(gates):
+    """For each CRAP gate the preflight leaves out, its `--estimate`: what the postflight
+    would say, from the last coverage run on disk, as a note."""
+    return [Gate(g.name + " (estimate)", g.script, False, False, g.extra + ["--estimate"], section=g.section,
+                 spec=g.spec, advisory=True)
+            for g in gates if g.postflight and g.name.split(":")[0] == "crap" and not g.shell]
 
 
 def _complexity_tool(spec):
@@ -580,6 +610,8 @@ def selected_gates(args, config):
         return None, 0
     if not gates:
         return None, fail("%s configures no gate — see quality/README.md" % config.file)
+    if not (args.gate or args.postflight):
+        gates = gates + estimates(configured(config))
     return gates, None
 
 

@@ -35,7 +35,7 @@ Nineteen checks, each a ratchet: a baseline records what was over the line the d
 1. Copy this directory into the repository.
 2. Copy `quality.example.json` to the repository root as `quality.json` and fill it in — every path is relative to that file; `~` and absolute paths pass through. A key a check needs that the file lacks fails naming the key; there are no silent defaults.
 3. Write the baselines once: each ratchet's `--write-baseline` (`check-crap.py` after a coverage run); `layering.exempt` and `reachability.exempt` are filled from the first run's findings, with a reason each.
-4. Run `bin/gate.py` wherever the tests run — as a **preflight** before a build starts, `--postflight` after a green run for `check-crap.py`, which reads that run's coverage — and `bin/gate.py --strict` in CI.
+4. Run `bin/gate.py` wherever the tests run — as a **preflight** before a build starts, `--postflight` after a green run for `check-crap.py`, which reads that run's coverage (the preflight notes what it would say, from the last run on disk) — and `bin/gate.py --strict` in CI.
 
 ## How cleat attaches
 

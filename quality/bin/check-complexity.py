@@ -112,11 +112,7 @@ def only_roots(only, sources, section, config):
     tooling the config never named — or a shell script under a source the
     config reads for Python has no baseline entries because it was never
     measured, and judging it here would read all of its standing debt as new."""
-    inside = [os.path.join(os.path.realpath(root), "") for root in sources]
-    suffixes = language_suffixes(section)
-    files = (config.path(p) for p in only)
-    return [f for f in files if os.path.isfile(f) and f.endswith(suffixes)
-            and any(os.path.realpath(f).startswith(r) for r in inside)]
+    return complexity.only_files(only, sources, language_suffixes(section), config.path)
 
 
 def language_suffixes(section):

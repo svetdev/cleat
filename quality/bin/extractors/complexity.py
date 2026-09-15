@@ -149,6 +149,15 @@ def run_lizard(sources, languages, excludes, exclude_except=None, root=None):
     return output
 
 
+def only_files(only, sources, suffixes, path_of):
+    """The `--only` files worth measuring: on disk, under one of `sources`, ending in one of
+    `suffixes`. `path_of` turns a repo-relative path into an absolute one."""
+    inside = [os.path.join(os.path.realpath(root), "") for root in sources]
+    files = (path_of(p) for p in only)
+    return [f for f in files if os.path.isfile(f) and f.endswith(suffixes)
+            and any(os.path.realpath(f).startswith(r) for r in inside)]
+
+
 class Function:
     __slots__ = ("path", "line", "end", "cc", "length", "name")
 

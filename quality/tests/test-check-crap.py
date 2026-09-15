@@ -396,7 +396,36 @@ try:
     check("the inline Rust test function is not judged", "knot.rs:3" not in out, out)
     code, out = run2("--gate", "nowhere")
     check("an unknown gate name fails naming the ones there are", code == 2 and "nowhere" in out and "web" in out, out)
+    # --estimate: the preflight's look ahead — a WARN from the last coverage run on disk, exit 0 whatever it finds
+    code, out = run2("--gate", "web", "--estimate")
+    check("--estimate warns on what would fail at the postflight, and exits 0",
+          code == 0 and "WARN: 1 function(s) would fail CRAP 8 at the postflight" in out and "money.ts:1  crap" in out, out)
+    check("and names the coverage run it estimated from, with its age", "istanbul export" in out and " old)" in out, out)
+    code, out = run2("--gate", "web", "--estimate", "--only", "apps/api/src/knot.rs")
+    check("--estimate --only over files outside the gate's sources says nothing", code == 0 and out.strip() == "", out)
+    code, out = run2("--gate", "web", "--estimate", "--only", "apps/web/src/money.ts")
+    check("--estimate --only over a changed file inside them warns on it", code == 0 and "money.ts:1  crap" in out, out)
+    with open(rs, "a") as handle:
+        handle.write("\n\n\nfn ghost(a: i32) -> i32 { if a > 0 { 1 } else { 2 } }\n")   # line 7: production, and in no coverage run
+    ghost_csv = os.path.join(tmp2, "lizard-ghost.csv")
+    write(ghost_csv, open(csv).read() + '1,9,20,1,1,"ghost@7-7@%s","%s","ghost","ghost ( a )",7,7\n' % (rs, rs))
+    def ghost(*args):
+        p = subprocess.run([sys.executable, SCRIPT, "--config", config, "--lizard-csv", ghost_csv, "--gate", "rust", *args], capture_output=True, text=True)
+        return p.returncode, p.stdout + p.stderr
+    code, out = ghost()
+    check("the gate itself reads a function no coverage run records as 0%", code == 1 and "knot.rs:7  crap 90" in out, out)
+    code, out = ghost("--estimate")
+    check("--estimate judges only functions the coverage run holds a record for: a moved or new one is not read as 0%",
+          code == 0 and "knot.rs:1" in out and "knot.rs:7" not in out, out)
+    cfg = json.load(open(config)); cfg["crap"][0]["istanbul"]["exports"] = "no-such-run/coverage-final.json"; write(config, cfg)
+    code, out = run2("--gate", "web", "--estimate")
+    check("--estimate with no coverage run on disk is silent, exit 0 — the postflight decides", code == 0 and out.strip() == "", out)
+    code, out = run2("--gate", "web")
+    check("while the gate itself refuses to judge without one", code == 2 and "no istanbul export" in out, out)
+    cfg["crap"][0]["istanbul"]["exports"] = "coverage-final.json"; write(config, cfg)
     code, out = run2("--gate", "web", "--write-baseline")
+    code, out = run2("--gate", "web", "--estimate")
+    check("--estimate over debt the baseline holds says nothing", code == 0 and out.strip() == "", out)
     code, out = run2("--gate", "web")
     check("each gate ratchets on its own baseline", code == 0 and "all 1 in the baseline" in out, out)
 finally:
