@@ -4,6 +4,7 @@ Newest first. A line per gate or behavior change; policy changes to this reposit
 
 ## Unreleased
 
+- Attach gitignores `.cleat-gate-*.json` beside the run registry and the event log: a gate run killed mid-way left a `gates` entry's temporary config as an untracked file in the repo root, which a clean-tree guard before a release noticed.
 - `gate.py` names a `gates` entry's temporary config for the process as well as the gate (`.cleat-gate-<name>.<pid>.json`), so two runs at once — a release's preflight and the Stop hook's `--hook` — no longer write and remove each other's file, which failed one of them with a missing-file error. `runlock` never claimed to serialise runs; its docstring says so, and it still only keeps `attach --refresh` from replacing scripts under a running one.
 - `test-mutate.py` skips its fixture package, and says so, where no Swift toolchain is installed, instead of failing; CONTRIBUTING says what each suite needs (Linux or macOS, Python 3; lizard, ast-grep and Swift for the cases that use them; never Xcode).
 - Mutation: every write of the source under test moves its modification time on by at least a second, so a mutant the same length as what it replaces (`&&` → `||`, `==` → `!=`) written in the same clock tick as the restore before it is never taken by the incremental build for an unchanged file. On Linux CI those two mutants, and only those, were sometimes judged against the previous mutant's binary. A narrow verdict that falls through to the full suite is now logged with the run's last lines.

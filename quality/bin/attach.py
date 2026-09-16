@@ -735,11 +735,13 @@ def settle_config(plan, root, dry_run, force, add):
     return existing
 
 
-IGNORED = ("quality/.running/", "quality/.events.jsonl")
+IGNORED = ("quality/.running/", "quality/.events.jsonl", ".cleat-gate-*.json")
 
 
 def ignore_runtime_files(plan, dry_run):
-    """The run registry and the event log are runtime state, not policy: gitignored."""
+    """The run registry, the event log and a `gates` entry's temporary config are runtime
+    state, not policy: gitignored. The last is removed after each gate, but a run killed
+    mid-way leaves it, and a clean-tree guard before a release would then refuse."""
     path = os.path.join(plan.root, ".gitignore")
     existing = _read_if_exists(path)
     missing = [entry for entry in IGNORED if entry not in existing.splitlines()]

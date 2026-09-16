@@ -90,7 +90,7 @@ try:
     stop_cmd = " ".join(h["command"] for e in settings["hooks"].get("Stop", []) for h in e.get("hooks", []))
     check("the Stop hook runs the gates in hook mode, with the script anchored on the project top level",
           'gate.py" --hook' in stop_cmd and "CLAUDE_PROJECT_DIR" in stop_cmd and "rev-parse --show-toplevel" in stop_cmd, stop_cmd)
-    check("the run registry and the event log are gitignored", all(e in read(os.path.join(root, ".gitignore")) for e in ("quality/.running/", "quality/.events.jsonl")), read(os.path.join(root, ".gitignore")))
+    check("the run registry, the event log and the per-gate temp config are gitignored", all(e in read(os.path.join(root, ".gitignore")) for e in ("quality/.running/", "quality/.events.jsonl", ".cleat-gate-*.json")), read(os.path.join(root, ".gitignore")))
     pre_cmd = " ".join(h["command"] for e in settings["hooks"].get("PreToolUse", []) for h in e.get("hooks", []))
     check("the PreToolUse guard is wired for the tools that change files, anchored the same way",
           'gate.py" --guard' in pre_cmd and "CLAUDE_PROJECT_DIR" in pre_cmd and "Bash" in pre and "Edit" in pre, pre_cmd)
