@@ -209,6 +209,14 @@ def configured(config):
     return from_sections(config) + from_list(config) + from_commands(config)
 
 
+def gate_config_path(root, name):
+    """Where a `gates` entry's own config is written: beside quality.json, so the entry's
+    paths resolve against the same directory, and named for this process as well as the
+    gate, so two runs at once — a release's preflight and the Stop hook's `--hook` — never
+    write, read or remove each other's file."""
+    return os.path.join(root, ".cleat-gate-%s.%d.json" % (re.sub(r"[^\w.-]", "_", name), os.getpid()))
+
+
 def run(gate, config_path, strict, changed=None):
     """Run one gate. A `gates` entry gets a config of its own beside quality.json — the
     check reads its usual section, filled from the entry's `with`, paths relative to the
@@ -218,7 +226,7 @@ def run(gate, config_path, strict, changed=None):
     if gate.section is not None:
         with open(config_path) as handle:
             base = json.load(handle)
-        path = os.path.join(root, ".cleat-gate-%s.json" % re.sub(r"[^\w.-]", "_", gate.name))
+        path = gate_config_path(root, gate.name)
         with open(path, "w") as handle:
             json.dump({"project": base.get("project", ""), gate.section: gate.spec}, handle)
     try:

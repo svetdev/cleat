@@ -209,6 +209,17 @@ try:
     code, out, err = run("--config", config)
     check("each runs its check over its own facts", code == 1 and "FAIL  escapes-src" in out and "src/a.py:1  noqa" in out and "FAIL  escapes-web" in out and "web/b.ts:1  any" in out, out + err)
     check("and the per-gate config file is cleaned up", not [f for f in os.listdir(tmp) if f.startswith(".cleat-gate-")], str(os.listdir(tmp)))
+    # two runs at once — a release's preflight and the Stop hook — must not share the per-gate config
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gate_module", SCRIPT); gate_module = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate_module)
+    named = os.path.basename(gate_module.gate_config_path(tmp, "escapes web"))
+    check("the per-gate config is named for the gate and for this process, so concurrent runs never collide",
+          named == ".cleat-gate-escapes_web.%d.json" % os.getpid(), named)
+    twins = [subprocess.Popen([sys.executable, SCRIPT, "--config", config], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, stdin=subprocess.DEVNULL) for _ in range(2)]
+    outputs = ["".join(p.communicate()) for p in twins]
+    check("two gate runs at the same time each read their own config, neither a missing file",
+          all("could not be read" not in out and "ERR " not in out for out in outputs), "\n---\n".join(outputs))
     subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "bin", "check-escapes.py"), "--config", config, "--write-baseline"], capture_output=True)
     write(config, json.dumps({"project": "x", "gates": [{"name": "bad", "check": "nonsense", "with": {}}]}))
     code, out, err = run("--config", config)
