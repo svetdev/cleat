@@ -7,6 +7,8 @@ python3 quality/bin/gate.py --strict      # every gate this repository configure
 bash quality/tests/run.sh                 # every check's own suite, about two minutes
 ```
 
+Every suite runs on Linux or macOS with Python 3. A case that needs a tool the machine lacks is skipped and says so: lizard (`pip install lizard`), ast-grep, and for `test-mutate.py` a Swift toolchain, which GitHub's `ubuntu-latest` and `macos-latest` images both carry. Nothing needs Xcode.
+
 Both must be green before a pull request. `pip install lizard ast-grep-cli` gets you the complexity gate and the ast-grep reader locally; without them the affected suites skip and say so.
 
 ## What a change looks like

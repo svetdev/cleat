@@ -11,8 +11,9 @@ was afterwards; a red suite is refused before any mutation; a file with
 uncommitted changes is refused before the suite even runs; and --list runs
 nothing. --list is driven through the explicit --package/--sources flags so
 both ways of naming the package are covered. It runs `swift test` in the
-fixture a handful of times (the fixture has no host), and writes nothing
-outside a directory under the user's cache that it removes on exit.
+fixture a handful of times (the fixture has no host) — skipped, and said so,
+where no Swift toolchain is installed — and writes nothing outside a directory
+under the user's cache that it removes on exit.
 
   quality/tests/test-mutate.py
 """
@@ -64,6 +65,16 @@ try:
     check("and the full suite's verdict stands", result["killed"] == 1 and "killed (full)" in lines[-1], str(lines))
 finally:
     shutil.rmtree(stamp_dir, ignore_errors=True)
+
+# --- the rest drives `swift test` over a fixture package: without a Swift toolchain it is
+# not exercised, and says so, rather than failing on a runner that has none
+if not shutil.which("swift"):
+    check("swift is not installed — skipped, not run: every case over the fixture package (mutants listed, judged narrowly "
+          "and by the full suite, a red suite and a dirty file refused, the file restored, a hung suite timed out); "
+          "GitHub's ubuntu and macos images carry a toolchain", True)
+    print()
+    if failed: print("test-mutate: %d case(s) failed." % failed); sys.exit(1)
+    print("test-mutate: all cases passed."); sys.exit(0)
 
 cache = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), "Library", "Caches")
 os.makedirs(cache, exist_ok=True)

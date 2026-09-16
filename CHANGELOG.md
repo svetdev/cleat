@@ -4,6 +4,7 @@ Newest first. A line per gate or behavior change; policy changes to this reposit
 
 ## Unreleased
 
+- `test-mutate.py` skips its fixture package, and says so, where no Swift toolchain is installed, instead of failing; CONTRIBUTING says what each suite needs (Linux or macOS, Python 3; lizard, ast-grep and Swift for the cases that use them; never Xcode).
 - Mutation: every write of the source under test moves its modification time on by at least a second, so a mutant the same length as what it replaces (`&&` → `||`, `==` → `!=`) written in the same clock tick as the restore before it is never taken by the incremental build for an unchanged file. On Linux CI those two mutants, and only those, were sometimes judged against the previous mutant's binary. A narrow verdict that falls through to the full suite is now logged with the run's last lines.
 - Attach reads a project's existing hook command with the guard's shell scanner (`extractors/shell.py`) instead of a regex: a hook counts as wired when one of its commands runs `gate.py` in that mode directly or through python, however the path is spelled or anchored, and not when the gate is only named — after `||`, in a comment, as an argument of echo, or inside a subshell whose result something else consumes.
 - The language table (suffixes and escape patterns per language) lives in `extractors/languages.py`; the five scripts that loaded it out of `check-escapes.py` by file path import it. The escapes baseline follows its one entry to the new file.
