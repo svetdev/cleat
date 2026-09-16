@@ -129,6 +129,7 @@ def main():
     parser.add_argument("--lint", help="a saved SwiftLint JSON report to judge instead of running a tool")
     parser.add_argument("--repo", help="paths are reported relative to this (default: the directory of quality.json)")
     ratchet.add_only_argument(parser)
+    ratchet.add_tighten_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
@@ -156,6 +157,7 @@ def main():
         return 0
 
     entries, stored = ratchet.read(baseline_path)
+    untouched = ratchet.outside(entries, args.only)
     over, entries = ratchet.restrict(over, entries, args.only)
     verdict = ratchet.judge(over, entries, ["cc", "lines"], stored, measured)
     gate = ratchet.Gate(
@@ -163,11 +165,12 @@ def main():
         over="over the complexity gate (cyclomatic > %d or body > %d lines)" % (cc_ceiling, line_ceiling),
         fix="Split the function so each piece is under the gate. Accepting new debt into the baseline is a "
             "policy decision for a person, not a fix — see quality/README.md.",
-        remedy="quality/bin/check-complexity.py --write-baseline",
+        remedy="quality/bin/check-complexity.py --tighten",
         show=lambda v: "cc %s, %s lines" % (v["cc"], v["lines"]))
     ok_line = ("OK: %d functions judged (%d inline tests skipped), %d over the gate, all %d in the baseline"
                % (len(functions), skipped, len(over), len(over)))
-    return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict)
+    return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict,
+                          tighten=args.tighten, baseline=(baseline_path, measured, untouched))
 
 
 if __name__ == "__main__":

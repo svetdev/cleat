@@ -73,6 +73,7 @@ def main():
     parser.add_argument("--report", help="a SARIF file to judge (default: the gate's report glob, newest match)")
     parser.add_argument("--baseline", help="the ratchet file (default: the gate's baseline)")
     parser.add_argument("--repo", help="paths are relative to this (default: the directory of quality.json)")
+    ratchet.add_tighten_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
@@ -93,11 +94,12 @@ def main():
         noun="%s result(s)" % name, over="the scanner reported",
         fix="Fix what each result names — the scanner's message says what. Accepting a result into the "
             "baseline is a policy decision for a person — see quality/README.md.",
-        remedy="quality/bin/check-sarif.py --gate %s --write-baseline" % name,
+        remedy="quality/bin/check-sarif.py --gate %s --tighten" % name,
         show=lambda v: "x%d" % v["count"] if v.get("count", 1) > 1 else "",
         brief=lambda v: "x%d" % v.get("count", 1) if v.get("count", 1) > 1 else "")
     ok_line = "OK: %d %s result site(s), all %d in the baseline — read from %s" % (len(found), name, len(found), report_path)
-    return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict)
+    return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict,
+                          tighten=args.tighten, baseline=(baseline_path, measured, ()))
 
 
 if __name__ == "__main__":

@@ -5,8 +5,8 @@ The five outcomes over hand-made findings and entries: new, worsened on any
 ratcheted value, improved, held, stale; a value the entry never recorded is not
 compared; both baseline file shapes read; provenance drift by tool, version and
 config; and the report's exit codes — 1 on new or worse, 0 on loose, 1 on loose
-under --strict — with the accept command printed only where it can only
-tighten. Writes nothing outside a temporary directory.
+under --strict — with the tighten command, which can only lower the file, offered
+beside a failure and a note alike, and the accept command never. Writes nothing outside a temporary directory.
 
   python3 quality/tests/test-ratchet.py
 """
@@ -38,6 +38,12 @@ v = ratchet.judge(findings, entries, ["cc", "lines"])
 check("a finding with no entry is new", [f.file for f in v.new] == ["a.py"], str(v.new))
 check("a ratcheted value that rose is worse — on either metric", sorted(f.file for f, _ in v.worsened) == ["b.py", "c.py"])
 check("a ratcheted value that fell is improved", [f.file for f, _ in v.improved] == ["d.py"])
+# --tighten: what the engine writes — held and improved at today's values, worsened as it was, stale gone, new left out
+tight = {e["file"]: e for e in ratchet.tightened(v)}
+check("a tighten keeps held and improved entries at today's values", tight["e.py"]["cc"] == 9 and tight["d.py"]["cc"] == 9, str(tight))
+check("keeps a worsened entry at the value it had, never raised", tight["b.py"]["cc"] == 9 and tight["c.py"]["lines"] == 61, str(tight))
+check("drops a stale entry and adds no new finding", "g.py" not in tight and "a.py" not in tight, str(tight))
+check("a --only scope's untouched entries are the ones outside it", [e["file"] for e in ratchet.outside(entries, ["b.py", "g.py"])] == ["c.py", "d.py", "e.py", "f.py"] and ratchet.outside(entries, None) == [])
 check("unchanged values are held, and a value the entry never recorded is not compared",
       sorted(f.file for f, _ in v.held) == ["e.py", "f.py"])
 check("an entry no finding matched is stale", [e["file"] for e in v.stale] == ["g.py"])
@@ -110,7 +116,7 @@ check("another config drifts", "different gate configuration" in ratchet.drift_b
 check("an unknown version on either side is not drift", ratchet.drift_between(dict(p, version=None), p) is None)
 check("no stored provenance is not drift", ratchet.drift_between(None, p) is None)
 
-gate = ratchet.Gate("thing(s)", "over the line", "Fix it.", "tool --write-baseline",
+gate = ratchet.Gate("thing(s)", "over the line", "Fix it.", "tool --tighten",
                     show=lambda v: "cc %s" % v.get("cc"))
 
 
@@ -123,10 +129,10 @@ def report(verdict, **kw):
 
 code, out = report(v)
 check("new or worse exits 1 and prints both FAIL lines", code == 1 and "1 new thing(s) over the line, beyond the 6" in out and "2 baselined thing(s) got worse" in out, out)
-check("the fix is printed; the accept command is not, even though the baseline is also loose", "Fix it." in out and "--write-baseline" not in out, out)
+check("the fix is printed and the accept command is not; the tighten command is, since it cannot accept", "Fix it." in out and "--write-baseline" not in out and "tool --tighten" in out, out)
 loose = ratchet.judge(findings[3:5], entries[2:4] + [entries[5]], ["cc"])
 code, out = report(loose)
-check("a loose baseline exits 0 with the notes and the tightening command", code == 0 and "improved" in out and "matched nothing" in out and "tool --write-baseline" in out, out)
+check("a loose baseline exits 0 with the notes and the tightening command", code == 0 and "improved" in out and "matched nothing" in out and "tool --tighten" in out, out)
 code, out = report(loose, strict=True)
 check("under --strict a loose baseline exits 1", code == 1 and "looser than the code" in out, out)
 one = ratchet.judge([F(".", 0, "share", {"percent": 1.09})], [{"file": ".", "text": "share", "percent": 1.10}], ["percent"])

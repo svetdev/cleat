@@ -249,6 +249,8 @@ try:
     allowed = [
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/gate.py --strict"}},
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py"}},
+        {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py --tighten"}},
+        {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-crap.py --tighten --gate web"}},
         {"tool_name": "Bash", "tool_input": {"command": "cat quality.json"}},
         {"tool_name": "Bash", "tool_input": {"command": "git diff quality/"}},
         # the flag mentioned, not run: a document through a heredoc, a commit message, a search

@@ -32,8 +32,11 @@ than silently compared against. Both are NOTEs, and failures under
 The failure output says what fixes the code. It does not print the command
 that accepts the debt: rewriting a baseline is a policy decision for a
 person, and printing it beside the failure makes it the first thing an agent
-reaches for. That command appears only in the NOTEs, where running it can
-only tighten.
+reaches for. What the NOTEs print is `--tighten`, the one baseline write an
+agent may run: it drops stale entries and lowers improved values, and it
+never adds an entry or raises a value, so whoever runs it, the file can only
+end up recording no more than the code has. `--write-baseline` accepts
+whatever is over the gate today, and the guard refuses it to an agent.
 
 Baseline files are read in two shapes: the original bare list of entries, and
 `{"provenance": {…}, "entries": […]}`, which is what `write()` produces.
@@ -110,9 +113,45 @@ def read(path):
 
 
 def write(path, findings, provenance):
+    write_entries(path, [f.entry() for f in findings], provenance)
+
+
+def write_entries(path, entries, provenance):
     with open(path, "w") as handle:
-        json.dump({"provenance": provenance, "entries": [f.entry() for f in findings]}, handle, indent=1)
+        json.dump({"provenance": provenance, "entries": entries}, handle, indent=1)
         handle.write("\n")
+
+
+def tightened(verdict):
+    """The entries a tighten writes: every held or improved finding at today's values, a
+    worsened entry as it was (never raised), a stale entry dropped, a new finding left out."""
+    kept = [f.entry() for f, _ in verdict.held + verdict.improved] + [e for _, e in verdict.worsened]
+    return sorted(kept, key=lambda e: (e.get("file", ""), e.get("line", 0), e.get("text", "")))
+
+
+def outside(entries, files):
+    """The entries a `--only` scope leaves alone — every one whose file is not in `files`;
+    none when there is no scope."""
+    if files is None:
+        return []
+    wanted = set(files)
+    return [e for e in entries if e.get("file") not in wanted]
+
+
+def _tighten(path, verdict, provenance, noun, untouched=()):
+    """`--tighten`: rewrite the baseline to no more than the code has — stale entries
+    dropped, improved values lowered, nothing added, nothing raised. `untouched` are the
+    entries a `--only` scope left alone, written back as they are. Prints what changed;
+    the exit is 1 while new or worsened findings remain, since they still fail, else 0."""
+    entries = tightened(verdict) + list(untouched)
+    write_entries(path, entries, provenance)
+    print("baseline tightened: %d stale entr%s dropped, %d lowered — it records %d %s"
+          % (len(verdict.stale), "y" if len(verdict.stale) == 1 else "ies", len(verdict.improved), len(entries), noun))
+    if verdict.failed:
+        print("%d new and %d worse still fail: fix the code, or a person accepts them with --write-baseline."
+              % (len(verdict.new), len(verdict.worsened)))
+        return 1
+    return 0
 
 
 def config_hash(config):
@@ -234,7 +273,7 @@ class Gate:
     noun   — what a finding is: "production function(s)"
     over   — the line: "over the complexity gate (cyclomatic > 8 or body > 60 lines)"
     fix    — the sentence that says what fixes the code; never the accept command
-    remedy — the command that rewrites the baseline; printed only where it can only tighten
+    remedy — the command that tightens the baseline (`--tighten`); it can only lower the file
     show   — values → "cc 9, 61 lines", for a finding line
     brief  — values → the same for a baseline entry (default: `show`)
     """
@@ -275,10 +314,9 @@ def _print_listed(heading, rows):
         print("  … and %d more" % (len(rows) - 20))
 
 
-def _print_notes(verdict, gate, offer_remedy):
-    """Every way the baseline is looser than the code — and, on a passing run only, the
-    command that tightens it. Beside a failure that same command would also accept the
-    new debt, so there it is not printed."""
+def _print_notes(verdict, gate):
+    """Every way the baseline is looser than the code, and the command that tightens it —
+    `--tighten`, which can only lower the file, so it is safe beside a failure too."""
     if verdict.stale:
         n = len(verdict.stale)
         _print_listed("NOTE: %d baseline entr%s matched nothing this run — fixed, split, renamed or deleted:"
@@ -291,27 +329,38 @@ def _print_notes(verdict, gate, offer_remedy):
                        for f, e in verdict.improved])
     if verdict.drift:
         print("NOTE: %s — its numbers may not be comparable." % verdict.drift)
-    if verdict.loose and offer_remedy:
+    if verdict.loose:
         print("Tighten the baseline (this only ever lowers it): %s" % gate.remedy)
 
 
-def report(verdict, gate, baseline_size, ok_line, quiet=False, strict=False, context=()):
+def report(verdict, gate, baseline_size, ok_line, quiet=False, strict=False, context=(), tighten=False, baseline=None):
     """Print the verdict the way every gate prints it, and return the exit code:
     1 when something is new or worse (or, under --strict, when the baseline is loose),
     else 0. `ok_line` is the gate's success sentence; `context` lines follow the FAIL
-    header (what was read, say)."""
+    header (what was read, say). With `tighten` (the gate's --tighten flag), the
+    baseline is rewritten instead — `baseline` is (path, provenance, the entries a --only
+    scope leaves untouched) — and the exit says whether anything still fails."""
+    if tighten:
+        path, provenance, untouched = baseline
+        return _tighten(path, verdict, provenance, gate.noun, untouched)
     if verdict.failed:
         _print_failures(verdict, gate, baseline_size, context)
-        _print_notes(verdict, gate, offer_remedy=False)
+        _print_notes(verdict, gate)
         return 1
     if not quiet:
         print(ok_line)
-    _print_notes(verdict, gate, offer_remedy=True)
+    _print_notes(verdict, gate)
     if strict and verdict.loose and not (verdict.measurement_only and not verdict.drift):
         print("FAIL: the baseline is looser than the code — under --strict it must match exactly. "
               "Tighten it with the command above and commit the result.")
         return 1
     return 0
+
+
+def add_tighten_argument(parser):
+    parser.add_argument("--tighten", action="store_true",
+                        help="rewrite the baseline to no more than the code has: drop stale entries, lower improved "
+                             "values, never add or raise — the one baseline write an agent may run")
 
 
 def add_strict_argument(parser):

@@ -392,6 +392,7 @@ def main():
     parser.add_argument("--estimate", action="store_true",
                         help="the preflight's look ahead: warn (never fail) on what would fail CRAP, from the last coverage run on disk")
     ratchet.add_only_argument(parser)
+    ratchet.add_tighten_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
@@ -487,19 +488,21 @@ def gate(args, settings):
         print("baseline written: %d function(s) over CRAP %g" % (len(over), threshold))
         return 0
     entries, stored = ratchet.read(baseline_path)
-    verdict = ratchet.judge(over, entries, ["crap"], stored, measured)
+    untouched = ratchet.outside(entries, args.only)
+    verdict = ratchet.judge(*ratchet.restrict(over, entries, args.only), ["crap"], stored, measured)
     gate = ratchet.Gate(
         noun="production function(s)",
         over="over CRAP %g — complexity the tests do not pay for" % threshold,
         fix="Cover the untested paths or split the function so each piece is under the gate. Accepting new "
             "debt into the baseline is a policy decision for a person, not a fix — see quality/README.md.",
-        remedy="quality/bin/check-crap.py --write-baseline" + (" --gate %s" % settings.gate if settings.gate else ""),
+        remedy="quality/bin/check-crap.py --tighten" + (" --gate %s" % settings.gate if settings.gate else ""),
         show=lambda v: "crap %.0f (cc %d, coverage %.0f%%)" % (v["crap"], v["cc"], v["coverage"] * 100),
         brief=lambda v: "crap %s" % v["crap"])
     ok_line = ("OK: %d functions judged, %d over CRAP %g, all %d in the baseline — read from %s"
                % (len(complexities), len(over), threshold, len(entries), " and ".join(sources_read)))
     return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict,
-                          context=["read from %s" % " and ".join(sources_read)])
+                          context=["read from %s" % " and ".join(sources_read)],
+                          tighten=args.tighten, baseline=(baseline_path, measured, untouched))
 
 
 def complexity_tool(settings):

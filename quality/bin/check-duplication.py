@@ -111,7 +111,7 @@ GATE = ratchet.Gate(
     noun="measurement(s)", over="of duplication with no baseline yet",
     fix="Extract the copied blocks into shared functions until the share is back under the baseline. "
         "Accepting more duplication is a policy decision for a person — see quality/README.md.",
-    remedy="quality/bin/check-duplication.py --write-baseline",
+    remedy="quality/bin/check-duplication.py --tighten",
     show=lambda v: "%.2f%% duplicated (%s of %s lines)" % (v["percent"], v.get("duplicated_lines", "?"), v.get("total_lines", "?")),
     brief=lambda v: "%.2f%%" % v["percent"])
 
@@ -129,6 +129,7 @@ def parse_args():
     parser.add_argument("--base", help="the ref changed lines are measured against")
     parser.add_argument("--repo-only", action="store_true", help="judge the density only")
     parser.add_argument("--changed-only", action="store_true", help="judge the changed-lines clones only, no baseline needed (gate.py --changed)")
+    ratchet.add_tighten_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     return parser.parse_args()
@@ -144,8 +145,9 @@ def judge_all(args, section, config, baseline_path, finding, clones, measured):
         print_touching(touching, changed_count)
     entries, stored = ratchet.read(baseline_path)
     ok_line = ok_line_for(finding.values, len(clones), None if args.repo_only else changed_count)
-    code = ratchet.report(ratchet.judge([finding], entries, ["percent"], stored, measured), GATE, len(entries), ok_line,
-                          quiet=args.quiet, strict=args.strict)
+    verdict = ratchet.judge([finding], entries, ["percent"], stored, measured)
+    code = ratchet.report(verdict, GATE, len(entries), ok_line, quiet=args.quiet, strict=args.strict,
+                          tighten=args.tighten, baseline=(baseline_path, measured, ()))
     return 1 if touching else code
 
 

@@ -114,8 +114,9 @@ the value its real type, make the test pass, handle the error.
 
 Do not edit `quality.json`, anything under `quality/`, or the hooks to make a
 gate pass, and do not run `--write-baseline`: the baselines record debt a
-person accepted, and only a person loosens them, in a reviewed commit. The
-gates only ever tighten; that is the point.
+person accepted, and only a person loosens them, in a reviewed commit. When
+a NOTE offers `--tighten`, run it: it only ever lowers a baseline. The gates
+only ever tighten; that is the point.
 """
 
 CI_WORKFLOW = """name: cleat

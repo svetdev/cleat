@@ -4,6 +4,7 @@ Newest first. A line per gate or behavior change; policy changes to this reposit
 
 ## Unreleased
 
+- `--tighten` on every baselined gate but inventory and public-api: rewrites the baseline to no more than the code has — stale entries dropped, improved values lowered, nothing added, nothing raised — and exits 1 while new or worsened findings remain, since they still fail. It is the one baseline write an agent may run: the guard allows it and keeps refusing `--write-baseline`, and the NOTE that names a loose baseline now offers it, beside a failure too. Under `--only` the entries outside the scope are written back untouched.
 - Attach gitignores `.cleat-gate-*.json` beside the run registry and the event log: a gate run killed mid-way left a `gates` entry's temporary config as an untracked file in the repo root, which a clean-tree guard before a release noticed.
 - `gate.py` names a `gates` entry's temporary config for the process as well as the gate (`.cleat-gate-<name>.<pid>.json`), so two runs at once — a release's preflight and the Stop hook's `--hook` — no longer write and remove each other's file, which failed one of them with a missing-file error. `runlock` never claimed to serialise runs; its docstring says so, and it still only keeps `attach --refresh` from replacing scripts under a running one.
 - `test-mutate.py` skips its fixture package, and says so, where no Swift toolchain is installed, instead of failing; CONTRIBUTING says what each suite needs (Linux or macOS, Python 3; lizard, ast-grep and Swift for the cases that use them; never Xcode).

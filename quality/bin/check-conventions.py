@@ -87,6 +87,7 @@ def main():
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--write-baseline", action="store_true")
     ratchet.add_only_argument(parser)
+    ratchet.add_tighten_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
@@ -105,15 +106,17 @@ def main():
         print("baseline written: %d site(s) accepted across %d rule(s)" % (len(found), len(rules)))
         return 0
     entries, stored = ratchet.read(baseline_path)
+    untouched = ratchet.outside(entries, args.only)
     found, entries = ratchet.restrict(found, entries, args.only)
     verdict = ratchet.judge(found, entries, ["count"], stored, measured)
     gate = ratchet.Gate(
         noun="site(s)", over="breaking a convention of this project",
         fix=fix_for(verdict, rules),
-        remedy="quality/bin/check-conventions.py --write-baseline",
+        remedy="quality/bin/check-conventions.py --tighten",
         show=lambda v: "%s%s" % (v.get("rule", "?"), " x%d" % v["count"] if v.get("count", 1) > 1 else ""))
     ok_line = "OK: %d convention site(s) in the tree, all %d in the baseline" % (len(found), len(found))
-    return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict)
+    return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict,
+                          tighten=args.tighten, baseline=(baseline_path, measured, untouched))
 
 
 if __name__ == "__main__":

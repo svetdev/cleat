@@ -128,7 +128,7 @@ try:
     write(paths["lint"], lint)
     code, out = run()
     check("a baselined function that improved still passes", code == 0, out)
-    check("the improvement is noted, with the tightening command", "improved" in out and "baseline says crap 117.0" in out and "--write-baseline" in out, out)
+    check("the improvement is noted, with the tightening command", "improved" in out and "baseline says crap 117.0" in out and "--tighten" in out, out)
     code, out = run("--strict")
     check("--strict refuses a baseline looser than the code", code == 1 and "looser than the code" in out, out)
     run("--write-baseline")
@@ -156,7 +156,7 @@ try:
     check("a genuinely new offender still fails the run", code == 1, out)
     check("the new offender is still named", "Core.swift:17" in out, out)
     check("the stale entry is still named alongside a real failure", "Ghost.swift  crap 42.3  func ghost() -> Int { 0 }" in out, out)
-    check("beside a failure the tightening command is not offered — it would accept the new debt too", "--write-baseline" not in out, out)
+    check("beside a failure the accept command is never printed; --tighten is, since it cannot accept", "--write-baseline" not in out and "--tighten" in out, out)
     # restore the fixtures the --config section below still relies on
     lint.pop()
     write(paths["lint"], lint)

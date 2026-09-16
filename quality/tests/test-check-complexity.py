@@ -243,7 +243,7 @@ try:
     code, out = run(config, "--csv", csv_path)
     check("a baselined function that improved still passes", code == 0, out)
     check("the improvement is noted, with the tightening command",
-          "improved" in out and "cc 9, 1 lines, baseline says cc 12, 1 lines" in out and "--write-baseline" in out, out)
+          "improved" in out and "cc 9, 1 lines, baseline says cc 12, 1 lines" in out and "--tighten" in out, out)
     code, out = run(config, "--csv", csv_path, "--strict")
     check("--strict refuses a baseline looser than the code", code == 1 and "looser than the code" in out, out)
     run(config, "--csv", csv_path, "--write-baseline")

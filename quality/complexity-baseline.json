@@ -6,18 +6,11 @@
  },
  "entries": [
   {
-   "file": "quality/bin/mutate.py",
+   "file": "quality/bin/check-doc-size.py",
    "text": "def main():",
-   "line": 253,
-   "cc": 24,
-   "lines": 63
-  },
-  {
-   "file": "quality/bin/mutate.py",
-   "text": "def mutate_file(package, sources, relative, list_only=False, log=print, tests_root=None):",
-   "line": 187,
-   "cc": 16,
-   "lines": 42
+   "line": 70,
+   "cc": 10,
+   "lines": 32
   },
   {
    "file": "quality/bin/check-reachability.py",
@@ -27,20 +20,6 @@
    "lines": 11
   },
   {
-   "file": "quality/bin/check-doc-size.py",
-   "text": "def main():",
-   "line": 70,
-   "cc": 10,
-   "lines": 32
-  },
-  {
-   "file": "quality/bin/report-hotspots.py",
-   "text": "def lizard_spec(settings):",
-   "line": 102,
-   "cc": 10,
-   "lines": 15
-  },
-  {
    "file": "quality/bin/extractors/coverage.py",
    "text": "def from_codecov(export, sources_root, path_map=None):",
    "line": 303,
@@ -48,11 +27,25 @@
    "lines": 19
   },
   {
-   "file": "quality/bin/ratchet.py",
-   "text": "def _print_notes(verdict, gate, offer_remedy):",
-   "line": 278,
-   "cc": 9,
-   "lines": 18
+   "file": "quality/bin/mutate.py",
+   "text": "def mutate_file(package, sources, relative, list_only=False, log=print, tests_root=None):",
+   "line": 187,
+   "cc": 16,
+   "lines": 42
+  },
+  {
+   "file": "quality/bin/mutate.py",
+   "text": "def main():",
+   "line": 253,
+   "cc": 24,
+   "lines": 63
+  },
+  {
+   "file": "quality/bin/report-hotspots.py",
+   "text": "def lizard_spec(settings):",
+   "line": 102,
+   "cc": 10,
+   "lines": 15
   }
  ]
 }

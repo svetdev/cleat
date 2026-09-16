@@ -124,6 +124,7 @@ def main():
     parser.add_argument("--write-baseline", action="store_true")
     parser.add_argument("--list-languages", action="store_true", help="print the built-in pattern sets and exit")
     ratchet.add_only_argument(parser)
+    ratchet.add_tighten_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
@@ -141,6 +142,7 @@ def main():
         return 0
 
     entries, stored = ratchet.read(baseline_path)
+    untouched = ratchet.outside(entries, args.only)
     found, entries = ratchet.restrict(found, entries, args.only)
     verdict = ratchet.judge(found, entries, ["count"], stored, measured)
     def with_count(v):
@@ -150,11 +152,12 @@ def main():
         over="where the code opts out of a type check, a lint rule, a test or an error",
         fix="Fix what the escape hides: give the value its real type, make the test pass or delete it, handle the "
             "error. Accepting a new escape into the baseline is a policy decision for a person — see quality/README.md.",
-        remedy="quality/bin/check-escapes.py --write-baseline",
+        remedy="quality/bin/check-escapes.py --tighten",
         show=with_count)
     ok_line = "OK: %d escape site(s) in the tree, all %d in the baseline%s" % (
         len(found), len(found), " (%d in inline Rust tests skipped)" % skipped if skipped else "")
-    return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict)
+    return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict,
+                          tighten=args.tighten, baseline=(baseline_path, measured, untouched))
 
 
 if __name__ == "__main__":

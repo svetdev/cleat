@@ -87,9 +87,31 @@ try:
 
     write(py, "import os\n\nx = os.getcwd()  # type: ignore\ndef f():\n    try:\n        pass\n    except:\n        pass\n")
     code, out = run(config)
-    check("a removed site passes with a stale NOTE and the tightening command", code == 0 and "matched nothing" in out and "--write-baseline" in out, out)
+    check("a removed site passes with a stale NOTE and the tightening command", code == 0 and "matched nothing" in out and "--tighten" in out and "--write-baseline" not in out, out)
     code, out = run(config, "--strict")
     check("and fails under --strict", code == 1 and "looser than the code" in out, out)
+    # --tighten: the one baseline write an agent may run — it drops the stale entry and adds nothing
+    before = json.load(open(os.path.join(tmp, "escapes-baseline.json")))["entries"]
+    py_text, ts_text = open(py).read(), open(ts).read()
+    code, out = run(config, "--tighten", "--only", "web/thing.ts")
+    check("--tighten under --only leaves the entries outside the scope as they were",
+          code == 0 and json.load(open(os.path.join(tmp, "escapes-baseline.json")))["entries"] and
+          [e for e in json.load(open(os.path.join(tmp, "escapes-baseline.json")))["entries"] if e["file"] == "src/thing.py"] == [e for e in before if e["file"] == "src/thing.py"], out)
+    code, out = run(config, "--tighten")
+    check("--tighten drops the stale entry and says so", code == 0 and "1 stale entry dropped" in out, out)
+    code, out = run(config, "--strict")
+    check("after which --strict passes: the baseline records exactly the code", code == 0 and "NOTE" not in out, out)
+    write(py, py_text + "q = 1  # no" + "qa: new\n")
+    os.remove(ts)
+    code, out = run(config, "--tighten")
+    check("--tighten beside a new site drops what is stale, accepts nothing, and still exits 1",
+          code == 1 and "still fail" in out and not [e for e in json.load(open(os.path.join(tmp, "escapes-baseline.json")))["entries"] if e["file"] == "web/thing.ts"]
+          and not [e for e in json.load(open(os.path.join(tmp, "escapes-baseline.json")))["entries"] if "qa: new" in e["text"]], out)
+    code, out = run(config)
+    check("and the new site fails on the next run, with nothing left to tighten", code == 1 and ("q = 1  # no" + "qa: new") in out and "--tighten" not in out, out)
+    write(ts, ts_text)
+    write(py, py_text)
+    subprocess.run([sys.executable, SCRIPT, "--config", config, "--write-baseline"], capture_output=True)
 
     write(config, json.dumps({"escapes": dict(section, patterns={"todo bang": r"TODO!"})}))
     write(ts, "const a: any = 1;\n// @ts-ignore\nconst b = a!.c;\nit.skip('x', () => {});\nconst c = a as any;\n// TODO! later\n")

@@ -71,8 +71,8 @@ Local gives feedback and the guard; it cannot stop whoever holds the keyboard fr
 ## How a gate holds against an agent
 
 1. **The ratchet is monotonic.** A baselined function that gets worse fails, not just a new one. A baseline looser than the code is a NOTE locally and a failure in CI, so the file always records exactly the debt that exists. Baselines carry their provenance, so a tool upgrade is noticed.
-2. **A failure names the fix, never the escape.** No gate prints the command that accepts new debt beside the failure; it appears only where running it can only tighten.
-3. **Policy is a person's.** The guard hook refuses `--write-baseline` and edits to `quality.json`, the baselines and the gates; CODEOWNERS makes the same true in review.
+2. **A failure names the fix, never the escape.** No gate prints the command that accepts new debt; the one it offers, `--tighten`, can only lower a baseline.
+3. **Policy is a person's.** The guard hook refuses `--write-baseline` and edits to `quality.json`, the baselines and the gates, and allows `--tighten`; CODEOWNERS makes the same true in review.
 
 ## Layout
 
