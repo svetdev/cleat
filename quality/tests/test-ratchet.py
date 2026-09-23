@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """test-ratchet — assert the engine every baseline gate shares, quality/bin/ratchet.py.
 
-The five outcomes over hand-made findings and entries: new, worsened on any
-ratcheted value, improved, held, stale; a value the entry never recorded is not
+The six outcomes over hand-made findings and entries: new, worsened on any
+ratcheted value, improved, held, stale, and — for a gate over functions — changed,
+an edited declaration line no worse than its entry; a value the entry never recorded is not
 compared; both baseline file shapes read; provenance drift by tool, version and
 config; and the report's exit codes — 1 on new or worse, 0 on loose, 1 on loose
 under --strict — with the tighten command, which can only lower the file, offered
@@ -146,5 +147,29 @@ check("--quiet drops the OK line but not the notes", "OK: fine" not in out and "
 clean = ratchet.judge([findings[4]], [entries[3]], ["cc"])
 code, out = report(clean, quiet=True, strict=True)
 check("a clean --quiet --strict run prints nothing and exits 0", code == 0 and out == "", repr(out))
+
+# An edited declaration line: with renames (a gate over functions) the new finding and the
+# stale entry declaring the same name in the same file are one function, not new debt.
+edited = [F("h.py", 4, "def handle(req, retries=3):", {"cc": 10, "lines": 20}),
+          F("h.py", 40, "def other(x, y):", {"cc": 14, "lines": 20})]
+before = [{"file": "h.py", "line": 4, "text": "def handle(req):", "cc": 12, "lines": 20},
+          {"file": "h.py", "line": 40, "text": "def other(x):", "cc": 9, "lines": 20},
+          {"file": "i.py", "line": 4, "text": "def handle(req):", "cc": 12, "lines": 20}]
+r = ratchet.judge(edited, before, ["cc", "lines"], renames=True)
+check("a function whose declaration changed and is no worse is changed, not new",
+      [(f.text, e["text"]) for f, e in r.changed] == [("def handle(req, retries=3):", "def handle(req):")] and not r.new, str(r.changed))
+check("one that got worse is worsened against its old entry, never new", [e["text"] for _, e in r.worsened] == ["def other(x):"], str(r.worsened))
+check("an entry in another file is not paired by name alone", [e["file"] for e in r.stale] == ["i.py"], str(r.stale))
+check("changed is loose — noted, a strict failure until tightened — and tightens to the new text",
+      r.loose and "def handle(req, retries=3):" in [e["text"] for e in ratchet.tightened(r)] and "def handle(req):" not in [e["text"] for e in ratchet.tightened(r)])
+code, out = report(ratchet.judge(edited[:1], before[:1], ["cc", "lines"], renames=True))
+check("its note names the old declaration beside the new, with the tighten command",
+      code == 0 and "changed their declaration line, no worse" in out and "(was: def handle(req):)" in out and "tool --tighten" in out, out)
+plain = ratchet.judge(edited[:1], before[:1], ["cc", "lines"])
+check("without renames — escapes, conventions — the same pair is new and stale", len(plain.new) == 1 and len(plain.stale) == 1)
+check("a declared name is read the way each language spells one",
+      [ratchet.declared_name(t) for t in ["export const onSave = async (e) => {", "func risky(_ a: Int) -> Int {",
+                                           "fn parse<T>(s: &str) -> T {", "export function tangled(a: number) {", "x = 1  # no" + "qa"]]
+      == ["onSave", "risky", "parse", "tangled", None])
 
 suite.finish()

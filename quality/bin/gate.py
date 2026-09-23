@@ -51,9 +51,15 @@ question for a person — stops costing a report every turn. The event's
 `stop_hook_active` (the agent is already continuing because of this hook)
 reads the same way. Any change in any gate's output — a file fixed, a file
 broken, a count moved — is a new report and blocks again; CI refuses
-whatever stays red. `--guard` reads a PreToolUse event from stdin and exits 2 —
+whatever stays red. The hook runs every baselined gate with `--tighten`: an
+entry the change fixed is dropped and an improved one lowered as the agent
+goes — never added, never raised — so the next `--strict` run does not fail on
+a fix. `--guard` reads a PreToolUse event from stdin and exits 2 —
 refusing the call — when the command would write a baseline, edit
-quality.json, or edit the gates: those are policy changes for a person.
+quality.json, or edit the gates: those are policy changes for a person. It
+judges the files a command writes, resolved from the event's working
+directory: a sed script, a comment or a note that names quality.json is text,
+and a file outside every project is not policy.
 """
 
 import argparse
@@ -97,26 +103,30 @@ GATES = [
 ]
 BY_SECTION = {section: (name, script, strict, postflight) for section, name, script, strict, postflight in GATES}
 # Gates that take --only FILES (the changed files, under --changed), and the one that takes --changed-only.
-SCOPED = {"complexity", "escapes", "conventions"}
+SCOPED = {"complexity", "escapes", "conventions", "crap"}
 CHANGED_ONLY = {"duplication"}
+# Gates that take --tighten, which the Stop hook passes: a baseline entry the agent's change
+# fixed is dropped and an improved one lowered as it goes, so --strict never fails on a fix.
+TIGHTENS = {"escapes", "conventions", "duplication", "sarif", "complexity", "crap"}
 # The sections that may be a list of named entries, each its own gate selected with --gate.
 LISTABLE = {"crap", "sarif", "public_api", "inventory"}
 # Sections whose check was retired, and what replaced them.
 RETIRED = {"features_map": "split into \"doc_citations\" (the map's citations) and \"reachability\" (the services nothing constructs)"}
 
 # What --guard refuses: a command that rewrites accepted debt or edits policy —
-# running a program with --write-baseline, or a shell edit/copy/redirect aimed at
-# quality.json, the baselines, the gates, CODEOWNERS or the agent settings. Running a
-# gate is fine, and so is a command that only mentions the flag: a commit message, a
-# heredoc into a document, a grep (extractors/shell.py tells a call from a mention).
+# running a program with --write-baseline, or a shell edit/copy/redirect, an Edit or a
+# Write aimed at quality.json, the baselines, the gates, CODEOWNERS or the agent
+# settings. Running a gate is fine, and so is a command that only mentions the flag or
+# a policy file: a commit message, a heredoc into a document, a grep, a sed over a note
+# elsewhere (extractors/shell.py tells a call from a mention, and names the files a
+# command writes). Policy lives in a project — a directory holding quality.json — at
+# these paths; the agent settings, which hold the hooks, are policy wherever they are.
 POLICY_PATHS = r"(?:quality\.json|quality/|\.github/CODEOWNERS|\.claude/settings)"
 BASELINE_FLAG = "--write-baseline"
 BASELINE_FLAG_SHORTEST = "--wr"   # argparse expands an unambiguous prefix; --w is --web-sources in check-crap
-GUARDED_COMMAND_RE = re.compile(
-    r"\b(?:sed\s+-[a-zA-Z]*i|tee|cp|mv|rm|truncate|install)\b[^\n|;&]*" + POLICY_PATHS +
-    r"|>{1,2}\s*['\"]?(?:\S*/)?" + POLICY_PATHS
-)
-GUARDED_PATH_RE = re.compile(r"(?:^|/)" + POLICY_PATHS)
+PROJECT_POLICY_RE = re.compile(r"(?:quality\.json|quality(?:/.*)?|\.github/CODEOWNERS|\.claude/settings.*)")
+HOOK_SETTINGS_RE = re.compile(r"(?:^|/)\.claude/settings[^/]*$")
+GUARDED_PATH_RE = re.compile(r"(?:^|/)" + POLICY_PATHS)   # by name alone: a relative path after a `cd`
 
 
 class Gate:
@@ -131,15 +141,20 @@ class Gate:
         self.spec = spec         # … and the object to put there
         self.shell = shell       # for a `commands` entry: the project's own check, run through the shell
         self.needs = list(needs)  # … and the tools it needs on the PATH
+        self.tighten = False     # the Stop hook's: lower the baseline to what the code has as it judges
+
+    @property
+    def check(self):
+        """The check this gate runs: a `gates` entry's name is its own label, not its check."""
+        return BY_SECTION[self.section][0] if self.section else self.name.split(":")[0]
 
     def scope_flags(self, changed):
         """What --changed adds: the changed files for a scoped gate, --changed-only for duplication."""
-        base = self.name.split(":")[0]
         if changed is None:
             return []
-        if base in SCOPED or self.advisory:
+        if self.check in SCOPED or self.advisory:
             return ["--only"] + changed
-        return ["--changed-only"] if base in CHANGED_ONLY else []
+        return ["--changed-only"] if self.check in CHANGED_ONLY else []
 
     def command(self, config_path, strict, changed=None):
         if self.shell:
@@ -148,6 +163,8 @@ class Gate:
         cmd += ["--config", config_path, "--quiet"] + self.extra
         if strict and self.strict:
             cmd.append("--strict")
+        if self.tighten and self.check in TIGHTENS and not self.advisory:
+            cmd.append("--tighten")
         return cmd + self.scope_flags(changed)
 
 
@@ -246,14 +263,44 @@ def guard_decision(event_text):
     tool_input = event.get("tool_input") or {}
     command = tool_input.get("command") or ""
     target = tool_input.get("file_path") or ""
-    return event.get("tool_name"), target or command, refuses(command, target)
+    return event.get("tool_name"), target or command, refuses(command, target, event.get("cwd"))
 
 
-def refuses(command, target):
-    """Whether a Bash `command` or an edit to `target` would change policy."""
+def refuses(command, target, cwd=None):
+    """Whether a Bash `command` or an edit to `target` would change policy, relative
+    paths read from `cwd` (the event's; else this process's)."""
     if shell.runs_with_flag(command, BASELINE_FLAG, BASELINE_FLAG_SHORTEST):
         return True
-    return bool(GUARDED_COMMAND_RE.search(command) or GUARDED_PATH_RE.search(target))
+    cwd = cwd or os.getcwd()
+    if target and is_policy(target, cwd):
+        return True
+    moved = shell.changes_directory(command)
+    return any(is_policy(path, cwd, by_name=moved) for path in shell.writes(command))
+
+
+def is_policy(path, cwd, by_name=False):
+    """Whether writing `path` changes policy: it is a quality.json, the agent settings,
+    or a policy path of a project it lies in. `by_name` — a relative path after the
+    command moved with `cd`, whose directory is unknown — judges the name alone."""
+    expanded = os.path.expanduser(path)
+    if by_name and not os.path.isabs(expanded):
+        return bool(GUARDED_PATH_RE.search(expanded))
+    full = os.path.realpath(os.path.join(cwd, expanded))
+    if HOOK_SETTINGS_RE.search(full) or os.path.basename(full) == quality_config.FILENAME:
+        return True
+    return any(PROJECT_POLICY_RE.fullmatch(os.path.relpath(full, top)) for top in projects_above(full))
+
+
+def projects_above(path):
+    """Every directory above `path` that holds a quality.json: the projects it lies in."""
+    found, here = [], os.path.dirname(path)
+    while True:
+        if os.path.isfile(os.path.join(here, quality_config.FILENAME)):
+            found.append(here)
+        parent = os.path.dirname(here)
+        if parent == here:
+            return found
+        here = parent
 
 
 def guard(event_text):
@@ -346,7 +393,7 @@ def run_all(gates, config_path, strict, skip_missing=False, config=None, changed
     advisory gate (a CRAP estimate) prints a note when it has one and is neither."""
     failures, results = [], []
     if changed_only is not None:
-        print("  changed: %d file(s) against the base — complexity, escapes and conventions judge those; CI judges everything" % len(changed_only))
+        print("  changed: %d file(s) against the base — complexity, escapes, conventions and crap judge those; CI judges everything" % len(changed_only))
     judged = only(gates, lambda g: not g.advisory)
     for g in judged:
         result, output = run_gate(g, config_path, strict, skip_missing, config, changed_only)
@@ -598,7 +645,7 @@ def parse_args():
     parser.add_argument("--list", action="store_true", help="print the configured gates and exit")
     parser.add_argument("--hook", action="store_true", help="agent Stop hook mode: failures to stderr, exit 2")
     parser.add_argument("--changed", action="store_true",
-                        help="scope complexity, escapes, conventions and duplication to the files changed against the base — the fast loop; CI runs the full pass")
+                        help="scope complexity, escapes, conventions, crap and duplication to the files changed against the base — the fast loop; CI runs the full pass")
     parser.add_argument("--guard", action="store_true", help="agent PreToolUse hook mode: refuse policy-changing commands")
     parser.add_argument("--stats", action="store_true", help="what the hook and the guard did: firings, fail rate, fixes, refusals")
     parser.add_argument("--since", help="with --stats: only events this recent — 7d, 24h, 30m")
@@ -636,6 +683,8 @@ def main():
     if gates is None:
         return early
     scope = scope_of(args, config.root)
+    for g in gates:
+        g.tighten = args.hook
     with runlock.held(os.path.dirname(HERE), "gate.py"):
         failures, results = run_all(gates, config.file, args.strict, args.skip_missing_tools, config, scope)
     return finish(failures, args.hook, config.root, results)

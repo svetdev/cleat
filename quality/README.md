@@ -35,7 +35,7 @@ Nineteen checks, each a ratchet: a baseline records what was over the line the d
 1. Copy this directory into the repository.
 2. Copy `quality.example.json` to the repository root as `quality.json` and fill it in — every path is relative to that file; `~` and absolute paths pass through. A key a check needs that the file lacks fails naming the key; there are no silent defaults.
 3. Write the baselines once: each ratchet's `--write-baseline` (`check-crap.py` after a coverage run); `layering.exempt` and `reachability.exempt` are filled from the first run's findings, with a reason each.
-4. Run `bin/gate.py` wherever the tests run — as a **preflight** before a build starts, `--postflight` after a green run for `check-crap.py`, which reads that run's coverage (the preflight notes what it would say, from the last run on disk) — and `bin/gate.py --strict` in CI.
+4. Run `bin/gate.py` wherever the tests run — as a **preflight** before a build starts, `--postflight` after a green run for `check-crap.py`, which reads that run's coverage (the preflight estimates it from the last run on disk; `--estimate --fail --changed` gates a merge) — and `bin/gate.py --strict` in CI.
 
 ## How cleat attaches
 
@@ -44,14 +44,14 @@ Local by default: the gates, the baselines and the agent hooks. `--git-hooks` ad
 | Where | Stops | Does not stop |
 |---|---|---|
 | CI: `gate.py --strict --skip-missing-tools` as a required check, code-owner review on the control plane, no bypass | a merge with a failing or loosened gate; a baseline or ceiling changed without a person | nothing it can see — it is the authority |
-| Agent hooks: Stop runs the gates and blocks once per failure set; PreToolUse refuses `--write-baseline` and edits to `quality.json`, the baselines, the gates, the hooks, and allows `--tighten` | the agent finishing with a red gate; the agent loosening policy mid-task | a session with different settings; a plain terminal |
+| Agent hooks: Stop runs the gates and blocks once per failure set; PreToolUse refuses `--write-baseline` and edits to `quality.json`, the baselines, the gates, the hooks, and allows `--tighten`, which Stop runs | the agent finishing with a red gate; the agent loosening policy mid-task | a session with different settings; a plain terminal |
 | Git pre-push hook (`attach --git-hooks`) | a push with a red gate, from a human or an agent with no hook harness | `--no-verify` |
 
 The Stop hook blocks once per distinct failure set: a later stop that would send the identical report (or one where `stop_hook_active` says the agent is already continuing) gets a single line and exit 0 instead, so a failure the agent cannot fix neither loops it nor re-sends its whole report every turn. Any change in any gate's output is a new report and blocks again; CI refuses whatever stays red. Branch protection assumes an identity that cannot approve or bypass — an agent authenticated as you can do both — so the agent should hold its own GitHub identity with contents and pull-request write only. Attach prints the ruleset command that makes the check required.
 
 ## The ratchet, precisely
 
-Every baselined gate sorts each finding into one of five outcomes: **new** (fails), **worsened** — a recorded value went up (fails), **held**, **improved**, **stale** — the entry matched nothing. The last two mean the baseline is looser than the code; each is a NOTE with the command that tightens it, and under `--strict` a failure, so CI keeps the file exact. A baseline records what measured it (tool, version, a hash of the gate's config); a run under a different one is noted the same way. Failure output names the fix and never the accept command.
+Each baselined gate sorts each finding into one of six outcomes: **new** (fails), **worsened** — a recorded value went up (fails), **held**, **improved**, **changed** — an edited signature, **stale** — the entry matched nothing. The last three mean the baseline is looser than the code; each is a NOTE with the command that tightens it, and under `--strict` a failure, so CI keeps the file exact. A baseline records what measured it (tool, version, a hash of the gate's config); a run under a different one is noted the same way. Failure output names the fix and never the accept command.
 
 The tiers, by what a project has to have:
 
@@ -72,7 +72,7 @@ See `quality.example.json` — this repository's own, a working example rather t
 The template forks the day a consumer patches it privately, so these are written as template changes, each with its test:
 
 - `check-complexity.py` reads with lizard for Rust, TypeScript and whatever else `lizard` parses (`complexity.tool: "lizard"`). Inline Rust `#[cfg(test)]` modules are skipped. `complexity.exclude_except` names production paths an `exclude` glob would otherwise drop by filename alone (a guard-suite exclude like `*test-*` also matching a production file whose name happens to contain "test-"): those paths get a second, exclude-free pass, so only they are exempted — everything else the glob drops stays dropped.
-- `check-crap.py`: `complexity.tool: "lizard"` inside a gate; an `istanbul` coverage reader (vitest/c8 `coverage-final.json`); readers are optional per gate (only the configured ones run); `crap` may be a **list of gates**, each with a `name`, selected with `--gate`. Flags `--lizard-csv`, `--istanbul`, `--web-sources`, `--gate`.
+- `check-crap.py`: `complexity.tool: "lizard"` inside a gate; an `istanbul` coverage reader (vitest/c8 `coverage-final.json`); readers are optional per gate (only the configured ones run); `crap` may be a **list of gates**, each with a `name`, selected with `--gate`; `exports` may list globs.
 - `check-test-hygiene.py`: `hygiene.extensions` (which suffixes to count) and `hygiene.test_file_roots` (trees that mix production and test code, counted through test files only); per habit, `files` and `exclude` globs and an `unless` regex that exempts a file.
 - `mutate.py`: `mutation.test_command` and `mutation.filter_flag` — run the suite through something other than `swift test` (an iOS package through `xcodebuild` on a simulator).
 - Tests: the "this checkout" cases skip when the checkout's `quality.json` chose not to configure that section; `test-quality-config.py` requires only the language-agnostic pair.

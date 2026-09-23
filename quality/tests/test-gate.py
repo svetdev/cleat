@@ -153,6 +153,25 @@ try:
     check("the full pass then judges the unchanged file", code == 1 and "src/old.py:1  noqa" in out and "changed:" not in out, out + err)
     os.remove(os.path.join(repo, "-flag.py"))
 
+    # ---- the hook tightens as it goes: an entry the change fixed is dropped, nothing is added
+    write(config, json.dumps({"escapes": {"roots": ["src"], "languages": ["python"], "baseline": "escapes-baseline.json"}}))
+    write(os.path.join(tmp, "src", "a.py"), ESCAPE)
+    subprocess.run([sys.executable, os.path.join(os.path.dirname(HERE), "bin", "check-escapes.py"), "--config", config, "--write-baseline"], capture_output=True)
+    baseline_file = os.path.join(tmp, "escapes-baseline.json")
+    write(os.path.join(tmp, "src", "a.py"), "x = 1\n")
+    code, out, err = run("--config", config)
+    check("a plain run notes the fixed entry and leaves the baseline as it is",
+          code == 0 and "matched nothing" in out and len(json.load(open(baseline_file))["entries"]) == 1, out + err)
+    code, out, err = run("--config", config, "--hook")
+    check("the hook drops the entry the change fixed, and passes", code == 0 and json.load(open(baseline_file))["entries"] == [], err)
+    code, out, err = run("--config", config, "--strict")
+    check("so the next --strict run does not fail on a fix", code == 0, out + err)
+    write(os.path.join(tmp, "src", "b.py"), ESCAPE)
+    code, out, err = run("--config", config, "--hook")
+    check("a new site still blocks with its line, and is never added",
+          code == 2 and "src/b.py:1  noqa" in err and json.load(open(baseline_file))["entries"] == [], err)
+    os.remove(os.path.join(tmp, "src", "b.py"))
+
     # ---- CLEAT_HOOKS=off: both hook modes stand down — the switch for a reviewer session
     write(os.path.join(tmp, "src", "a.py"), ESCAPE)
     write(config, json.dumps({"escapes": {"roots": ["src"], "languages": ["python"], "baseline": "escapes-baseline.json"}}))
@@ -225,6 +244,7 @@ try:
     code, out, err = run("--config", config)
     check("an unknown check in the list is refused naming the known ones", code == 2 and "nonsense" in err and "escapes" in err, err)
 
+    outside = tempfile.mkdtemp(prefix="gate-notes-")   # no quality.json above it: no project's policy
     refused = [
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py --write-baseline"}},
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py --write-base"}},
@@ -237,9 +257,16 @@ try:
         {"tool_name": "Bash", "tool_input": {"command": "echo '[]' > quality/escapes-baseline.json"}},
         {"tool_name": "Bash", "tool_input": {"command": "cp /tmp/loose.json quality/complexity-baseline.json"}},
         {"tool_name": "Bash", "tool_input": {"command": "rm quality/bin/check-escapes.py"}},
+        {"tool_name": "Bash", "tool_input": {"command": "sudo rm -rf -- quality"}},
+        {"tool_name": "Bash", "tool_input": {"command": "sed -i -e 's/8/80/' quality.json"}},
+        {"tool_name": "Bash", "tool_input": {"command": "echo '{}'>quality.json"}},
+        {"tool_name": "Bash", "tool_input": {"command": "bash -c 'rm quality/escapes-baseline.json'"}},
+        {"tool_name": "Bash", "tool_input": {"command": "cat > notes.md <<EOF\n$(rm quality/escapes-baseline.json)\nEOF"}},
+        {"tool_name": "Bash", "tool_input": {"command": "cp loose.json ~/.claude/settings.json"}},
+        {"tool_name": "Bash", "cwd": os.path.join(tmp, "src"), "tool_input": {"command": "rm ../quality/escapes-baseline.json"}},
         {"tool_name": "Edit", "tool_input": {"file_path": "/repo/quality.json"}},
-        {"tool_name": "Write", "tool_input": {"file_path": "/repo/quality/escapes-baseline.json"}},
-        {"tool_name": "Edit", "tool_input": {"file_path": "/repo/quality/bin/ratchet.py"}},
+        {"tool_name": "Write", "tool_input": {"file_path": os.path.join(tmp, "quality", "escapes-baseline.json")}},
+        {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(tmp, "quality", "bin", "ratchet.py")}},
         {"tool_name": "Edit", "tool_input": {"file_path": "/repo/.claude/settings.json"}},
     ]
     for event in refused:
@@ -260,10 +287,18 @@ try:
         {"tool_name": "Bash", "tool_input": {"command": "gh pr create --title guard --body \"run --write-baseline after review\""}},
         {"tool_name": "Edit", "tool_input": {"file_path": "/repo/src/quality_of_life.py"}},
         {"tool_name": "Write", "tool_input": {"file_path": "/repo/docs/quality.md"}},
+        # a policy path named in text, or a file outside every project: not policy
+        {"tool_name": "Bash", "tool_input": {"command": "sed -i '' 's/quality.json/the config/' %s/memo.md" % outside}},
+        {"tool_name": "Bash", "tool_input": {"command": "sed -i '' 's/x/y/' %s/notes/quality/memo.md" % outside}},
+        {"tool_name": "Bash", "tool_input": {"command": "cp draft.md notes.md  # about quality.json"}},
+        {"tool_name": "Bash", "tool_input": {"command": "echo 'raise the ceiling in quality/complexity-baseline.json' >> %s/todo.md" % outside}},
+        {"tool_name": "Bash", "tool_input": {"command": "rm src/quality/helpers.py"}},
+        {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(outside, "notes", "quality", "memo.md")}},
     ]
     for event in allowed:
         code, out, err = guard(event)
         check("--guard allows: %s" % (event["tool_input"].get("command") or event["tool_input"].get("file_path")), code == 0, err)
+    shutil.rmtree(outside, ignore_errors=True)
     code, out, err = guard("not json")
     check("--guard lets a malformed event through rather than blocking on its own bug", code == 0, err)
 

@@ -3,3 +3,4 @@ __pycache__/
 .cleat-gate-*.json
 quality/.running/
 quality/.events.jsonl
+CLAUDE.md

@@ -9,9 +9,10 @@ five outcomes —
   worsened   in the baseline, and a ratcheted value went up      → FAIL
   held       in the baseline, no value went up                   → pass
   improved   in the baseline, and a ratcheted value came down    → pass, NOTE: tighten
+  changed    its declaration line changed, and no value went up  → pass, NOTE: tighten
   stale      in the baseline, matched nothing this run           → pass, NOTE: drop
 
-The first two are what the ratchet refuses. The last two are the baseline
+The first two are what the ratchet refuses. The last three are the baseline
 being looser than the code, which is a leak in the other direction: an
 improved function could grow back to its old recorded value and pass. Locally
 that is a NOTE with the command that tightens the file; under `--strict` —
@@ -19,7 +20,12 @@ what CI runs — it is a failure, so the baseline in the repository is always
 exactly the debt that exists, never more.
 
 A finding is keyed by its file and the text of its declaration line, so a
-shifted line still matches, and carries every value the gate measured
+shifted line still matches. A gate over functions also pairs what is left
+over — a finding matching no entry, an entry matching no finding — by the
+function's name within one file: an edited signature is the same function,
+`changed` when it is no worse and `worsened` against its old entry when it is,
+never `new` — so touching a baselined function's declaration does not reopen
+its debt. Every finding carries every value the gate measured
 (`{"cc": 9, "lines": 61}`, `{"cc": 6, "coverage": 0.25, "crap": 21.4}`). The
 gate names which of those values ratchet — the ones where higher is worse.
 
@@ -45,6 +51,14 @@ Baseline files are read in two shapes: the original bare list of entries, and
 import hashlib
 import json
 import os
+import re
+
+# The name a declaration line declares: `const handler = …`, else the identifier before
+# the first parenthesis that is not a keyword (`def f(`, `func f(`, `fn f<T>(`, `function f(`).
+BINDING_RE = re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=")
+CALLED_RE = re.compile(r"([A-Za-z_$][\w$]*)\s*(?:<[^()]*>)?\s*\(")
+NOT_NAMES = frozenset({"if", "for", "while", "switch", "catch", "return", "function", "async", "await", "new",
+                       "fn", "func", "def", "fun", "sub"})
 
 
 class Finding:
@@ -79,6 +93,7 @@ class Verdict:
         self.worsened = []   # [(Finding, entry)]
         self.held = []       # [(Finding, entry)]
         self.improved = []   # [(Finding, entry)]
+        self.changed = []    # [(Finding, entry)] — the declaration line changed, no value went up
         self.stale = []      # [entry]
         self.drift = None    # a sentence, when the baseline was written under another tool or config
 
@@ -89,7 +104,7 @@ class Verdict:
     @property
     def loose(self):
         """Whether the baseline records more than the code has — what --strict refuses."""
-        return bool(self.stale or self.improved or self.drift)
+        return bool(self.stale or self.improved or self.changed or self.drift)
 
     @property
     def measurement_only(self):
@@ -125,7 +140,7 @@ def write_entries(path, entries, provenance):
 def tightened(verdict):
     """The entries a tighten writes: every held or improved finding at today's values, a
     worsened entry as it was (never raised), a stale entry dropped, a new finding left out."""
-    kept = [f.entry() for f, _ in verdict.held + verdict.improved] + [e for _, e in verdict.worsened]
+    kept = [f.entry() for f, _ in verdict.held + verdict.improved + verdict.changed] + [e for _, e in verdict.worsened]
     return sorted(kept, key=lambda e: (e.get("file", ""), e.get("line", 0), e.get("text", "")))
 
 
@@ -138,18 +153,23 @@ def outside(entries, files):
     return [e for e in entries if e.get("file") not in wanted]
 
 
-def _tighten(path, verdict, provenance, noun, untouched=()):
+def _tighten(path, verdict, provenance, noun, untouched=(), quiet=False):
     """`--tighten`: rewrite the baseline to no more than the code has — stale entries
     dropped, improved values lowered, nothing added, nothing raised. `untouched` are the
-    entries a `--only` scope left alone, written back as they are. Prints what changed;
-    the exit is 1 while new or worsened findings remain, since they still fail, else 0."""
-    entries = tightened(verdict) + list(untouched)
-    write_entries(path, entries, provenance)
-    print("baseline tightened: %d stale entr%s dropped, %d lowered — it records %d %s"
-          % (len(verdict.stale), "y" if len(verdict.stale) == 1 else "ies", len(verdict.improved), len(entries), noun))
+    entries a `--only` scope left alone, written back as they are. A baseline already
+    exact is left as it is. Prints what changed (unless `quiet`: the Stop hook, whose
+    report must not differ from one stop to the next for a write it already made); the
+    exit is 1 while new or worsened findings remain, since they still fail, else 0."""
+    if verdict.loose:
+        entries = tightened(verdict) + list(untouched)
+        write_entries(path, entries, provenance)
+        if not quiet:
+            print("baseline tightened: %d stale entr%s dropped, %d lowered — it records %d %s"
+                  % (len(verdict.stale), "y" if len(verdict.stale) == 1 else "ies", len(verdict.improved), len(entries), noun))
     if verdict.failed:
-        print("%d new and %d worse still fail: fix the code, or a person accepts them with --write-baseline."
-              % (len(verdict.new), len(verdict.worsened)))
+        if not quiet:
+            print("%d new and %d worse still fail: fix the code, or a person accepts them with --write-baseline."
+                  % (len(verdict.new), len(verdict.worsened)))
         return 1
     return 0
 
@@ -244,9 +264,35 @@ def _match_group(findings, entries, metrics):
     return pairs, unmatched, stale
 
 
-def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None):
-    """Sort `findings` against the baseline `entries` into the five outcomes. Identical
-    `(file, text)` can repeat within a run; `_match_group` tells them apart."""
+def declared_name(text):
+    """The name a declaration line declares; None for a line that declares none."""
+    binding = BINDING_RE.match(text)
+    if binding:
+        return binding.group(1)
+    return next((m.group(1) for m in CALLED_RE.finditer(text) if m.group(1) not in NOT_NAMES), None)
+
+
+def _renamed(verdict, metrics):
+    """Pair each new finding with a stale entry declaring the same name in the same file,
+    nearest recorded line first: the same function with an edited declaration line."""
+    stale = list(verdict.stale)
+    for finding in list(verdict.new):
+        name = declared_name(finding.text)
+        same = [e for e in stale if name and e["file"] == finding.file and declared_name(e["text"]) == name]
+        if not same:
+            continue
+        entry = min(same, key=lambda e: abs(e.get("line", finding.line) - finding.line))
+        stale.remove(entry)
+        verdict.new.remove(finding)
+        worse = compare(finding, entry, metrics) == "worsened"
+        (verdict.worsened if worse else verdict.changed).append((finding, entry))
+    verdict.stale = stale
+
+
+def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None, renames=False):
+    """Sort `findings` against the baseline `entries` into the six outcomes. Identical
+    `(file, text)` can repeat within a run; `_match_group` tells them apart. With
+    `renames` — a gate over functions — what is left is paired by declared name."""
     verdict = Verdict()
     groups = {}
     for e in entries:
@@ -260,6 +306,8 @@ def judge(findings, entries, metrics, stored_provenance=None, current_provenance
             getattr(verdict, compare(finding, entry, metrics)).append((finding, entry))
         verdict.new += unmatched
         verdict.stale += stale
+    if renames:
+        _renamed(verdict, metrics)
     verdict.new.sort(key=lambda f: (f.file, f.line))
     verdict.drift = drift_between(stored_provenance, current_provenance)
     return verdict
@@ -322,15 +370,25 @@ def _print_notes(verdict, gate):
         _print_listed("NOTE: %d baseline entr%s matched nothing this run — fixed, split, renamed or deleted:"
                       % (n, "y" if n == 1 else "ies"),
                       ["%s  %s  %s" % (e["file"], gate.brief(e), e["text"][:70]) for e in verdict.stale])
+    _print_moved(verdict, gate)
+    if verdict.drift:
+        print("NOTE: %s — its numbers may not be comparable." % verdict.drift)
+    if verdict.loose:
+        print("Tighten the baseline (this only ever lowers it): %s" % gate.remedy)
+
+
+def _print_moved(verdict, gate):
+    """The entries whose function changed under them, no worse: a declaration line, a value."""
+    if verdict.changed:
+        _print_listed("NOTE: %d baselined %s changed their declaration line, no worse — the baseline still records the old one:"
+                      % (len(verdict.changed), gate.noun),
+                      ["%s:%d  %s, baseline says %s  %s (was: %s)" % (f.file, f.line, gate.show(f.values), gate.brief(e), f.text[:50], e["text"][:50])
+                       for f, e in verdict.changed])
     if verdict.improved:
         _print_listed("NOTE: %d baselined %s improved — the baseline still records the old value:"
                       % (len(verdict.improved), gate.noun),
                       ["%s:%d  %s, baseline says %s  %s" % (f.file, f.line, gate.show(f.values), gate.brief(e), f.text[:70])
                        for f, e in verdict.improved])
-    if verdict.drift:
-        print("NOTE: %s — its numbers may not be comparable." % verdict.drift)
-    if verdict.loose:
-        print("Tighten the baseline (this only ever lowers it): %s" % gate.remedy)
 
 
 def report(verdict, gate, baseline_size, ok_line, quiet=False, strict=False, context=(), tighten=False, baseline=None):
@@ -341,8 +399,7 @@ def report(verdict, gate, baseline_size, ok_line, quiet=False, strict=False, con
     baseline is rewritten instead — `baseline` is (path, provenance, the entries a --only
     scope leaves untouched) — and the exit says whether anything still fails."""
     if tighten:
-        path, provenance, untouched = baseline
-        return _tighten(path, verdict, provenance, gate.noun, untouched)
+        return _tighten_and_report(verdict, gate, baseline_size, context, baseline, quiet)
     if verdict.failed:
         _print_failures(verdict, gate, baseline_size, context)
         _print_notes(verdict, gate)
@@ -355,6 +412,15 @@ def report(verdict, gate, baseline_size, ok_line, quiet=False, strict=False, con
               "Tighten it with the command above and commit the result.")
         return 1
     return 0
+
+
+def _tighten_and_report(verdict, gate, baseline_size, context, baseline, quiet):
+    """`--tighten`'s write, and — quiet, as the Stop hook runs it — the failures in full,
+    since that report is what the agent fixes."""
+    path, provenance, untouched = baseline
+    if verdict.failed and quiet:
+        _print_failures(verdict, gate, baseline_size, context)
+    return _tighten(path, verdict, provenance, gate.noun, untouched, quiet)
 
 
 def add_tighten_argument(parser):

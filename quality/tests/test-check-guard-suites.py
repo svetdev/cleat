@@ -188,6 +188,24 @@ code, out, err = run(fixture(entries=["scripts/run.sh", "scripts/test-b.py", "sc
 check_equal("a run.sh elsewhere does not wire suites outside its directory", 1, code)
 check_contains("the suite it does not cover is named", "quality/tests/test-z.py", err)
 
+# --- A run.sh that takes its list from --list stands for exactly that list -----
+
+LIST_RUNNER = '#!/bin/bash\nwhile read -r s; do python3 "$s"; done < <(python3 quality/bin/check-guard-suites.py --list)\n'
+root = fixture(entries=["quality/tests/run.sh"], exempt={})
+write(os.path.join(root, "quality/tests/run.sh"), LIST_RUNNER)
+code, out, err = run(root)
+check_equal("a run.sh driven by --list wires every suite --list prints, other roots included", 0, code)
+check_contains("and they are counted as checked", "all 4 guard suite(s)", out)
+root = fixture(entries=["quality/tests/run.sh"], exempt={}, not_suites={"scripts/test-b.py": "a tool, not a suite"})
+write(os.path.join(root, "quality/tests/run.sh"), LIST_RUNNER)
+code, out, err = run(root)
+check_equal("a not_suites path is not credited to it, and needs nothing", 0, code)
+root = fixture(entries=["quality/tests/run.sh", "scripts/test-b.py", "scripts/tools/test-c.py"], extra_suites=["scripts/test-z.py"])
+write(os.path.join(root, "quality/tests/run.sh"), "#!/bin/bash\nfor s in quality/tests/test-*.py; do python3 \"$s\"; done\n")
+code, out, err = run(root)
+check_equal("a run.sh that only runs its own directory is credited with that directory", 1, code)
+check_contains("the suite outside it is named", "scripts/test-z.py", err)
+
 # --- The green shape --------------------------------------------------------
 
 code, out, err = run(fixture())

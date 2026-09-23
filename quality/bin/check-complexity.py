@@ -159,7 +159,7 @@ def main():
     entries, stored = ratchet.read(baseline_path)
     untouched = ratchet.outside(entries, args.only)
     over, entries = ratchet.restrict(over, entries, args.only)
-    verdict = ratchet.judge(over, entries, ["cc", "lines"], stored, measured)
+    verdict = ratchet.judge(over, entries, ["cc", "lines"], stored, measured, renames=True)
     gate = ratchet.Gate(
         noun="production function(s)",
         over="over the complexity gate (cyclomatic > %d or body > %d lines)" % (cc_ceiling, line_ceiling),

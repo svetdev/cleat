@@ -16,7 +16,7 @@ one, for the timeout cases), writes nothing outside a temporary directory.
 
   quality/tests/test-check-crap.py
 """
-import importlib.util, json, os, shutil, subprocess, sys, tempfile
+import importlib.util, json, os, shutil, subprocess, sys, tempfile, time
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__)); SCRIPT = os.path.join(os.path.dirname(HERE), "bin", "check-crap.py")
 spec = importlib.util.spec_from_file_location("check_crap", SCRIPT); mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
@@ -228,8 +228,9 @@ try:
     # reads stale, and the two cannot be confused for one another by coincidence.
     write(os.path.join(fresh_bundle, "coverage.json"), {"targets": [{"files": [{"path": bundle_knot, "functions": [
         {"name": "risky", "lineNumber": 3, "executableLines": 10, "coveredLines": 10}]}]}]})
-    os.utime(stale_bundle, (1_000_000, 1_000_000))
-    os.utime(fresh_bundle, (2_000_000, 2_000_000))  # newer mtime — what newest() would pick
+    # both written after the sources, so neither is a leftover; fresh is the newer — what newest() picks
+    os.utime(stale_bundle, (time.time() + 100, time.time() + 100))
+    os.utime(fresh_bundle, (time.time() + 200, time.time() + 200))
 
     bundle_config = os.path.join(bundle_root, "quality.json")
     write(bundle_config, {"crap": {"threshold": 8, "baseline": "baseline.json",
@@ -409,6 +410,17 @@ try:
         handle.write("\n\n\nfn ghost(a: i32) -> i32 { if a > 0 { 1 } else { 2 } }\n")   # line 7: production, and in no coverage run
     ghost_csv = os.path.join(tmp2, "lizard-ghost.csv")
     write(ghost_csv, open(csv).read() + '1,9,20,1,1,"ghost@7-7@%s","%s","ghost","ghost ( a )",7,7\n' % (rs, rs))
+    proc = subprocess.run([sys.executable, SCRIPT, "--config", config, "--lizard-csv", ghost_csv, "--gate", "rust"], capture_output=True, text=True)
+    code, out = proc.returncode, proc.stdout + proc.stderr
+    check("a source written after the export the glob found refuses the gate: the export is a leftover",
+          code == 2 and "older than 1 file(s)" in out and "apps/api/src/knot.rs" in out and "../" not in out, out)
+    check("naming the key whose glob found it, and where swift test says it wrote the last run",
+          '"crap.llvm_cov.exports"' in out and "--show-codecov-path" in out and ".build/out/Products/Debug" in out, out)
+    proc = subprocess.run([sys.executable, SCRIPT, "--config", config, "--lizard-csv", ghost_csv, "--gate", "rust", "--codecov", codecov], capture_output=True, text=True)
+    check("a report named with a flag is the run the caller chose, read whatever its age", proc.returncode == 1 and "knot.rs:7" in proc.stdout, proc.stdout + proc.stderr)
+    proc = subprocess.run([sys.executable, SCRIPT, "--config", config, "--lizard-csv", ghost_csv, "--gate", "rust", "--estimate"], capture_output=True, text=True)
+    check("the estimate reads an older run and never refuses it: that is what it is for", proc.returncode == 0 and "knot.rs:1" in proc.stdout, proc.stdout + proc.stderr)
+    os.utime(codecov, None)   # the tests ran again: the export is newer than the source
     def ghost(*args):
         p = subprocess.run([sys.executable, SCRIPT, "--config", config, "--lizard-csv", ghost_csv, "--gate", "rust", *args], capture_output=True, text=True)
         return p.returncode, p.stdout + p.stderr
@@ -428,6 +440,55 @@ try:
     check("--estimate over debt the baseline holds says nothing", code == 0 and out.strip() == "", out)
     code, out = run2("--gate", "web")
     check("each gate ratchets on its own baseline", code == 0 and "all 1 in the baseline" in out, out)
+
+    # ---- exports may be a list of globs — a toolchain that moved its output: the newest match across them wins
+    cfg = json.load(open(config)); cfg["crap"][1]["llvm_cov"]["exports"] = [".build/out/Products/Debug/codecov/*.json", "rust.json"]; write(config, cfg)
+    code, out = run2("--gate", "rust")
+    check("a list of export globs reads the one that matches", code == 1 and "knot.rs:1  crap 19" in out and "rust.json" in out, out)
+    newer = os.path.join(tmp2, ".build", "out", "Products", "Debug", "codecov", "Core.json")
+    write(newer, {"data": [{"functions": [{"name": "_ZN4knot7branchy", "filenames": [rs], "regions": [[1, 1, 1, 60, 3, 0, 0, 0]]}]}]})
+    os.utime(newer, (time.time() + 60, time.time() + 60))
+    code, out = run2("--gate", "rust")
+    check("and the newest match across every glob, not the first glob's", "Core.json" in out and "knot.rs:1  crap 19" not in out, out)
+    os.remove(newer)
+
+    # ---- --estimate --fail: the estimate as a verdict, for a merge's verify step
+    write(os.path.join(tmp2, "crap-web.json"), [])
+    code, out = run2("--gate", "web", "--estimate", "--fail")
+    check("--estimate --fail fails on what would fail, exit 1", code == 1 and "FAIL: 1 function(s) would fail CRAP 8" in out and "money.ts:1" in out, out)
+    code, out = run2("--gate", "rust", "--estimate", "--fail", "--only", "apps/web/src/money.ts")
+    check("and passes with an OK line when nothing in scope would", code == 0 and "OK: no function in the 1 changed file(s) would fail" in out, out)
+    cfg = json.load(open(config)); cfg["crap"][0]["istanbul"]["exports"] = "no-such-run/coverage-final.json"; write(config, cfg)
+    code, out = run2("--gate", "web", "--estimate", "--fail")
+    check("with no coverage run to read it is exit 2, not the silence of the plain estimate", code == 2 and "no istanbul export" in out, out)
+    cfg["crap"][0]["istanbul"]["exports"] = "coverage-final.json"; write(config, cfg)
+    # --changed: the files changed against the base, as --only would name them
+    git = lambda *a: subprocess.run(["git", "-C", tmp2, "-c", "user.email=t@example.com", "-c", "user.name=T", *a], capture_output=True, text=True, check=True)
+    git("init", "-q", "-b", "main"); git("add", "-A"); git("commit", "-q", "-m", "base")
+    code, out = run2("--gate", "web", "--estimate", "--fail", "--changed")
+    check("--changed with nothing changed judges nothing", code == 0 and "in the 0 changed file(s)" in out, out)
+    with open(web, "a") as handle:
+        handle.write("// touched\n")
+    code, out = run2("--gate", "web", "--estimate", "--fail", "--changed")
+    check("--changed judges a changed file", code == 1 and "money.ts:1" in out, out)
+    write(os.path.join(tmp2, "crap-web.json"), [{"file": "apps/web/src/money.ts", "line": 1, "text": "export function tangled(a: number) {", "cc": 3, "coverage": 0.33, "crap": 12.6}])
+
+    # ---- a git worktree reads the main checkout's coverage run with no path_map
+    worktree = os.path.realpath(tempfile.mkdtemp(prefix="check-crap-wt-")); os.rmdir(worktree)
+    git("add", "-A"); git("commit", "-q", "-m", "more"); git("worktree", "add", "-q", worktree, "-b", "item")
+    wt_rs = os.path.join(worktree, "apps", "api", "src", "knot.rs")
+    wt_csv = os.path.join(worktree, "lizard.csv")
+    write(wt_csv, '1,9,20,1,1,"branchy@1-1@%s","%s","branchy","branchy ( a )",1,1\n' % (wt_rs, wt_rs))
+    write(os.path.join(worktree, "rust.json"), {"data": [{"functions": [{"name": "_ZN4knot7branchy", "filenames": [os.path.realpath(rs)],
+                                                "regions": [[1, 1, 1, 60, 3, 0, 0, 0], [1, 30, 1, 35, 0, 0, 0, 0]]}]}]})
+    cfg = json.load(open(os.path.join(worktree, "quality.json"))); cfg["crap"][1]["llvm_cov"]["exports"] = "rust.json"
+    write(os.path.join(worktree, "quality.json"), cfg)
+    proc = subprocess.run([sys.executable, SCRIPT, "--config", os.path.join(worktree, "quality.json"), "--lizard-csv", wt_csv, "--gate", "rust"], capture_output=True, text=True)
+    out = proc.stdout + proc.stderr
+    check("in a worktree, an export naming the main checkout's paths is read as this checkout's",
+          proc.returncode == 1 and "knot.rs:1  crap 19 (cc 9, coverage 50%)" in out, out)
+    check("and says so", "written in another worktree" in out, out)
+    git("worktree", "remove", "--force", worktree)
 finally:
     shutil.rmtree(tmp2, ignore_errors=True)
 

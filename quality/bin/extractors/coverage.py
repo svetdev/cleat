@@ -28,8 +28,15 @@ class CoverageError(Exception):
     """A report could not be read; the message says why."""
 
 
-def newest(pattern):
-    matches = sorted(glob.glob(pattern), key=os.path.getmtime)
+class NoneUnder(CoverageError):
+    """A report that names files, none of them under the root: written in another checkout."""
+
+
+def newest(patterns):
+    """The most recently written file matching any of `patterns` — one glob or a list of
+    them, for a tool that has moved where it writes; None when nothing matches."""
+    patterns = [patterns] if isinstance(patterns, str) else patterns
+    matches = sorted({match for pattern in patterns for match in glob.glob(pattern)}, key=os.path.getmtime)
     return matches[-1] if matches else None
 
 
@@ -53,7 +60,7 @@ def remap(path, path_map):
 def none_under(kind, named, root):
     """The CoverageError for a report that names files, none of them under `root`: read
     as it stands, every function would score 0%% — silently, which is worse than loudly."""
-    return CoverageError("the %s report names %d file(s), none under %s — it was written in another checkout or "
+    return NoneUnder("the %s report names %d file(s), none under %s — it was written in another checkout or "
                          "container; map its prefix to this one with \"path_map\" (%s, …)" % (kind, len(named), root, sorted(named)[0]))
 
 

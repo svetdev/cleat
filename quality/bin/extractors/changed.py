@@ -5,7 +5,8 @@ request's base when CI says so (`GITHUB_BASE_REF`), else the merge-base with
 the default branch, else HEAD — so on the default branch with nothing pushed
 "changed" means uncommitted. `changed_lines()` reads `git diff -U0` from that
 base to the working tree, plus every line of every untracked file, as
-{repo-relative path: set of line numbers}.
+{repo-relative path: set of line numbers}. `worktrees()` names the other
+checkouts of the same repository, which a report written in one of them names.
 """
 
 import os
@@ -77,3 +78,15 @@ def changed_lines(repo, base):
     if code != 0:
         raise ChangedError("git diff failed in %s" % repo)
     return _untracked(repo, _parse_diff(out))
+
+
+def worktrees(repo):
+    """(this checkout's top level, [the repository's other worktrees]) as realpaths; ("", [])
+    outside git. A report written in the main checkout names its paths, not this one's."""
+    code, top = _git(repo, "rev-parse", "--show-toplevel")
+    if code != 0 or not top.strip():
+        return "", []
+    top = os.path.realpath(top.strip())
+    _, out = _git(repo, "worktree", "list", "--porcelain")
+    listed = [os.path.realpath(line[len("worktree "):]) for line in out.splitlines() if line.startswith("worktree ")]
+    return top, [path for path in listed if path != top]

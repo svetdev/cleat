@@ -16,8 +16,11 @@ importing or running it — the array is bash, not Python, and the point is to
 read what a preflight run would read, not to re-derive it. Every entry is a
 quoted command; the first word of each is the path it runs, whatever flags
 follow (`--quiet`, and the like). An entry that is a directory's `run.sh`
-stands for every suite in that directory — cleat's own `quality/tests/run.sh`
-runs every suite beside it. That set of paths is compared against every
+stands for the suites it runs: one that takes its list from this check's
+`--list` — cleat's own `quality/tests/run.sh` does, whenever quality.json has
+this section — stands for exactly that list, scripts/ and all, so no suite has
+to be named twice and run twice; any other `run.sh` stands for every suite in
+its directory. That set of paths is compared against every
 `test-*.py` and `test-*.sh` file found anywhere beneath each swept root, not
 only at its top level — a suite one directory deeper is exactly the shape of
 drift this check exists to end. A root listed both as a parent and as one of
@@ -105,6 +108,8 @@ SECTION = "guard_suites"
 # swallowed, and its quoted entries -- each one a full command, path first.
 PREFLIGHT_RE = re.compile(r"PREFLIGHT=\((.*?)\n\)", re.DOTALL)
 ENTRY_RE = re.compile(r'"([^"]*)"')
+# A runner that takes its suites from this check: `check-guard-suites.py --list`.
+LIST_CALL_RE = re.compile(r"check-guard-suites\.py\s+--list\b")
 
 # A guard suite's filename, wherever beneath a swept root it sits.
 # The filename shapes a guard suite takes, unless `"guard_suites"."patterns"` says
@@ -156,15 +161,30 @@ def parse_preflight(text):
 
 
 def _run_by_runners(entry_paths, known, settings):
-    """The suites a `run.sh` entry stands for: every suite in that script's directory.
-    cleat's `quality/tests/run.sh` runs every suite beside it, so one PREFLIGHT entry
-    wires them all — listing each of them by hand is the drift this check exists to end."""
+    """The suites a `run.sh` entry stands for: what `--list` prints when the script takes
+    its list from there, as cleat's `quality/tests/run.sh` does; else every suite in that
+    script's directory. One PREFLIGHT entry wires them all — listing each of them by
+    hand is the drift this check exists to end, and a suite listed beside the runner
+    that already runs it runs twice."""
     covered = set()
     for entry in entry_paths:
-        if os.path.basename(entry) == "run.sh":
+        if os.path.basename(entry) != "run.sh":
+            continue
+        if _runs_the_list(os.path.join(settings.repo, entry)):
+            covered |= {repo_path(suite) for suite in suites_to_run(settings)}
+        else:
             prefix = os.path.dirname(entry) + os.sep
             covered |= {path for path in known if path.startswith(prefix)}
     return covered
+
+
+def _runs_the_list(runner):
+    """Whether the `run.sh` at `runner` runs the suites this check's `--list` prints."""
+    try:
+        with open(runner) as handle:
+            return LIST_CALL_RE.search(handle.read()) is not None
+    except OSError:
+        return False
 
 
 def _is_suite_file(path, name, patterns=DEFAULT_PATTERNS):

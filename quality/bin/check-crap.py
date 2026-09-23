@@ -39,13 +39,29 @@ the suite rather than before it — a postflight — and by hand:
   quality/bin/check-crap.py --xccov F --codecov F --lint F [--baseline F]   # the tests use these
   quality/bin/check-crap.py --bundle PATH         # score this .xcresult, not the newest on the machine
   quality/bin/check-crap.py --estimate [--only F…]   # what gate.py's preflight runs: WARN, never fail
+  quality/bin/check-crap.py --estimate --fail --changed   # a merge's verify step: FAIL, exit 1
 
 A postflight gate is too late for a branch: debt merged clean surfaces only when
 the release runs coverage. So `gate.py`'s preflight also runs each CRAP gate with
 `--estimate` — from the last coverage run on disk, over only the functions that run
 has a record for (an older run cannot tell an uncovered function from a moved one),
 under `--changed` only the changed files. What would fail is a WARN; the exit is
-0; with no coverage run on disk it says nothing.
+0; with no coverage run on disk it says nothing. With `--fail` the same estimate is
+a verdict — for an autopilot that merges item by item while the full suite cannot
+run: a new or worse function is a FAIL and exit 1, and a coverage run it cannot
+read is exit 2, not silence. `--changed` scopes it to the files changed against the
+base (`--base REF` to name one), as `--only` would with the list spelled out.
+
+The gate itself refuses a report a glob found when it is older than a file it would
+judge: that is a leftover — an earlier toolchain's output directory, say — not the
+run that just happened, and read anyway it scores every function as it stood then.
+A report named with a flag is the run the caller chose, and is read as it is. The
+estimate states its report's age and never refuses; that is what it is for.
+
+A report written in another git worktree of the same repository — an autopilot's
+item worktree reading the main checkout's coverage run — names paths that are not
+this checkout's. When nothing it names is under the root, the other worktrees are
+mapped onto this one and it is read again, with a NOTE; no path_map is needed.
 
 Everything that names the project is the `crap` section of `quality.json`,
 found by walking up from the working directory or named with `--config` (see
@@ -70,8 +86,12 @@ package's source root. A package-backed app configures both readers.
                  "bundles": "~/Library/Developer/Xcode/DerivedData/*/Logs/Test/*.xcresult"},  # newest wins
     "llvm_cov": {"sources": "…/Sources/AcmeCore",   # the root the llvm-cov reader keeps
                  "path_map": {"/work/": "."},        # any reader: a prefix the report uses → this checkout
-                 "exports": "…/.build/*/debug/codecov/AcmeCore.json"}                    # newest wins
+                 "exports": ["…/.build/out/Products/Debug/codecov/AcmeCore.json",   # Swift 6.4 and later
+                             "…/.build/*/debug/codecov/AcmeCore.json"]}               # earlier; newest match wins
   }
+
+Every `exports` and `bundles` key takes one glob or a list; the newest match across
+them is read.
 
 A flag overrides its key — `--threshold`, `--baseline`, `--app-sources` (the
 xccov root), `--package-sources` (the llvm-cov root), `--repo` (what paths
@@ -90,7 +110,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_config
 import ratchet
-from extractors import languages, complexity as complexity_readers
+from extractors import changed, languages, complexity as complexity_readers
 from extractors import coverage as coverage_reports
 
 SECTION = "crap"
@@ -103,6 +123,8 @@ class Settings:
     def __init__(self, explicit_config):
         self.explicit = explicit_config
         self._config = None
+        self.globbed = []   # [(key, globs key, report, root)] — each report a glob found, for refuse_stale
+        self.quiet = False
 
     @property
     def config(self):
@@ -290,13 +312,11 @@ def app_coverage(args, settings):
         with open(args.xccov) as handle:
             report, source = json.load(handle), args.xccov
     else:
-        bundle = args.bundle or coverage_reports.newest(settings.config.path(settings.value(None, "xccov", "bundles")))
-        if bundle is None:
-            raise GateError("no .xcresult bundle matches %s — run the suite first" % settings.value(None, "xccov", "bundles"))
+        bundle = args.bundle or newest_report(settings, "xccov", "bundles", root,
+                                              "no .xcresult bundle matches %s — run the suite first")
         report, source = coverage_reports.read_xccov_bundle(bundle), bundle
-    path_map = path_map_for(settings, "xccov")
-    note_package_files(coverage_reports.xccov_package_files(report, root, path_map), args, settings)
-    return coverage_reports.from_xccov(report, root, path_map), source
+    note_package_files(coverage_reports.xccov_package_files(report, root, path_map_for(settings, "xccov")), args, settings)
+    return mapped(settings, "xccov", lambda path_map: coverage_reports.from_xccov(report, root, path_map)), source
 
 
 def note_package_files(dropped, args, settings):
@@ -320,34 +340,68 @@ def path_map_for(settings, key):
     return {source: os.path.join(settings.config.path(target), "") for source, target in raw.items()}
 
 
+def worktree_map(directory):
+    """{every checkout of this repository: this one} — the other worktrees, and this one
+    onto itself, longest first so a worktree nested in the main checkout is not read as
+    the main checkout; {} outside git or with no other worktree."""
+    top, others = changed.worktrees(directory)
+    if not others:
+        return {}
+    return {os.path.join(path, ""): os.path.join(top, "") for path in sorted(others + [top], key=len, reverse=True)}
+
+
+def mapped(settings, key, read):
+    """`read(path_map)` under `<key>.path_map`. A report that names nothing under the
+    root, read in a git worktree, is read again with the repository's other checkouts
+    mapped onto this one: an autopilot's worktree judges a coverage run written in the
+    main checkout with nothing to configure. Anything else that names nothing here is
+    the loud refusal it always was."""
+    path_map = path_map_for(settings, key)
+    try:
+        return read(path_map)
+    except coverage_reports.NoneUnder:
+        others = worktree_map(settings.root) if settings.has() else {}
+        if not others:
+            raise
+    found = read(dict(path_map, **others))
+    if not settings.quiet:
+        print("NOTE: the %s report was written in another worktree of this repository; its paths were read as this one's." % key)
+    return found
+
+
+def newest_report(settings, key, globs_key, root, missing):
+    """The newest file matching `<key>.<globs_key>` — one glob or a list — remembered with
+    the root it is read for, so the gate can refuse one older than the sources it judges.
+    None matching is a GateError: `missing` with the globs."""
+    patterns = settings.value(None, key, globs_key)
+    patterns = [patterns] if isinstance(patterns, str) else list(patterns)
+    found = coverage_reports.newest([settings.config.path(p) for p in patterns])
+    if found is None:
+        raise GateError(missing % ", ".join(patterns))
+    settings.globbed.append((key, globs_key, found, root))
+    return found
+
+
 def package_coverage(args, settings):
     """The llvm-cov root's functions, and the file they were read from: from --codecov,
     else the newest export."""
     root = settings.path(args.package_sources, "llvm_cov", "sources")
-    if args.codecov:
-        with open(args.codecov) as handle:
-            return coverage_reports.from_codecov(json.load(handle), root, path_map_for(settings, "llvm_cov")), args.codecov
-    pattern = settings.value(None, "llvm_cov", "exports")
-    export = coverage_reports.newest(settings.config.path(pattern))
-    if export is None:
-        raise GateError("no llvm-cov export matches %s — run the package's tests with --enable-code-coverage" % pattern)
+    export = args.codecov or newest_report(settings, "llvm_cov", "exports", root,
+                                           "no llvm-cov export matches %s — run the package's tests with --enable-code-coverage")
     with open(export) as handle:
-        return coverage_reports.from_codecov(json.load(handle), root, path_map_for(settings, "llvm_cov")), export
+        report = json.load(handle)
+    return mapped(settings, "llvm_cov", lambda path_map: coverage_reports.from_codecov(report, root, path_map)), export
 
 
 def web_coverage(args, settings):
     """The istanbul root's functions and the file they were read from: --istanbul, else
     the newest `crap.istanbul.exports` match."""
     root = settings.path(args.web_sources, "istanbul", "sources")
-    if args.istanbul:
-        with open(args.istanbul) as handle:
-            return coverage_reports.from_istanbul(json.load(handle), root, path_map_for(settings, "istanbul")), args.istanbul
-    pattern = settings.value(None, "istanbul", "exports")
-    export = coverage_reports.newest(settings.config.path(pattern))
-    if export is None:
-        raise GateError("no istanbul export matches %s — run the web tests with --coverage first" % pattern)
+    export = args.istanbul or newest_report(settings, "istanbul", "exports", root,
+                                            "no istanbul export matches %s — run the web tests with --coverage first")
     with open(export) as handle:
-        return coverage_reports.from_istanbul(json.load(handle), root, path_map_for(settings, "istanbul")), export
+        report = json.load(handle)
+    return mapped(settings, "istanbul", lambda path_map: coverage_reports.from_istanbul(report, root, path_map)), export
 
 
 def report_coverage(args, settings, key, flag):
@@ -355,16 +409,49 @@ def report_coverage(args, settings, key, flag):
     flag's file, else the newest `crap.<key>.exports` match; the root from
     --report-sources, else `crap.<key>.sources`."""
     root = settings.path(args.report_sources, key, "sources")
-    if flag:
-        path = flag
-    else:
-        pattern = settings.value(None, key, "exports")
-        path = coverage_reports.newest(settings.config.path(pattern))
-        if path is None:
-            raise GateError("no %s report matches %s — run the tests with coverage first" % (key, pattern))
+    path = flag or newest_report(settings, key, "exports", root, "no " + key + " report matches %s — run the tests with coverage first")
     base_dir = os.path.abspath(args.repo) if args.repo else (settings.root if settings.has() else os.path.dirname(os.path.abspath(path)))
-    report = coverage_reports.read(path, base_dir, path_map_for(settings, key))
-    return coverage_reports.function_coverage(report, root), path
+    return mapped(settings, key, lambda path_map: coverage_reports.function_coverage(
+        coverage_reports.read(path, base_dir, path_map), root)), path
+
+
+# Where a reader's own tool says the file it just wrote is — named when the glob found an older one.
+WHERE_WRITTEN = {
+    "llvm_cov": " `swift test --show-codecov-path` prints where the last run wrote it; Swift 6.4 writes under "
+                ".build/out/Products/Debug/codecov, with .build/debug a link to it.",
+}
+
+
+def stale_reports(settings, complexities):
+    """[(key, globs key, report, [the judged files written after it])] for every report the
+    globs found — a named one (--codecov, --bundle, …) is the run the caller chose."""
+    files = {path for path, _ in complexities}
+    out = []
+    for key, globs_key, report, root in settings.globbed:
+        under = os.path.join(os.path.realpath(root), "")
+        written = os.path.getmtime(report)
+        newer = sorted(p for p in files if p.startswith(under) and os.path.exists(p) and os.path.getmtime(p) > written)
+        if newer:
+            out.append((key, globs_key, report, newer))
+    return out
+
+
+def refuse_stale(settings, complexities, repo):
+    """A GateError when a report the globs found is older than a file it would judge. Read
+    anyway, it scores every function as it stood when it ran — a leftover from an earlier
+    toolchain once read heavily tested code as 0% and named fifty functions that were not
+    over the gate."""
+    stale = stale_reports(settings, complexities)
+    if not stale:
+        return
+    key, globs_key, report, newer = stale[0]
+    repo = os.path.realpath(repo)
+    raise GateError(
+        "the %s report %s (%s old) is older than %d file(s) it would judge (%s%s) — it is not the last run's, "
+        "and would score their functions as they were. Run the tests with coverage again; if they just ran, "
+        "\"crap.%s.%s\" matches a leftover, not what the run wrote.%s"
+        % (key, os.path.relpath(os.path.realpath(report), repo), _age(report), len(newer), os.path.relpath(newer[0], repo),
+           ", …" if len(newer) > 1 else "", key, globs_key, WHERE_WRITTEN.get(key, "")))
 
 
 # ---------------------------------------------------------------- the gate
@@ -391,14 +478,19 @@ def main():
     parser.add_argument("--repo", help="paths are reported relative to this (default: the directory of quality.json)")
     parser.add_argument("--estimate", action="store_true",
                         help="the preflight's look ahead: warn (never fail) on what would fail CRAP, from the last coverage run on disk")
+    parser.add_argument("--fail", action="store_true",
+                        help="with --estimate: a verdict, not a warning — exit 1 on a new or worse function, 2 when no coverage run can be read")
+    parser.add_argument("--changed", action="store_true", help="judge only the files changed against the base (see --base)")
+    parser.add_argument("--base", help="with --changed: the ref to diff against (default: the pull request's base, else the merge-base with main)")
     ratchet.add_only_argument(parser)
     ratchet.add_tighten_argument(parser)
     ratchet.add_strict_argument(parser)
     quality_config.add_config_argument(parser)
     args = parser.parse_args()
     settings = Settings(args.config)
-    settings.gate = args.gate
+    settings.gate, settings.quiet = args.gate, args.quiet
     try:
+        scope_to_changes(args, settings)
         return estimate(args, settings) if args.estimate else gate(args, settings)
     except (GateError, KeyError, coverage_reports.CoverageError) as problem:
         print("FAIL: %s" % (problem.args[0] if problem.args else problem), file=sys.stderr)
@@ -431,32 +523,62 @@ def gather_coverage(args, settings):
     return coverage, sources_read
 
 
+def scope_to_changes(args, settings):
+    """`--changed`: `--only` the files changed against the base, repo-relative."""
+    if not args.changed:
+        return
+    try:
+        args.only = sorted(changed.changed_lines(settings.root, changed.base_ref(settings.root, args.base)))
+    except changed.ChangedError as problem:
+        raise GateError(str(problem))
+
+
 def estimate(args, settings):
     """`--estimate`: the preflight's look ahead at the postflight. CRAP from the last coverage
     run on disk, over the functions (under `--only`, the changed files' functions) that run
     holds a record for, against the baseline; a function that would fail is a WARN, and the
     exit is 0 whatever it finds. No coverage run on disk, or none this gate can read, is
-    silence: the postflight decides. So debt a branch adds is named at merge, not at release."""
-    try:
-        coverage, sources_read = gather_coverage(args, settings)
-        complexities, ends = complexities_for(args, settings)
-    except (GateError, KeyError, coverage_reports.CoverageError):
+    silence: the postflight decides. So debt a branch adds is named at merge, not at release.
+    With `--fail` it is a verdict instead: FAIL and exit 1, and an unreadable run exit 2."""
+    inputs = estimate_inputs(args, settings)
+    if inputs is None:
         return 0
+    (coverage, sources_read), (complexities, ends) = inputs
     threshold = float(settings.value(args.threshold, "threshold"))
     repo = os.path.abspath(args.repo) if args.repo else settings.root
     over = [ratchet.Finding(f, line, t, {"cc": cc, "coverage": round(cov, 2), "crap": round(score, 1)})
             for f, line, t, cc, cov, score in judge(complexities, coverage, threshold, repo, ends, recorded_only=True)]
     entries, _ = ratchet.read(settings.path(args.baseline, "baseline"))
-    verdict = ratchet.judge(*ratchet.restrict(over, entries, args.only), ["crap"])
+    verdict = ratchet.judge(*ratchet.restrict(over, entries, args.only), ["crap"], renames=True)
     if verdict.failed:
-        print_estimate(verdict, threshold, sources_read)
+        print_estimate(verdict, threshold, sources_read, args.fail)
+        return 1 if args.fail else 0
+    if args.fail and not args.quiet:
+        print_estimate_ok(args.only, threshold, sources_read)
     return 0
 
 
-def print_estimate(verdict, threshold, sources_read):
+def estimate_inputs(args, settings):
+    """(the coverage and what was read, the complexities and ends) for an estimate; None —
+    silence — when there is no run to read, which under `--fail` is the error instead."""
+    try:
+        return gather_coverage(args, settings), complexities_for(args, settings)
+    except (GateError, KeyError, coverage_reports.CoverageError):
+        if args.fail:
+            raise
+        return None
+
+
+def print_estimate_ok(only, threshold, sources_read):
+    print("OK: no function %s would fail CRAP %g — estimated from %s"
+          % ("in the %d changed file(s)" % len(only) if only is not None else "this run records",
+             threshold, " and ".join(_aged(s) for s in sources_read)))
+
+
+def print_estimate(verdict, threshold, sources_read, fail=False):
     rows = verdict.new + [finding for finding, _ in verdict.worsened]
-    print("WARN: %d function(s) would fail CRAP %g at the postflight — estimated from %s:"
-          % (len(rows), threshold, " and ".join(_aged(s) for s in sources_read)))
+    print("%s: %d function(s) would fail CRAP %g at the postflight — estimated from %s:"
+          % ("FAIL" if fail else "WARN", len(rows), threshold, " and ".join(_aged(s) for s in sources_read)))
     for f in sorted(rows, key=lambda f: (f.file, f.line)):
         v = f.values
         print("  %s:%d  crap %.0f (cc %d, coverage %.0f%%)  %s" % (f.file, f.line, v["crap"], v["cc"], v["coverage"] * 100, f.text))
@@ -466,10 +588,12 @@ def print_estimate(verdict, threshold, sources_read):
 def _aged(source):
     """"istanbul export PATH" with how old the file is, when it is one."""
     path = source.split(" ", 2)[-1]
-    if not os.path.exists(path):
-        return source
+    return "%s (%s old)" % (source, _age(path)) if os.path.exists(path) else source
+
+
+def _age(path):
     hours = (time.time() - os.path.getmtime(path)) / 3600
-    return "%s (%s old)" % (source, "%.0fh" % hours if hours < 48 else "%.0fd" % (hours / 24))
+    return "%.0fh" % hours if hours < 48 else "%.0fd" % (hours / 24)
 
 
 def gate(args, settings):
@@ -477,6 +601,7 @@ def gate(args, settings):
     coverage, sources_read = gather_coverage(args, settings)
     threshold = float(settings.value(args.threshold, "threshold"))
     repo = os.path.abspath(args.repo) if args.repo else settings.root
+    refuse_stale(settings, complexities, repo)
     baseline_path = settings.path(args.baseline, "baseline")
 
     over = [ratchet.Finding(f, line, t, {"cc": cc, "coverage": round(cov, 2), "crap": round(score, 1)})
@@ -489,7 +614,7 @@ def gate(args, settings):
         return 0
     entries, stored = ratchet.read(baseline_path)
     untouched = ratchet.outside(entries, args.only)
-    verdict = ratchet.judge(*ratchet.restrict(over, entries, args.only), ["crap"], stored, measured)
+    verdict = ratchet.judge(*ratchet.restrict(over, entries, args.only), ["crap"], stored, measured, renames=True)
     gate = ratchet.Gate(
         noun="production function(s)",
         over="over CRAP %g — complexity the tests do not pay for" % threshold,

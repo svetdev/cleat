@@ -17,12 +17,19 @@ them. An unquoted heredoc's body runs its own subshells, so those are judged too
 The direction of every doubt is refusal: a command word this does not know is a
 program, not prose.
 
+`writes` answers the guard's other question — which files a command writes: the
+files handed to `sed -i`, `tee`, `cp`, `mv`, `rm`, `truncate` and `install`, and
+the targets of `>` and `>>`, looking inside `sh -c` and `eval` strings and a
+heredoc body's subshells. Only those words are paths; a sed script, a comment or
+a heredoc body that names `quality.json` is text.
+
 `Scan` is the reader underneath; attach uses it too, to tell a project's own hook
 that runs `gate.py` from one that only names it.
 """
 
 import os
 import re
+import shlex
 
 # Commands that carry, print or search text and run nothing they are handed.
 PROSE_COMMANDS = frozenset({"cat", "echo", "printf", "tee", "grep", "egrep", "fgrep", "rg", "ag", "ack",
@@ -33,6 +40,14 @@ ASSIGNMENT_RE = re.compile(r"^[A-Za-z_]\w*=")
 PREFIX_WORDS = frozenset({"then", "do", "else", "elif", "if", "while", "until", "exec", "env", "nohup", "time",
                           "command", "builtin"})
 HEREDOC_TEXT = "heredoc"   # a frame's quote state for an unquoted heredoc's body: literal but for subshells
+# Commands that write the files they are handed; the shells whose `-c` string is a command line of its own.
+WRITERS = frozenset({"tee", "cp", "mv", "rm", "truncate", "install"})
+SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh"})
+WRAPPERS = PREFIX_WORDS | {"sudo", "xargs", "!", "(", ")", "{", "}"}
+REDIRECTS = frozenset({">", ">>", ">|", "&>", "&>>", ">&"})
+INPUTS = frozenset({"<", "<<", "<<<", "<>", "<&"})
+SED_SCRIPT_OPTIONS = frozenset({"-e", "-f", "--expression", "--file"})
+DIRECTORY_CHANGERS = frozenset({"cd", "pushd"})
 
 
 def mentions_prefix(text, flag, shortest):
@@ -163,6 +178,7 @@ class Scan:
         """Past the bodies of the heredocs the line just ended declared, each handed to
         the segment that opened it."""
         for heredoc, seg in self.pending:
+            seg.setdefault("own", "".join(seg["chars"]))   # the command's own words, before any body
             dash, quoted, delimiter = heredoc.group(1), heredoc.group(2), heredoc.group(3)
             body, i = _heredoc_body(self.text, i, delimiter, bool(dash))
             seg["chars"].append("\n" + body)
@@ -224,3 +240,132 @@ def _pipelines(scan, carried):
         carries, runs = pipelines.get(seg["pipeline"], (False, False))
         pipelines[seg["pipeline"]] = (carries or id(seg) in carried, runs or not _prose(seg))
     return pipelines
+
+
+def own_text(seg):
+    """A segment's own command line, without the heredoc bodies it was handed."""
+    return seg.get("own", "".join(seg["chars"]))
+
+
+def tokens(text):
+    """A simple command's words as the shell splits them: quotes removed, a comment
+    dropped, `>` and its kin words of their own. A line shlex cannot read (an unclosed
+    quote) falls back to whitespace."""
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        return list(lexer)
+    except ValueError:
+        return words(text)
+
+
+def writes(command):
+    """The words `command` writes to as files — see the module's docstring."""
+    return _writes(Scan(command))
+
+
+def changes_directory(command):
+    """Whether `command` moves with `cd` or `pushd`, after which a relative path is not
+    relative to the directory the command started in."""
+    return any(command_word(own_text(seg)) in DIRECTORY_CHANGERS for seg in Scan(command).segments)
+
+
+def _writes(scan):
+    found = [path for seg in scan.segments for body in seg["bodies"] for path in _writes(body)]
+    for seg in scan.segments:
+        if not seg["literal"]:
+            found += _segment_writes(own_text(seg))
+    return found
+
+
+def _segment_writes(text):
+    rest, targets = _redirects(tokens(text))
+    program, args = _program(rest)
+    return targets + _written_by(program, args)
+
+
+def _redirects(toks):
+    """(the words that are not redirections, the targets of the output ones)."""
+    rest, targets, i = [], [], 0
+    while i < len(toks):
+        step = _redirection(toks, i)
+        if step:
+            targets += step[1]
+            i += step[0]
+        else:
+            rest.append(toks[i])
+            i += 1
+    return rest, targets
+
+
+def _redirection(toks, i):
+    """(words it spans, [its target]) for a redirection starting at `i`; None for a word."""
+    tok, following = toks[i], toks[i + 1:i + 2]
+    if tok.isdigit() and following and following[0] in REDIRECTS | INPUTS:
+        return 1, []                                # the descriptor in front of `2>`
+    if tok not in REDIRECTS | INPUTS:
+        return None
+    written = tok in REDIRECTS and following and not re.fullmatch(r"\d+|-", following[0])
+    return 2, (following if written else [])
+
+
+def _program(toks):
+    """(the program a simple command runs by basename, its arguments), past assignments
+    and the words that stand in front of one."""
+    for i, tok in enumerate(toks):
+        if tok and tok not in WRAPPERS and not ASSIGNMENT_RE.match(tok):
+            return os.path.basename(tok), toks[i + 1:]
+    return "", []
+
+
+def _written_by(program, args):
+    if program in SHELLS:
+        return _shell_string_writes(args)
+    if program == "eval":
+        return writes(" ".join(args))
+    if program == "sed":
+        return _sed_files(args)
+    return _positionals(args) if program in WRITERS else []
+
+
+def _positionals(args):
+    """The arguments that are not options (all of them after `--`)."""
+    found, options = [], True
+    for arg in args:
+        if options and arg == "--":
+            options = False
+        elif arg and not (options and arg.startswith("-") and arg != "-"):
+            found.append(arg)
+    return found
+
+
+def _sed_files(args):
+    """The files `sed -i` edits in place: its operands, less the script when no `-e` or
+    `-f` gave one. Without -i sed writes nothing."""
+    if not any(re.match(r"-[a-zA-Z]*i|--in-place", arg) for arg in args):
+        return []
+    operands, scripted = _sed_operands(args)
+    return operands if scripted else operands[1:]
+
+
+def _sed_operands(args):
+    """(sed's operands, whether an option gave the script) — the word after -e or -f is
+    the script, not an operand."""
+    operands, scripted, skip = [], False, False
+    for arg in args:
+        if skip:
+            skip = False
+            continue
+        scripted = scripted or arg in SED_SCRIPT_OPTIONS or arg.startswith(("--expression=", "--file="))
+        skip = arg in SED_SCRIPT_OPTIONS
+        if arg and not arg.startswith("-"):
+            operands.append(arg)
+    return operands, scripted
+
+
+def _shell_string_writes(args):
+    """What `sh -c STRING` writes: the string is a command line of its own."""
+    for i, arg in enumerate(args[:-1]):
+        if re.fullmatch(r"-[a-zA-Z]*c[a-zA-Z]*", arg):
+            return writes(args[i + 1])
+    return []
