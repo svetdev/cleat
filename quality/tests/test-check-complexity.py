@@ -13,7 +13,7 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(os.path.dirname(HERE), "bin", "check-complexity.py")
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
-from extractors import complexity
+from extractors import complexity, swift
 import ratchet
 
 failed = 0
@@ -83,7 +83,7 @@ try:
           complexity.masked_raw_strings('role == "owner" && x? "no"') == 'role == "owner" && x? "no"')
     check("a byte raw string is masked like any other", complexity.masked_raw_strings('br"a?b"') == 'br"   "')
     mirror = os.path.join(tmp, "mirror")
-    mirrored = complexity._mirror_rust([src, web], mirror)
+    mirrored = complexity._mirror([src, web], mirror, ".rs", complexity.masked_raw_strings)
     copy = mirror + os.path.abspath(knot)
     check("the Rust mirror holds every .rs file at its own absolute path (as spelled, symlinks kept), and nothing else",
           os.path.exists(copy) and not os.path.exists(mirror + os.path.abspath(web)) and mirrored == [mirror + os.path.abspath(src), mirror + os.path.abspath(web)],
@@ -196,6 +196,70 @@ try:
               and measured.get("Page") == 3, str(measured) + proc.stdout)
     else:
         check("lizard is not installed, so the TypeScript span fixture's end-to-end half is not exercised (CI installs it)", True)
+
+    # --- lizard misreads three Swift shapes: a `self.init(` call as an init declaration that
+    # swallows what follows, a regex literal's brace, and an `#if` whose branches each open one.
+    # Swift is read from a masked copy, line for line; a span it still runs past is cut back.
+    swift_src = os.path.join(tmp, "swift", "Orchestrator.swift")
+    write(swift_src, "\n".join([
+        "final class Orchestrator {",
+        "    init(registry: Registry, bus: Bus) {",                  # 2
+        "        self.registry = registry",
+        "        self.bus = bus",
+        "    }",                                                      # 5
+        "",
+        "    convenience init(runtime: Runtime, bus: Bus) {",         # 7
+        "        let registry = Registry()",
+        "        registry.register(runtime)",
+        "        self.init(",                                         # 10: a call, not a declaration
+        "            registry: registry,",
+        "            bus: bus",
+        "        )",
+        "    }",                                                      # 14
+        "",
+        "    func one(_ a: Int) -> Int { if a > 0 { return 1 }; return 0 }",   # 16
+        "    func matches(_ s: String) -> Bool {",                    # 17
+        "        return s.contains(/\\{[a-z]+/)",
+        "    }",                                                      # 19
+        "    func flagged() -> Int {",                                # 20
+        "        #if DEBUG",
+        "        if verbose {",
+        "        #else",
+        "        if quiet {",
+        "        #endif",
+        "            return 1",
+        "        }",
+        "        return 0",
+        "    }",                                                      # 29
+        "    func half(_ a: Int) -> Int { let s = \"a/b\"; return a / 2 / 1 }",   # 30: a string and division, untouched
+        "}",
+        "",
+    ]))
+    masked = swift.masked(open(swift_src).read()).split("\n")
+    check("the Swift mask keeps every line where it was", len(masked) == 32, str(len(masked)))
+    check("it renames the init a call names, and not the one a declaration does",
+          "self.inix(" in masked[9] and "convenience init(" in masked[6] and "    init(registry" in masked[1], str(masked[:10]))
+    check("it blanks a regex literal and every #if branch but the first",
+          "{" not in masked[17] and "s.contains(" in masked[17] and "verbose" in masked[21] and masked[23].strip() == "", str(masked[17:25]))
+    check("and leaves a string and a division alone", masked[29] == open(swift_src).read().split("\n")[29], masked[29])
+    swift_rows = [(9, 3, 40, 0, 22, "matches@17-31@%s" % swift_src, swift_src, "matches", "matches ( s )", 17, 31),
+                  (9, 3, 40, 0, 2, "one@16-17@%s" % swift_src, swift_src, "one", "one ( a )", 16, 17)]
+    out_csv = io.StringIO()
+    csv.writer(out_csv).writerows(swift_rows)
+    spans = [(f.name, f.line, f.end) for f in complexity.functions_from_csv(out_csv.getvalue())[0]]
+    check("a Swift span lizard ran to the end of its type is cut back to the body's closing brace",
+          spans[0] == ("matches", 17, 19), str(spans))
+    check("and a Swift span is never lengthened", spans[1] == ("one", 16, 16), str(spans))
+    if shutil.which("lizard"):
+        read = sorted((f.name, f.line, f.end, f.cc) for f in complexity.functions_from_csv(complexity.run_lizard([swift_src], ["swift"], []))[0])
+        check("end to end, every Swift function is read at its own lines, none swallowed",
+              read == [("flagged", 20, 29, 2), ("half", 30, 30, 1), ("init", 2, 5, 1), ("init", 7, 14, 1),
+                       ("matches", 17, 19, 1), ("one", 16, 16, 2)], str(read))
+        unmasked = complexity.functions_from_csv(complexity._lizard([swift_src], ["swift"], []), )[0]
+        check("the fixture is still hostile: unmasked, lizard reads the self.init call as a function",
+              any(f.name == "init" and f.line == 10 for f in unmasked), str([(f.name, f.line, f.end) for f in unmasked]))
+    else:
+        check("lizard is not installed, so the Swift fixture's end-to-end half is not exercised (CI installs it)", True)
 
     config = os.path.join(tmp, "quality.json")
     baseline = os.path.join(tmp, "complexity-baseline.json")

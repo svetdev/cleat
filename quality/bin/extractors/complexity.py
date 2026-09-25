@@ -26,8 +26,10 @@ is given), `sources`, `languages`, `exclude`, `exclude_except`,
 `skip_rust_tests` — and it returns (functions, skipped as tests, tool, version).
 
 TypeScript has one wrinkle of lizard's own: a `function` with a plain return type
-annotation is reported running past its closing brace. Every TypeScript span is
-cut back to the brace that closes its body (typescript.py), never lengthened.
+annotation is reported running past its closing brace. Swift has another: a regex
+literal holding a brace, or an `#if` whose branches each open one, runs a function
+to the end of its type. Every TypeScript and Swift span is cut back to the brace
+that closes its body (typescript.py, swift.py), never lengthened.
 """
 
 import csv
@@ -39,7 +41,7 @@ import shutil
 import subprocess
 import tempfile
 
-from . import patterns, typescript
+from . import patterns, swift, typescript
 
 LIZARD_TIMEOUT_SECONDS = int(os.environ.get("LIZARD_TIMEOUT_SECONDS", "600"))
 
@@ -63,40 +65,52 @@ def masked_raw_strings(text):
     return RAW_STRING_RE.sub(blank, text)
 
 
-def _mirror_rust(paths, mirror):
-    """Every .rs file under `paths`, masked, at its own absolute path under `mirror` — the
-    path as the repository spells it, a symlinked source kept by name, so the root-relative
-    excludes match the same names in both passes; returns the mirror-side paths to hand
-    lizard, one per entry of `paths`."""
+# The languages lizard reads from a masked copy: {language: (suffix, the mask)}.
+MASKED = {"rust": (".rs", masked_raw_strings), "swift": (".swift", swift.masked)}
+
+
+def _mirror(paths, mirror, suffix, mask):
+    """Every `suffix` file under `paths`, masked, at its own absolute path under `mirror` —
+    the path as the repository spells it, a symlinked source kept by name, so the
+    root-relative excludes match the same names in both passes; returns the mirror-side
+    paths to hand lizard, one per entry of `paths`."""
     mirrored = []
     for path in paths:
         real = os.path.abspath(path)
         files = [real] if os.path.isfile(real) else [os.path.join(d, f) for d, _, fs in os.walk(real) for f in fs]
         os.makedirs(mirror + (os.path.dirname(real) if os.path.isfile(real) else real), exist_ok=True)
         for file in files:
-            if not file.endswith(".rs"):
-                continue
-            target = mirror + file
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with open(file, errors="replace") as source, open(target, "w") as copy:
-                copy.write(masked_raw_strings(source.read()))
+            if file.endswith(suffix):
+                _write_masked(file, mirror + file, mask)
         mirrored.append(mirror + real)
     return mirrored
 
 
+def _write_masked(file, target, mask):
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(file, errors="replace") as source, open(target, "w") as copy:
+        copy.write(mask(source.read()))
+
+
 def _lizard_csv(paths, languages, excludes, root=None):
     """One lizard --csv run per reader over `paths`, or a ToolError: the other
-    languages over the tree as it is, Rust over a masked mirror of it."""
-    others = [language for language in languages if language != "rust"]
+    languages over the tree as it is, Rust and Swift each over a masked mirror of it."""
+    others = [language for language in languages if language not in MASKED]
     output = _lizard(paths, others, excludes, root) if others else ""
-    if "rust" in languages:
-        with tempfile.TemporaryDirectory(prefix="lizard-rust-") as tmp:
-            mirror = os.path.realpath(tmp)
-            mirror_root = mirror + os.path.abspath(root) if root else None
-            if mirror_root:
-                os.makedirs(mirror_root, exist_ok=True)  # a source outside the root mirrors nothing under it
-            output += _lizard(_mirror_rust(paths, mirror), ["rust"], excludes, mirror_root).replace(mirror, "")
+    for language in (l for l in languages if l in MASKED):
+        output += _lizard_masked(paths, language, excludes, root)
     return output
+
+
+def _lizard_masked(paths, language, excludes, root):
+    """lizard over a masked mirror of `paths` for one language, its paths put back."""
+    suffix, mask = MASKED[language]
+    with tempfile.TemporaryDirectory(prefix="lizard-%s-" % language) as tmp:
+        mirror = os.path.realpath(tmp)
+        mirror_root = mirror + os.path.abspath(root) if root else None
+        if mirror_root:
+            os.makedirs(mirror_root, exist_ok=True)  # a source outside the root mirrors nothing under it
+        return _lizard(_mirror(paths, mirror, suffix, mask), [language], excludes, mirror_root).replace(mirror, "")
 
 
 def _lizard(paths, languages, excludes, root=None):
@@ -185,28 +199,37 @@ def functions_from_csv(text, skip_rust_tests=True):
                 skipped += 1
                 continue
         functions.append(Function(path, start, end, cc, length, row[7]))
-    clamp_typescript(functions)
+    clamp_spans(functions)
     return functions, skipped
 
 
-def clamp_typescript(functions):
-    """Shorten each TypeScript function lizard ran past its closing brace (see
-    typescript.py) to where its body ends; a span is never lengthened."""
+# The languages whose spans lizard can run past a closing brace, and the reader that finds it.
+BODY_READERS = (typescript, swift)
+
+
+def clamp_spans(functions):
+    """Shorten each TypeScript or Swift function lizard ran past its closing brace (see
+    typescript.py and swift.py) to where its body ends; a span is never lengthened."""
     lines = {}
     for f in functions:
-        if not f.path.endswith(typescript.SUFFIXES):
-            continue
-        if f.path not in lines:
-            lines[f.path] = _code_lines(f.path)
-        end = typescript.body_end(lines[f.path], f.line, f.name) if lines[f.path] else None
-        if end is not None and f.line <= end < f.end:
-            f.end, f.length = end, end - f.line + 1
+        reader = next((r for r in BODY_READERS if f.path.endswith(r.SUFFIXES)), None)
+        if reader is not None:
+            if f.path not in lines:
+                lines[f.path] = _code_lines(f.path, reader)
+            _clamp(f, reader, lines[f.path])
 
 
-def _code_lines(path):
+def _clamp(f, reader, lines):
+    """`f` ended where `reader` says its body ends, when that is earlier than lizard said."""
+    end = reader.body_end(lines, f.line, f.name) if lines else None
+    if end is not None and f.line <= end < f.end:
+        f.end, f.length = end, end - f.line + 1
+
+
+def _code_lines(path, reader):
     try:
         with open(path, errors="replace") as handle:
-            return typescript.code_lines(handle.read())
+            return reader.code_lines(handle.read())
     except OSError:
         return None
 

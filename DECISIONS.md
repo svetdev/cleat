@@ -44,3 +44,10 @@ Append-only log of choices, findings, disproven assumptions and rules for this r
 **Why:** a changed public surface or inventory is a deliberate decision, not debt an agent can fix or tighten; being stopped there is the point.
 **Evidence:** `quality/bin/check-public-api.py:128`, `quality/bin/check-inventory.py:104`.
 **Status:** holds
+
+## [2026-09-25] lizard misreads Swift; cleat masks the source rather than guessing at spans
+**Kind:** finding
+**What:** lizard 1.24.0 reads a `self.init(`/`super.init(` call as an `init` declaration, and loses brace count at a raw string or regex literal holding a brace and at `#if` branches that each open one. The swallowed functions go unreported, and the enclosing one runs to the end of its type. cleat hands lizard a line-for-line masked copy of each Swift file. It does not flag implausibly large spans, and it does not cross-check against SwiftLint.
+**Why:** masking fixes the cause and recovers the swallowed functions. A size heuristic only guesses at the symptom, and a SwiftLint cross-check would make every lizard-configured Swift project depend on a second tool.
+**Evidence:** a downstream convenience init read as `init@103-988`, 886 lines; `test-check-complexity.py` Swift fixture, where lizard reads the `self.init` call at line 10 as a function unmasked and every function at its own lines masked.
+**Status:** holds
