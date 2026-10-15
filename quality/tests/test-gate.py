@@ -10,7 +10,9 @@ agent's Stop hook hands back) once per distinct failure set, and a later stop
 that would re-send the identical report gets one line and exit 0; --guard
 refuses a PreToolUse event that writes a
 baseline, edits quality.json or the gates, and allows running a gate, reading
-the config, or a malformed event. Writes nothing outside a temporary directory.
+the config, or a malformed event; --summary reports the debt each baseline
+records against the copy git first had. Writes nothing outside a temporary
+directory.
 
   python3 quality/tests/test-gate.py
 """
@@ -327,6 +329,45 @@ try:
         check("--list names the configured gates, not the estimates", "(estimate)" not in out, out)
     else:
         check("lizard is not installed, so the preflight's CRAP estimate is not exercised (CI installs it)", True)
+
+    # ---- --summary: the debt each baseline records, against the copy git first had
+    debt = os.path.join(tmp, "debt")
+    debt_config = os.path.join(debt, "quality.json")
+    fn = lambda name, cc: {"file": "src/a.py", "text": "def %s():" % name, "line": 1, "cc": cc, "lines": 10}
+    site = lambda kind, count: {"file": "src/a.py", "text": "x", "line": 1, "escape": kind, "count": count}
+    write(debt_config, json.dumps({
+        "complexity": {"tool": "lizard", "sources": ["src"], "languages": ["python"], "ceilings": {"cc": 8, "lines": 60}, "baseline": "cc.json"},
+        "escapes": {"roots": ["src"], "languages": ["python"], "baseline": "esc.json"},
+        "public_api": [{"name": "lib", "language": "python", "roots": ["src"], "baseline": "api.json"}],
+        "gates": [{"name": "complexity-web", "check": "complexity", "with": {"sources": ["web"], "baseline": "web-cc.json"}}]}))
+    write(os.path.join(debt, "cc.json"), json.dumps({"provenance": None, "entries": [fn("f", 9), fn("g", 12), fn("h", 10)]}))
+    write(os.path.join(debt, "esc.json"), json.dumps([site("type ignore", 2), site("unwrap", 1)]))
+    write(os.path.join(debt, "api.json"), json.dumps([{"file": "src/a.py", "text": "def f():", "line": 1}]))
+    code, out, err = run("--config", debt_config, "--summary")
+    check("--summary counts the functions over the ceiling, with the worst one",
+          code == 0 and "3 function(s) over the complexity ceiling (worst cc 12, longest 10 lines)" in out, out + err)
+    check("and sums the escape sites by kind, from a bare-list baseline too", "3 escape site(s) (type ignore 2, unwrap 1)" in out, out)
+    check("public-api records surface, not debt, and is left out", "public-api" not in out, out)
+    check("a gates entry is summarised under its own name, and a missing file is said",
+          "complexity-web" in out and "no baseline file at" in out, out)
+    check("outside git there is nothing to compare with, and it says so", "no committed copy to compare with" in out, out)
+    subprocess.run(["git", "-C", debt, "init", "-q", "-b", "main"], check=True)
+    subprocess.run(["git", "-C", debt, "add", "-A"], check=True)
+    subprocess.run(["git", "-C", debt, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", "adopt"], check=True)
+    write(os.path.join(debt, "cc.json"), json.dumps({"provenance": None, "entries": [fn("g", 12)]}))
+    code, out, err = run("--config", debt_config, "--summary")
+    check("against the copy first committed, a baseline that shrank reads as down since adoption",
+          code == 0 and "down 2 from 3 at adoption on" in out, out + err)
+    check("and one that did not move reads as unchanged", "unchanged from 3 at adoption on" in out, out)
+    check("it points at the hotspot report as the place to start", "report-hotspots.py" in out, out)
+    code, out, err = run("--config", debt_config, "--summary", "--since", "1m")
+    check("--since with no commit that old compares with adoption day instead",
+          code == 0 and "down 2 from 3 at adoption on" in out, out + err)
+    code, out, err = run("--config", debt_config, "--summary", "--since", "soon")
+    check("a bad --since is refused under --summary too", code == 2 and "7d, 24h, 30m" in err, err)
+    write(debt_config, json.dumps({"doc_size": [{"file": "README.md", "ceiling": 10}]}))
+    code, out, err = run("--config", debt_config, "--summary")
+    check("a config with no baselined gate says there is no debt recorded", code == 0 and "no gate here keeps a baseline of debt" in out, out + err)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

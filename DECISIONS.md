@@ -51,3 +51,10 @@ Append-only log of choices, findings, disproven assumptions and rules for this r
 **Why:** masking fixes the cause and recovers the swallowed functions. A size heuristic only guesses at the symptom, and a SwiftLint cross-check would make every lizard-configured Swift project depend on a second tool.
 **Evidence:** a downstream convenience init read as `init@103-988`, 886 lines; `test-check-complexity.py` Swift fixture, where lizard reads the `self.init` call at line 10 as a function unmasked and every function at its own lines masked.
 **Status:** holds
+
+## [2026-10-14] cleat's quality evaluation is the baselined debt and its trend, not a score
+**Kind:** decision
+**What:** `gate.py --summary` reports what each debt baseline records and compares it with the copy git first committed (or the last one before `--since`). It reads the files and runs no gate. There is no combined grade.
+**Why:** a count per gate that falls over time is checkable and means the same thing in every project; a weighted score would be the opaque "code health" number `quality/STRATEGY.md` already declines. Reading the baselines keeps the answer instant and tool-free, at the price of being an upper bound until the next `--strict` or `--tighten` run.
+**Evidence:** `quality/bin/summary.py`; on this repo, complexity down 8 from 14 at adoption, escapes unchanged at 20.
+**Status:** holds
