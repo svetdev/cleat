@@ -1,7 +1,7 @@
 {
  "provenance": {
   "tool": "lizard",
-  "version": "1.24.0",
+  "version": "1.24.1",
   "config": "8a0f312b0c28"
  },
  "entries": [
@@ -22,7 +22,7 @@
   {
    "file": "quality/bin/extractors/coverage.py",
    "text": "def from_codecov(export, sources_root, path_map=None):",
-   "line": 303,
+   "line": 310,
    "cc": 9,
    "lines": 19
   },
