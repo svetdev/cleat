@@ -90,6 +90,42 @@ try:
           m["lines"] == 400 and m["language"] == "rust" and m["complexity_per_kloc"] == 5.0
           and m["over_cc_per_kloc"] == 15.0 and m["escapes_per_kloc"] == 5.0, str(m))
 
+    # ---- tests: how many, how many checks, which check nothing
+    from extractors import assertions
+    samples = {
+        "python": ("def test_a():\n    assert f() == 1\n\ndef test_b():\n    f()\n\nasync def test_c():\n    with pytest.raises(E):\n        g()\n", (3, 2, 1)),
+        "typescript": ("describe('x', () => {\n  it('a', () => { expect(f()).toBe(1); expect(g()).toBe(2) })\n  test.each([1])('b', () => { f() })\n})\n", (2, 2, 1)),
+        "swift": ("func testA() { XCTAssertEqual(f(), 1) }\n@Test func b() { #expect(f() == 1) }\nfunc testC() { _ = f() }\n", (3, 2, 1)),
+        "rust": ("fn helper() {}\n#[test]\nfn a() { assert_eq!(f(), 1); }\n#[tokio::test]\nasync fn b() { f().await; }\n", (2, 1, 1)),
+        "go": ("func TestA(t *testing.T) {\n if f() != 1 { t.Errorf(\"no\") }\n}\nfunc TestB(t *testing.T) {\n require.NoError(t, g())\n}\nfunc helper() {}\n", (2, 2, 0)),
+        "kotlin": ("@Test\nfun a() { assertEquals(1, f()) }\n@Test\nfun b() { f() shouldBe 1 }\n@Test\nfun c() { f() }\n", (3, 2, 1)),
+        "ruby": ("describe X do\n  it 'a' do\n    expect(f).to eq 1\n  end\n  it 'b' do\n    f\n  end\nend\n", (2, 1, 1)),
+    }
+    for language, (text, expected) in samples.items():
+        got = assertions.scan_text(text, language)
+        check("%s: tests, assertions and tests that check nothing are counted" % language, got == expected, "%s != %s" % (got, expected))
+    check("a project's own helper named for an assertion is one",
+          assertions.scan_text("func testA() { expectEqual(a, 1) }\n", "swift") == (1, 1, 0)
+          and assertions.scan_text("def test_a():\n    eq_(a, 1)\n\ndef test_b():\n    assert_raises_message(E, 'm', f)\n", "python") == (2, 2, 0)
+          and assertions.scan_text("it 'a' do\n  expect_offense(<<~RUBY)\nend\n", "ruby") == (1, 1, 0))
+    check("node's assert module, tap's t.equal and a Rust mock's .assert_finished() are checks",
+          assertions.scan_text("test('a', () => { assert.equal(f(), 1) })\ntest('b', (t) => { t.same(f(), [1]) })\n", "typescript") == (2, 2, 0)
+          and assertions.scan_text("#[test]\nfn a() { run(); handle.assert_finished(); }\n", "rust") == (1, 1, 0))
+    check("and Rust's .expect( unwraps, it does not check",
+          assertions.scan_text("#[test]\nfn a() { let v = f().expect(\"v\"); }\n", "rust") == (1, 0, 1))
+    check("test directories by case: jvmTest and AppTests are tests, latest is not",
+          summary._is_test("lib/src/jvmTest/A.kt") and summary._is_test("App/AppTests/A.swift") and summary._is_test("test_suite/a.rs")
+          and not summary._is_test("docs_gen/latest/a.py".replace("docs_gen/", "")))
+    check("a file with no test in it, or a language with no runner known, counts nothing",
+          assertions.scan_text("x = 1\nassert y\n", "python") == (0, 0, 0) and assertions.scan_text("it 'a'", "shell") == (0, 0, 0))
+    write(os.path.join(tmp, "apps", "api", "tests", "it.rs"), "#[test]\nfn a() { assert!(ok()); }\n#[test]\nfn b() { run(); }\n" + lines(296, "let t = 1;"))
+    write(os.path.join(tmp, "apps", "api", "src", "main.rs"), lines(398, "let a = 1;") + "#[cfg(test)]\nmod t { #[test] fn c() { assert_eq!(1, 1); } }\n")
+    t = parts_.tests(tmp, census, api, {"apps/api/tests/it.rs"})
+    check("a part's tests come from its test files and, in Rust, its production files too — with no ratio, its tests being in its lines",
+          t["tests"] == 3 and t["assertions_per_test"] == 0.67 and t["unchecked_share"] == 0.333 and t["test_ratio"] is None, str(t))
+    check("a part with no test at all says so with nothing to divide",
+          parts_.tests(tmp, census, {"scripts/build.py"}, set()) == {"test_ratio": 0.0, "tests": 0, "assertions_per_test": None, "unchecked_share": None})
+
     # ---- standing against the reference
     table = {"languages": {"rust": {"complexity_per_kloc": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]},
                            "go": {"complexity_per_kloc": [1.0, 2.0]}}}

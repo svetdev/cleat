@@ -17,7 +17,8 @@ import json
 import os
 
 PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reference.json")
-METRICS = ("complexity_per_kloc", "over_cc_per_kloc", "escapes_per_kloc", "duplication_percent")
+METRICS = ("complexity_per_kloc", "over_cc_per_kloc", "escapes_per_kloc", "duplication_percent",
+           "test_ratio", "assertions_per_test", "unchecked_share")
 MIN_PARTS = 5   # fewer reference parts than this in a language, and it says nothing
 
 

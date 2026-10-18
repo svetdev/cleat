@@ -60,7 +60,9 @@ EXPECTED = {
 }
 LIZARD_LANGUAGES = {"python", "typescript", "swift", "rust", "kotlin", "java", "go", "ruby"}
 # Not production: tests, and the examples, docs, benchmarks and demos a repository carries beside its code
-TEST_DIR_RE = re.compile(r"^(?:tests?|specs?|__tests__|[A-Za-z]+Tests|testing|testdata|e2e)$", re.IGNORECASE)
+TEST_DIR_RE = re.compile(r"^(?:tests?|specs?|__tests__|testing|testdata|e2e|tests?[_-]\w+|\w+[_-](?:tests?|testing))$", re.IGNORECASE)
+# `AppTests`, `jvmTest`, `androidTest` — by case, so `latest` and `contest` stay production
+CAMEL_TEST_DIR_RE = re.compile(r"^[A-Za-z][a-zA-Z]*Tests?$")
 ASIDE_DIR_RE = re.compile(r"^(?:examples?|samples?|demos?|docs?|docs_src|documentation|website|benchmarks?|bench|"
                           r"profiling|playgrounds?|[\w.-]+\.playground|[\w.-]+\.docc|stories)$", re.IGNORECASE)
 TEST_FILE_RE = re.compile(r"(?:^test_|_test\.|\.test\.|\.spec\.|Tests?\.swift$)")
@@ -236,6 +238,7 @@ class Context:
         self.census = census_.take(config.root, CENSUS_SKIP | _quality_skip(baselines), self.generated)
         self.tests = _test_files(self.census, config)
         self.production = set(self.census) - self.tests
+        self.test_only = {f for f in self.tests if not _aside(f)}   # tests, not examples or docs
         self.touched = touched_files(config.root, window_days)
 
 
@@ -254,7 +257,7 @@ def _is_test(rel):
 
 
 def _test_dir(name):
-    return bool(TEST_DIR_RE.match(name))
+    return bool(TEST_DIR_RE.match(name) or CAMEL_TEST_DIR_RE.match(name))
 
 
 def _aside(rel):
@@ -334,6 +337,7 @@ def part_rows(config, baselines, ctx, table):
     for name, roots in found:
         files = parts_.files_of(name, roots, ctx.production, found)
         m = parts_.metrics(ctx.census, files, parts_.debt(entries, files))
+        m.update(parts_.tests(ctx.root, ctx.census, files, parts_.files_of(name, roots, ctx.test_only, found)))
         m["standing"] = reference.standings(table, m)
         rows.append(dict(m, name=name, roots=roots))
     return rows
@@ -429,12 +433,29 @@ def _parts_head(ref):
     if not ref:
         return "Parts, per 1k production lines:"
     return ("Parts, per 1k production lines — pNN: the share of the parts of %d open-source repositories in the "
-            "same language with less (measured %s):" % (ref["repos"], ref["measured"]))
+            "same language with less (measured %s); for test lines and assertions per test, higher is better:" % (ref["repos"], ref["measured"]))
+
+
+TEST_METRICS = (("test_ratio", "test lines per line"), ("assertions_per_test", "assertions per test"))
+
+
+def _tests_text(p):
+    if not p.get("tests") and not p.get("test_ratio"):
+        return "no tests"
+    measures = [_measure_text(p, k, label) for k, label in TEST_METRICS if p.get(k) is not None]
+    if not p.get("tests"):
+        measures.append("no test function its runner's patterns recognise (a suite of its own reads as none)")
+    if p.get("unchecked_share") is not None:
+        standing = p["standing"].get("unchecked_share")
+        measures.append("%d%% of %s test(s) check nothing" % (round(100 * p["unchecked_share"]), _num(p["tests"]))
+                        + (" (p%d of %d)" % (round(100 * standing[0]), standing[1]) if standing else ""))
+    return "; ".join(measures)
 
 
 def _part_line(p):
     measures = [_measure_text(p, k, label) for k, label in PART_METRICS if p.get(k) is not None]
-    return "  %-16s %s, %s lines: %s" % (p["name"], p["language"], _k(p["lines"]), "; ".join(measures))
+    return ["  %-16s %s, %s lines: %s" % (p["name"], p["language"], _k(p["lines"]), "; ".join(measures)),
+            "  %-16s tests: %s" % ("", _tests_text(p))]
 
 
 def _compared(parts):
@@ -446,7 +467,7 @@ def _part_lines(data):
     parts = [p for p in data.get("parts", []) if p["lines"]]
     if len(parts) < 2 and not _compared(parts):
         return []
-    return [_parts_head(data.get("reference"))] + [_part_line(p) for p in parts]
+    return [_parts_head(data.get("reference"))] + [line for p in parts for line in _part_line(p)]
 
 
 def _left_out_lines(left):

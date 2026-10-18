@@ -7,7 +7,8 @@ shallow-clones the default branch, attaches cleat (the stack detected, the
 config and the day-one baselines written — exactly what an adopter gets),
 splits it into parts, and records each part's production lines and its debt per
 1k of them: functions over the complexity ceiling, cyclomatic over it, escape
-sites, and the duplicated share. Tests are not production lines; a part is
+sites, and the duplicated share; and its tests: test lines per production line,
+assertions per test, and the share of tests that check nothing. Tests are not production lines; a part is
 compared only with parts in its own language.
 
   quality/bin/build-reference.py --repos quality/reference-repos.json --work /tmp/ref --jobs 6
@@ -81,6 +82,7 @@ def measure_parts(root):
         if census_.lines(ctx.census, files) < MIN_PART_LINES:
             continue
         m = parts_.metrics(ctx.census, files, parts_.debt(entries, files))
+        m.update(parts_.tests(root, ctx.census, files, parts_.files_of(name, roots, ctx.test_only, found)))
         m.update(name=name, duplication_percent=_duplication(root, files, m["language"]))
         out.append(m)
     return out

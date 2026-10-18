@@ -18,12 +18,14 @@ other code in its own language (`reference.py`).
 
 import os
 
+from extractors import assertions
 from extractors import census as census_
 from extractors import patterns
 
 MANIFESTS = {"package.json", "Cargo.toml", "go.mod", "pyproject.toml", "setup.py", "Package.swift",
              "build.gradle", "build.gradle.kts", "pom.xml", "Gemfile"}
 MIN_LINES = 200       # a part smaller than this is folded into the rest
+INLINE_TESTS = {"rust"}   # a language whose tests live in its production files too
 GROUP_AT = 3          # siblings in one language that make one part
 
 
@@ -130,3 +132,25 @@ def metrics(census, files, debt_of_part):
         if check in debt_of_part:
             out[check + "_per_kloc"] = per(debt_of_part[check]["total"])
     return out
+
+
+def tests(root, census, production, test_files):
+    """The part's tests: test lines per production line, how many tests, assertions per
+    test, and the share of tests that check nothing — read from its test files, and from
+    its production files in a language that keeps tests inline."""
+    count, checks, unchecked = _scanned(root, census, set(test_files) | {f for f in production if census[f][0] in INLINE_TESTS})
+    inline = dominant(census, production) in INLINE_TESTS   # its tests are in its production lines: no ratio to take
+    return {"test_ratio": None if inline else _ratio(census_.lines(census, test_files), census_.lines(census, production), 3),
+            "tests": count,
+            "assertions_per_test": _ratio(checks, count, 2),
+            "unchecked_share": _ratio(unchecked, count, 3)}
+
+
+def _scanned(root, census, files):
+    """(tests, assertions, tests with none) summed over `files`."""
+    found = [assertions.scan(os.path.join(root, f), census[f][0]) for f in sorted(files)]
+    return tuple(sum(column) for column in zip(*found)) if found else (0, 0, 0)
+
+
+def _ratio(top, bottom, places):
+    return round(top / float(bottom), places) if bottom else None
