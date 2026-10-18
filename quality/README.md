@@ -2,7 +2,7 @@
 
 The adoption guide is this file; the strategy — why these checks, the adoption ladder, per-stack tool choices, and the roadmap — is `STRATEGY.md` beside it.
 
-Nineteen checks, each a ratchet: a baseline records what was over the line the day the check was adopted; new debt fails, and so does baselined debt that got worse (`bin/ratchet.py` — the one implementation they share). None needs the project clean first, and each has its own test that drives it over a throwaway tree. Everything that names a particular project is in one file, `quality.json`, at the repository root, read by every check through the shared `bin/quality_config.py`; the checks are generic.
+Twenty checks, each a ratchet: a baseline records what was over the line the day the check was adopted; new debt fails, and so does baselined debt that got worse (`bin/ratchet.py` — the one implementation they share). None needs a clean project first; each has its own test over a throwaway tree. Everything that names a particular project is in one file, `quality.json`, at the repository root, read by every check through the shared `bin/quality_config.py`; the checks are generic.
 
 | Check | What it refuses | Baseline |
 |---|---|---|
@@ -13,8 +13,9 @@ Nineteen checks, each a ratchet: a baseline records what was over the line the d
 | `bin/check-doc-size.py` | a document past its word ceiling — the instructions file that keeps growing | `doc_size` |
 | `bin/check-reachability.py` | a file matching a pattern (`Services/*`) that no other file references — by declared names, imports, or ast-grep | `reachability.exempt`, each with its reason |
 | `bin/check-escapes.py` | a new line that opts out of a type check, a lint rule, a test or an error (`any`, `unwrap()`, `# type: ignore`, `.skip`, `\|\| true`…), keyed by site, per language | `escapes.baseline` |
+| `bin/check-exclusions.py` | a source file newly marked generated, which `--summary` stops counting | `exclusions.baseline` |
 | `bin/check-conventions.py` | a new site breaking one of the project's own rules — a regex, where it applies, and the message the agent reads at the site | `conventions.baseline` |
-| `bin/check-dead-symbols.py` | a function or type nothing references, through ast-grep — a report by default, `enforcement: block` when the list is quiet | `dead_symbols.exempt` |
+| `bin/check-dead-symbols.py` | a function or type nothing references, through ast-grep — a report until `enforcement: block` | `dead_symbols.exempt` |
 | `bin/check-duplication.py` | a copied block overlapping the lines changed against the base, and the repository's duplicated share rising — built-in finder, or a jscpd report | `duplication.baseline` (the share) |
 | `bin/check-changed-coverage.py` | changed executable lines of which fewer than `minimum` ran — LCOV or Cobertura, no baseline | — |
 | `bin/check-public-api.py` | a public signature removed, renamed or changed — the built-in reader per language, or `cargo public-api` / api-extractor reports | per surface, the recorded signatures |
@@ -26,7 +27,7 @@ Nineteen checks, each a ratchet: a baseline records what was over the line the d
 | `bin/gate.py` | not a check: runs every gate the config names; `--strict` for CI, `--hook` and `--guard` for an agent's hooks, `--changed` scopes the heavy gates to the files changed against the base (the hook's default), `CLEAT_HOOKS=off` in the environment stands both hook modes down for a session that only reads, `--stats` for what those two did (one line per firing in `quality/.events.jsonl`; a refusal records its target, an allowed call only the tool; `"events": false` stops it), `--summary` for the baselined debt against adoption | — |
 | `bin/attach.py` | not a check: attaches all of this to a project in one command | — |
 | `bin/mutate.py` | not a gate: flips operators one at a time and reports the mutants no test kills | — |
-| `bin/report-hotspots.py` | not a gate: ranks every measured function by churn × complexity, so refactoring effort goes where it actually pays for itself | — |
+| `bin/report-hotspots.py` | not a gate: ranks every measured function by churn × complexity, so refactoring goes where it pays | — |
 
 ## Adopting it
 
@@ -47,7 +48,7 @@ Local by default: the gates, the baselines and the agent hooks. `--git-hooks` ad
 | Agent hooks: Stop runs the gates and blocks once per failure set; PreToolUse refuses `--write-baseline` and edits to `quality.json`, the baselines, the gates, the hooks, and allows `--tighten`, which Stop runs | the agent finishing with a red gate; the agent loosening policy mid-task | a session with different settings; a plain terminal |
 | Git pre-push hook (`attach --git-hooks`) | a push with a red gate, from a human or an agent with no hook harness | `--no-verify` |
 
-The Stop hook blocks once per distinct failure set: a later stop that would send the identical report (or one where `stop_hook_active` says the agent is already continuing) gets a single line and exit 0 instead, so a failure the agent cannot fix neither loops it nor re-sends its whole report every turn. Any change in any gate's output is a new report and blocks again; CI refuses whatever stays red. Branch protection assumes an identity that cannot approve or bypass — an agent authenticated as you can do both — so the agent should hold its own GitHub identity with contents and pull-request write only. Attach prints the ruleset command that makes the check required.
+The Stop hook blocks once per distinct failure set: a later stop that would send the identical report (or one where `stop_hook_active` says the agent is already continuing) gets a single line and exit 0 instead, so a failure the agent cannot fix neither loops it nor re-sends its report. Any change in any gate's output is a new report and blocks again; CI refuses whatever stays red. Branch protection assumes an identity that cannot approve or bypass — an agent authenticated as you can do both — so the agent should hold its own GitHub identity with contents and pull-request write only. Attach prints the ruleset command that makes the check required.
 
 ## The ratchet, precisely
 

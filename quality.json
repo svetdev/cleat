@@ -63,6 +63,12 @@
       "fixtures"
     ]
   },
+  "exclusions": {
+    "skip_dirs": [
+      "fixtures"
+    ],
+    "baseline": "quality/exclusions-baseline.json"
+  },
   "duplication": {
     "roots": [
       "quality/bin",

@@ -330,6 +330,7 @@ def config_for(plan):
                              "baseline": "quality/escapes-baseline.json"}
         config["duplication"] = {"roots": ["."], "languages": languages, "skip_dirs": ["quality"],
                                  "min_lines": 6, "baseline": "quality/duplication-baseline.json"}
+        config["exclusions"] = {"skip_dirs": ["quality"], "baseline": "quality/exclusions-baseline.json"}
     sections = (("hygiene", hygiene_section(plan, languages)), ("complexity", complexity_section(plan, languages)),
                 ("changed_coverage", changed_coverage_section(plan)), ("manifests", manifests_section(plan)))
     for key, section in sections:
@@ -654,7 +655,7 @@ def write_baselines(plan, config, dry_run, only=None):
     """Run each baselined gate's --write-baseline, so day one is green — for every
     baselined section in `config`, or only those named in `only`."""
     baselined = (("escapes", "check-escapes.py"), ("duplication", "check-duplication.py"),
-                 ("complexity", "check-complexity.py"))
+                 ("exclusions", "check-exclusions.py"), ("complexity", "check-complexity.py"))
     for section, script in baselined:
         if section not in config or (only is not None and section not in only):
             continue
@@ -783,7 +784,8 @@ def _found_lines(plan, config):
         lines.append("languages: " + ", ".join("%s (%d files)" % kv for kv in plan.languages.items()))
     if plan.test_roots:
         lines.append("test trees: " + ", ".join(plan.test_roots))
-    gates = [k for k in ("doc_size", "hygiene", "escapes", "duplication", "complexity", "changed_coverage", "manifests") if k in config]
+    gates = [k for k in ("doc_size", "hygiene", "escapes", "duplication", "exclusions", "complexity", "changed_coverage",
+                         "manifests") if k in config]
     lines.append("gates: " + (", ".join(gates) if gates else "none — the tree has nothing attach recognises"))
     return lines
 

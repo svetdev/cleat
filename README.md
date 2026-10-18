@@ -41,6 +41,7 @@ The failure names the file, the line and the escape, and says what fixes it. It 
 | doc-citations | a document citing a file that is not there | — |
 | test-hygiene | a test habit the suite was cleaned of growing back | — |
 | escapes | a new `any`, `unwrap()`, `# type: ignore`, `.skip`, `\|\| true`… keyed by site | — |
+| exclusions | a file newly marked generated, which the summary stops counting | — |
 | conventions | a new site breaking one of your own rules, your message at the site | — |
 | dead-symbols | a symbol nothing references; reports first | ast-grep |
 | duplication | a copied block in the lines you changed; the duplicated share rising | — |
@@ -56,21 +57,21 @@ The failure names the file, the line and the escape, and says what fixes it. It 
 | crap | complexity the tests do not pay for | a coverage report |
 | hotspots, mutation | reports: churn × complexity; mutants no test kills | — / a per-stack tool |
 
-Nine languages have escape patterns and conformance fixtures: Python, TypeScript/JavaScript, Swift, Rust, Go, Kotlin, Java, Ruby, shell. Every gate carries its own test, and every check is generic: a project's facts live in `quality.json` and nowhere else.
+Nine languages have escape patterns and conformance fixtures: Python, TypeScript/JavaScript, Swift, Rust, Go, Kotlin, Java, Ruby, shell. Every gate carries its own test; a project's facts live in `quality.json` and nowhere else.
 
 ## How cleat attaches
 
 Local by default. Attach writes the gates, the baselines and the agent hooks; nothing leaves your machine and nothing lands under `.github/`.
 
 1. **Run it.** `python3 quality/bin/gate.py`. Green today, and from here it only tightens.
-2. **Put it in the agent's loop.** The Stop hook hands a failing gate back to the agent as its next task, while the context that produced the code is still loaded; the PreToolUse guard refuses the policy edits an agent reaches for when blocked. Per project in `.claude/settings.json`, or globally with `[ -f quality/bin/gate.py ] && python3 quality/bin/gate.py --hook || true`. `--git-hooks` adds a pre-push hook for whoever works without an agent harness.
+2. **Put it in the agent's loop.** The Stop hook hands a failing gate back to the agent as its next task, while the code's context is still loaded; the PreToolUse guard refuses the policy edits an agent reaches for when blocked. Per project in `.claude/settings.json`, or globally with `[ -f quality/bin/gate.py ] && python3 quality/bin/gate.py --hook || true`. `--git-hooks` adds a pre-push hook for work without an agent.
 3. **Add CI when there is a reviewer, or when the agent pushes with your keys.** `attach.py --ci` writes the workflow and CODEOWNERS and prints the ruleset command that makes the check required on the default branch with code-owner review and no bypass. This is the only layer an agent cannot route around.
 
 Local gives feedback and the guard; it cannot stop whoever holds the keyboard from removing the hook, which alone means stopping yourself. A protected branch holds only against an identity that cannot approve or bypass, so with `--ci` give the agent its own GitHub identity with contents and pull-request write and nothing more; then you are the reviewer.
 
 ## How a gate holds against an agent
 
-1. **The ratchet is monotonic.** A baselined function that gets worse fails, not just a new one. A baseline looser than the code is a NOTE locally and a failure in CI, so the file always records exactly the debt that exists. Baselines carry their provenance, so a tool upgrade is noticed.
+1. **The ratchet is monotonic.** A baselined function that gets worse fails, not just a new one. A baseline looser than the code is a NOTE locally and a failure in CI, so the file records exactly the debt that exists. Baselines carry their provenance, so a tool upgrade is noticed.
 2. **A failure names the fix, never the escape.** No gate prints the command that accepts new debt; the one it offers, `--tighten`, can only lower a baseline.
 3. **Policy is a person's.** The guard hook refuses `--write-baseline` and edits to `quality.json`, the baselines and the gates, and allows `--tighten`; CODEOWNERS makes the same true in review.
 
@@ -91,6 +92,6 @@ quality.json            cleat judged by its own gates
 
 ## Provenance
 
-Extracted from a production codebase where the checks gated a Swift app, a Swift package and their tooling; generalized through a second adoption on a Rust/TypeScript project, then rebuilt around one engine and N extractors so a new language is a config entry, never a patch to a check. This repository is judged by its own gates, baselined debt included.
+Extracted from a production codebase where the checks gated a Swift app, a Swift package and their tooling; generalized through a second adoption on a Rust/TypeScript project, then rebuilt around one engine so a new language is a config entry, not a patch. This repository is judged by its own gates, baselined debt included.
 
 MIT licensed.

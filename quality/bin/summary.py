@@ -56,12 +56,13 @@ EXPECTED = {
     "duplication": "copied blocks are not tracked",
     "crap": "complex code the tests do not run is not tracked (it needs a coverage report)",
     "sarif": "no scanner's results are ratcheted (Semgrep, CodeQL, gitleaks… write SARIF)",
+    "exclusions": "a header saying a tool wrote a file takes it out of these counts unchecked",
 }
 LIZARD_LANGUAGES = {"python", "typescript", "swift", "rust", "kotlin", "java", "go", "ruby"}
 # Not production: tests, and the examples, docs, benchmarks and demos a repository carries beside its code
-TEST_DIR_RE = re.compile(r"^(?:tests?|specs?|__tests__|[A-Za-z]+Tests|testing|testdata|e2e|examples?|samples?|demos?|"
-                         r"docs?|docs_src|documentation|website|benchmarks?|bench|profiling|playgrounds?|[\w.-]+\.playground|[\w.-]+\.docc|stories)$",
-                         re.IGNORECASE)
+TEST_DIR_RE = re.compile(r"^(?:tests?|specs?|__tests__|[A-Za-z]+Tests|testing|testdata|e2e)$", re.IGNORECASE)
+ASIDE_DIR_RE = re.compile(r"^(?:examples?|samples?|demos?|docs?|docs_src|documentation|website|benchmarks?|bench|"
+                          r"profiling|playgrounds?|[\w.-]+\.playground|[\w.-]+\.docc|stories)$", re.IGNORECASE)
 TEST_FILE_RE = re.compile(r"(?:^test_|_test\.|\.test\.|\.spec\.|Tests?\.swift$)")
 CENSUS_SKIP = {".claude", ".github", ".idea", ".vscode"}
 GAP_MIN_LINES = 200      # a language this small is not worth a line
@@ -231,7 +232,8 @@ class Context:
     def __init__(self, config, baselines, before, window_days):
         self.root = config.root
         self.before = before
-        self.census = census_.take(config.root, CENSUS_SKIP | _quality_skip(baselines))
+        self.generated = {}
+        self.census = census_.take(config.root, CENSUS_SKIP | _quality_skip(baselines), self.generated)
         self.tests = _test_files(self.census, config)
         self.production = set(self.census) - self.tests
         self.touched = touched_files(config.root, window_days)
@@ -244,9 +246,21 @@ def _quality_skip(baselines):
 
 
 def _is_test(rel):
-    """A test by its name or a directory's: the hygiene section's roots are no guide, since
-    Rust keeps its tests inline and a project lists `src` there."""
-    return bool(TEST_FILE_RE.search(os.path.basename(rel)) or any(TEST_DIR_RE.match(p) for p in rel.split("/")[:-1]))
+    """Not production, by its name or a directory's: a test, or an example, doc, benchmark or
+    demo. The hygiene section's roots are no guide, since Rust keeps its tests inline and a
+    project lists `src` there."""
+    dirs = rel.split("/")[:-1]
+    return bool(TEST_FILE_RE.search(os.path.basename(rel)) or any(_test_dir(p) or ASIDE_DIR_RE.match(p) for p in dirs))
+
+
+def _test_dir(name):
+    return bool(TEST_DIR_RE.match(name))
+
+
+def _aside(rel):
+    """An example, doc, benchmark or demo — not a test, and not production either."""
+    dirs = rel.split("/")[:-1]
+    return any(ASIDE_DIR_RE.match(p) for p in dirs) and not (TEST_FILE_RE.search(os.path.basename(rel)) or any(_test_dir(p) for p in dirs))
 
 
 def _test_files(census, config):
@@ -325,11 +339,17 @@ def part_rows(config, baselines, ctx, table):
     return rows
 
 
+def left_out(ctx):
+    """What the counts leave out: files marked generated, and examples, docs and benchmarks."""
+    return {"generated_files": len(ctx.generated), "generated_lines": sum(n for _, n in ctx.generated.values()),
+            "aside_lines": census_.lines(ctx.census, {f for f in ctx.tests if _aside(f)})}
+
+
 def collect(config, baselines, before=None, window_days=90):
     """The summary as one JSON-ready object. `baselines` is [(gate name, check, path, spec)]."""
     ctx = Context(config, baselines, before, window_days)
     table = reference.load()
-    configured = {check for _, check, _, _ in baselines}
+    configured = {check for _, check, _, _ in baselines} | set(config.data) | {g.get("check") for g in config.data.get("gates", [])}
     return {
         "lines": census_.lines(ctx.census, ctx.production),
         "test_lines": census_.lines(ctx.census, ctx.tests),
@@ -338,6 +358,7 @@ def collect(config, baselines, before=None, window_days=90):
         "not_configured": [{"check": c, "untracked": why} for c, why in EXPECTED.items() if c not in configured],
         "not_read": gaps(baselines, ctx),
         "parts": part_rows(config, baselines, ctx, table),
+        "left_out": left_out(ctx),
         "reference": (table or {}).get("provenance"),
     }
 
@@ -428,6 +449,15 @@ def _part_lines(data):
     return [_parts_head(data.get("reference"))] + [_part_line(p) for p in parts]
 
 
+def _left_out_lines(left):
+    """What the counts above leave out, so a jump in it is seen: code moved into an example
+    directory, or a header saying a tool wrote it (the exclusions gate ratchets those)."""
+    if not left or not (left["generated_lines"] or left["aside_lines"]):
+        return []
+    return ["Left out of the counts: %s lines in %d file(s) marked generated; %s lines of examples, docs and benchmarks"
+            % (_k(left["generated_lines"]), left["generated_files"], _k(left["aside_lines"]))]
+
+
 def _unmeasured_lines(data):
     lines = ["  %-16s %s" % (n["check"], n["untracked"]) for n in data["not_configured"]]
     lines += ["  %-16s does not read %s of the %s lines of %s production code (most under %s/)"
@@ -444,6 +474,7 @@ def render(data):
     for r in data["gates"]:
         out += _row_lines(r, data["window_days"])
     out += _part_lines(data)
+    out += _left_out_lines(data.get("left_out"))
     out += _unmeasured_lines(data)
     if any(r["check"] == "complexity" for r in data["gates"]):
         out.append("Where to start: quality/bin/report-hotspots.py ranks the functions by churn × complexity.")

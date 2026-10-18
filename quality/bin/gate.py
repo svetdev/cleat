@@ -89,6 +89,7 @@ GATES = [
     ("doc_citations", "doc-citations", "check-doc-citations.py", False, False),
     ("hygiene", "test-hygiene", "check-test-hygiene.py", False, False),
     ("escapes", "escapes", "check-escapes.py", True, False),
+    ("exclusions", "exclusions", "check-exclusions.py", True, False),
     ("conventions", "conventions", "check-conventions.py", True, False),
     ("guard_suites", "guard-suites", "check-guard-suites.py", False, False),
     ("duplication", "duplication", "check-duplication.py", True, False),
@@ -110,7 +111,7 @@ SCOPED = {"complexity", "escapes", "conventions", "crap"}
 CHANGED_ONLY = {"duplication"}
 # Gates that take --tighten, which the Stop hook passes: a baseline entry the agent's change
 # fixed is dropped and an improved one lowered as it goes, so --strict never fails on a fix.
-TIGHTENS = {"escapes", "conventions", "duplication", "sarif", "complexity", "crap"}
+TIGHTENS = {"escapes", "exclusions", "conventions", "duplication", "sarif", "complexity", "crap"}
 # The sections that may be a list of named entries, each its own gate selected with --gate.
 LISTABLE = {"crap", "sarif", "public_api", "inventory"}
 # Sections whose check was retired, and what replaced them.
