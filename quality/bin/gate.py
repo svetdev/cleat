@@ -17,7 +17,8 @@ twice.
   quality/bin/gate.py --hook --changed # for an agent's Stop hook: the changed files, failures to stderr, exit 2
   quality/bin/gate.py --guard          # for an agent's PreToolUse hook: refuse commands that rewrite policy
   quality/bin/gate.py --stats [--since 7d]   # what the two hooks did: firings, fail rate, fixes, refusals
-  quality/bin/gate.py --summary [--since 30d] # the debt the baselines record, against adoption day (or 30 days ago)
+  quality/bin/gate.py --summary [--since 30d] [--json]  # the debt the baselines record: per 1k lines, how far
+                                       # over, how much is in changing files, against adoption day; what is not measured
 
 Gates come from three places in quality.json. Each configured section is a gate
 (the sugar every existing config uses); a `gates` list adds named ones — the
@@ -498,25 +499,24 @@ def print_stats(root, since):
 
 
 def baselines_of(config):
-    """(gate name, check, baseline path) for every configured gate that keeps a baseline of debt."""
+    """(gate name, check, baseline path, its spec) for every configured gate that keeps a baseline of debt."""
     found = []
     for g in from_sections(config) + from_list(config):
         section, spec = (g.section, g.spec) if g.spec is not None else _spec_of(g, config)
         if g.check in summary.DEBT and isinstance(spec, dict) and spec.get("baseline"):
-            found.append((g.name, g.check, config.path(spec["baseline"])))
+            found.append((g.name, g.check, config.path(spec["baseline"]), spec))
     return found
 
 
-def print_summary(config, since):
+def print_summary(config, since, as_json=False):
     try:
         cutoff = events.parse_since(since) if since else None
-    except ValueError as problem:
-        return fail(str(problem))
-    try:
         baselines = baselines_of(config)
-    except KeyError as problem:
-        return fail(problem.args[0])
-    print("\n".join(summary.report(baselines, cutoff)))
+    except (ValueError, KeyError) as problem:
+        return fail(str(problem.args[0]))
+    window = int((config.data.get("hotspots") or {}).get("window_days", 90))
+    data = summary.collect(config, baselines, cutoff, window)
+    print(json.dumps(data, indent=1) if as_json else "\n".join(summary.render(data)))
     return 0
 
 
@@ -674,7 +674,9 @@ def parse_args():
     parser.add_argument("--guard", action="store_true", help="agent PreToolUse hook mode: refuse policy-changing commands")
     parser.add_argument("--stats", action="store_true", help="what the hook and the guard did: firings, fail rate, fixes, refusals")
     parser.add_argument("--summary", action="store_true",
-                        help="the debt each baseline records and which way it moved since adoption (or --since); runs no gate")
+                        help="the debt each baseline records — per 1k lines, how far over the line, how much in changing files — "
+                             "which way it moved since adoption (or --since), and what is not measured; runs no gate")
+    parser.add_argument("--json", action="store_true", help="with --summary: print it as one JSON object")
     parser.add_argument("--since", help="with --stats: only events this recent; with --summary: compare with then — 7d, 24h, 30m")
     quality_config.add_config_argument(parser)
     return parser.parse_args()
@@ -707,7 +709,7 @@ def main():
     if args.stats:
         return print_stats(config.root, args.since)
     if args.summary:
-        return print_summary(config, args.since)
+        return print_summary(config, args.since, args.json)
     return run_gates(args, config)
 
 

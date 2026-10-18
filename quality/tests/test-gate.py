@@ -343,14 +343,29 @@ try:
     write(os.path.join(debt, "cc.json"), json.dumps({"provenance": None, "entries": [fn("f", 9), fn("g", 12), fn("h", 10)]}))
     write(os.path.join(debt, "esc.json"), json.dumps([site("type ignore", 2), site("unwrap", 1)]))
     write(os.path.join(debt, "api.json"), json.dumps([{"file": "src/a.py", "text": "def f():", "line": 1}]))
+    write(os.path.join(debt, "src", "a.py"), "x = 1\n\n" * 500)          # 500 non-blank lines: the code both gates read
+    write(os.path.join(debt, "tests", "test_a.py"), "y = 2\n" * 40)        # a test: counted apart, never production
+    write(os.path.join(debt, "web", "app.ts"), "const z = 3;\n" * 300)    # production code neither gate reads
+    write(os.path.join(debt, "quality", "bin", "gate.py"), "w = 4\n" * 900)  # cleat's own copy: not the project's code
+    write(os.path.join(debt, ".tool", "cache.py"), "v = 5\n" * 900)         # a tool's hidden state: not the project's code
     code, out, err = run("--config", debt_config, "--summary")
+    check("the header sizes the production source and the tests apart, leaving out quality/ and hidden directories",
+          "800 lines of production source, 40 of tests" in out, out + err)
+    check("each gate's debt is per 1k lines of the code it reads", "6 per 1k lines of the 500 it reads" in out, out)
+    check("and how far over the ceilings it goes, not only how many", "over the ceilings: 7 cyclomatic, 0 lines" in out, out)
+    check("a debt gate the config lacks is named with what goes untracked",
+          "Not measured:" in out and "crap" in out and "it needs a coverage report" in out and "duplication" in out, out)
+    check("and production code in a language the gates do not read, with where most of it is",
+          "complexity       does not read 300 of the 300 lines of typescript production code (most under web/)" in out
+          and "escapes          does not read 300" in out, out)
     check("--summary counts the functions over the ceiling, with the worst one",
           code == 0 and "3 function(s) over the complexity ceiling (worst cc 12, longest 10 lines)" in out, out + err)
     check("and sums the escape sites by kind, from a bare-list baseline too", "3 escape site(s) (type ignore 2, unwrap 1)" in out, out)
     check("public-api records surface, not debt, and is left out", "public-api" not in out, out)
     check("a gates entry is summarised under its own name, and a missing file is said",
           "complexity-web" in out and "no baseline file at" in out, out)
-    check("outside git there is nothing to compare with, and it says so", "no committed copy to compare with" in out, out)
+    check("outside git there is nothing to compare with, and no churn either, and it says so",
+          "no committed copy to compare with" in out and "files changed" not in out, out)
     subprocess.run(["git", "-C", debt, "init", "-q", "-b", "main"], check=True)
     subprocess.run(["git", "-C", debt, "add", "-A"], check=True)
     subprocess.run(["git", "-C", debt, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", "adopt"], check=True)
@@ -359,7 +374,18 @@ try:
     check("against the copy first committed, a baseline that shrank reads as down since adoption",
           code == 0 and "down 2 from 3 at adoption on" in out, out + err)
     check("and one that did not move reads as unchanged", "unchanged from 3 at adoption on" in out, out)
+    check("how far over it went then is shown beside how far over it is now",
+          "over the ceilings: 4 cyclomatic, 0 lines" in out and "over the ceilings then: 7 cyclomatic, 0 lines" in out, out)
+    check("the debt in files a commit touched in the churn window is counted", "1 in files changed in the last 90 days" in out, out)
     check("it points at the hotspot report as the place to start", "report-hotspots.py" in out, out)
+    code, out, err = run("--config", debt_config, "--summary", "--json")
+    data = json.loads(out) if code == 0 else {}
+    rows = {r["name"]: r for r in data.get("gates", [])}
+    check("--json prints the same as one object",
+          rows.get("complexity", {}).get("total") == 1 and rows["complexity"]["then"]["total"] == 3
+          and rows["complexity"]["over"] == {"cc": 4, "lines": 0} and rows["complexity"]["per_kloc"] == 2.0
+          and rows.get("complexity-web", {}).get("missing") is True
+          and {g["language"] for g in data["not_read"]} == {"typescript"} and data["window_days"] == 90, out + err)
     code, out, err = run("--config", debt_config, "--summary", "--since", "1m")
     check("--since with no commit that old compares with adoption day instead",
           code == 0 and "down 2 from 3 at adoption on" in out, out + err)

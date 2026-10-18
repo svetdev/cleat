@@ -58,3 +58,17 @@ Append-only log of choices, findings, disproven assumptions and rules for this r
 **Why:** a count per gate that falls over time is checkable and means the same thing in every project; a weighted score would be the opaque "code health" number `quality/STRATEGY.md` already declines. Reading the baselines keeps the answer instant and tool-free, at the price of being an upper bound until the next `--strict` or `--tighten` run.
 **Evidence:** `quality/bin/summary.py`; on this repo, complexity down 8 from 14 at adoption, escapes unchanged at 20.
 **Status:** holds
+
+## [2026-10-17] A lizard patch release can move numbers in one language and not another
+**Kind:** disproven
+**What:** the assumption that lizard 1.24.0 to 1.24.1 changes no measurement held for cleat's own Python (558 functions, identical) but not for a downstream Rust and TypeScript project, whose complexity baseline went from 0 to 27 functions and Rust CRAP from 3 to 30 with no code changed.
+**Why:** an upgrade that is a no-op in one repository says nothing about another; the provenance check is what catches it, and each project re-baselines under the new version deliberately.
+**Evidence:** cleat `f375668` (version line only); the downstream re-baseline commits of 2026-10-16.
+**Status:** holds
+
+## [2026-10-17] Parts are compared with open-source code in their language, as a share, never as a grade
+**Kind:** decision
+**What:** the summary splits a repository into parts by manifest and places each part's debt per 1k production lines among the parts of a measured open-source sample in the same language (pNN, the share with less). The sample is measured by cleat itself (attach, then the day-one baselines) and the table ships with its provenance.
+**Why:** a backend and a frontend in different languages have different normal levels, so one number over both describes neither; and a count per 1k lines means little without knowing what is usual. A share against named, re-measurable repositories stays checkable, which a weighted grade would not.
+**Evidence:** `quality/reference.json`, `quality/bin/build-reference.py`, `quality/tests/test-parts.py`.
+**Status:** holds
