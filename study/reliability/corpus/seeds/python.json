@@ -1,0 +1,441 @@
+{
+ "complexity": [
+  {
+   "id": "python-cx-ifs",
+   "desc": "8 sequential if statements",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def seededIfs(x, y):\n    if x == 1:\n        y = 1\n    if x == 2:\n        y = 2\n    if x == 3:\n        y = 3\n    if x == 4:\n        y = 4\n    if x == 5:\n        y = 5\n    if x == 6:\n        y = 6\n    if x == 7:\n        y = 7\n    if x == 8:\n        y = 8\n    return y",
+   "expect": "caught"
+  },
+  {
+   "id": "python-cx-bool",
+   "desc": "one if whose condition has 7 boolean operators",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def seededBool(x, y):\n    if x > 0 and x > 1 or x > 2 and x > 3 or x > 4 and x > 5 or x > 6 and x > 7:\n        y = 1\n    return y",
+   "expect": "caught"
+  },
+  {
+   "id": "python-cx-loops",
+   "desc": "4 loops and 4 ifs",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def seededLoops(x, y):\n    for i in range(x):\n        y += i\n    if x == 1:\n        y = 1\n    while y > 100:\n        y -= 1\n    if x == 2:\n        y = 2\n    for i in range(x):\n        y += i\n    if x == 3:\n        y = 3\n    while y > 101:\n        y -= 1\n    if x == 4:\n        y = 4\n    return y",
+   "expect": "caught"
+  },
+  {
+   "id": "python-cx-switch",
+   "desc": "a switch/match/when with 8 cases and a default",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def seededSwitch(x, y):\n    match x:\n        case 1:\n            y = 1\n        case 2:\n            y = 2\n        case 3:\n            y = 3\n        case 4:\n            y = 4\n        case 5:\n            y = 5\n        case 6:\n            y = 6\n        case 7:\n            y = 7\n        case 8:\n            y = 8\n        case _:\n            y = 0\n    return y",
+   "expect": "caught"
+  },
+  {
+   "id": "python-cx-handlers",
+   "desc": "8 exception handlers (rust: if-let on a parse; go: if err == nil)",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def seededHandlers(x, y):\n    try:\n        y = int(str(x))\n    except ValueError:\n        y = 0\n    try:\n        y = int(str(x))\n    except ValueError:\n        y = 1\n    try:\n        y = int(str(x))\n    except ValueError:\n        y = 2\n    try:\n        y = int(str(x))\n    except ValueError:\n        y = 3\n    try:\n        y = int(str(x))\n    except ValueError:\n        y = 4\n    try:\n        y = int(str(x))\n    except ValueError:\n        y = 5\n    try:\n        y = int(str(x))\n    except ValueError:\n        y = 6\n    try:\n        y = int(str(x))\n    except ValueError:\n        y = 7\n    return y",
+   "expect": "caught"
+  },
+  {
+   "id": "python-cx-ternary",
+   "desc": "8 conditional expressions (go: 8 ifs)",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def seededTernary(x, y):\n    y = y + 1 if x > 0 else y\n    y = y + 1 if x > 1 else y\n    y = y + 1 if x > 2 else y\n    y = y + 1 if x > 3 else y\n    y = y + 1 if x > 4 else y\n    y = y + 1 if x > 5 else y\n    y = y + 1 if x > 6 else y\n    y = y + 1 if x > 7 else y\n    return y",
+   "expect": "caught"
+  },
+  {
+   "id": "python-cx-special",
+   "desc": "comprehension filters (4 comprehensions, each a for and an if)",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def seededSpecial(x, y):\n    v0 = [v for v in range(x) if v > 0]\n    v1 = [v for v in range(x) if v > 1]\n    v2 = [v for v in range(x) if v > 2]\n    v3 = [v for v in range(x) if v > 3]\n    y = len(v0) + len(v1) + len(v2) + len(v3)\n    return y",
+   "expect": "caught"
+  },
+  {
+   "id": "python-cx-long",
+   "desc": "a 62-statement straight-line body (cyclomatic 1, past 60 lines)",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def seededLong(x, y):\n    y = y + 0\n    y = y + 1\n    y = y + 2\n    y = y + 3\n    y = y + 4\n    y = y + 5\n    y = y + 6\n    y = y + 7\n    y = y + 8\n    y = y + 9\n    y = y + 10\n    y = y + 11\n    y = y + 12\n    y = y + 13\n    y = y + 14\n    y = y + 15\n    y = y + 16\n    y = y + 17\n    y = y + 18\n    y = y + 19\n    y = y + 20\n    y = y + 21\n    y = y + 22\n    y = y + 23\n    y = y + 24\n    y = y + 25\n    y = y + 26\n    y = y + 27\n    y = y + 28\n    y = y + 29\n    y = y + 30\n    y = y + 31\n    y = y + 32\n    y = y + 33\n    y = y + 34\n    y = y + 35\n    y = y + 36\n    y = y + 37\n    y = y + 38\n    y = y + 39\n    y = y + 40\n    y = y + 41\n    y = y + 42\n    y = y + 43\n    y = y + 44\n    y = y + 45\n    y = y + 46\n    y = y + 47\n    y = y + 48\n    y = y + 49\n    y = y + 50\n    y = y + 51\n    y = y + 52\n    y = y + 53\n    y = y + 54\n    y = y + 55\n    y = y + 56\n    y = y + 57\n    y = y + 58\n    y = y + 59\n    y = y + 60\n    y = y + 61\n    return y",
+   "expect": "caught"
+  },
+  {
+   "id": "python-cx-grow",
+   "desc": "the existing classify grown by 7 ifs in place (9 decision points)",
+   "mode": "insert_after",
+   "file": "src/core/stats.py",
+   "anchor": "def classify(score):\n",
+   "text": "    if score == 0:\n        return \"s0\"\n    if score == 1:\n        return \"s1\"\n    if score == 2:\n        return \"s2\"\n    if score == 3:\n        return \"s3\"\n    if score == 4:\n        return \"s4\"\n    if score == 5:\n        return \"s5\"\n    if score == 6:\n        return \"s6\"\n",
+   "expect": "caught"
+  }
+ ],
+ "duplication": [
+  {
+   "id": "python-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.py",
+   "text": "def summarize_copy(values):\n    total = 0\n    count = 0\n    smallest = None\n    largest = None\n    for value in values:\n        total += value\n        count += 1\n        if smallest is None or value < smallest:\n            smallest = value\n        if largest is None or value > largest:\n            largest = value\n    mean = total / count if count else 0\n    return {\"total\": total, \"count\": count, \"min\": smallest, \"max\": largest, \"mean\": mean}\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "python-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def summarize_copy(values):\n    total = 0\n    count = 0\n    smallest = None\n    largest = None\n    for value in values:\n        total += value\n        count += 1\n        if smallest is None or value < smallest:\n            smallest = value\n        if largest is None or value > largest:\n            largest = value\n    mean = total / count if count else 0\n    return {\"total\": total, \"count\": count, \"min\": smallest, \"max\": largest, \"mean\": mean}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "python-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "if True:\n    def summarize_copy(values):\n        total = 0\n        count = 0\n        smallest = None\n        largest = None\n        for value in values:\n            total += value\n            count += 1\n            if smallest is None or value < smallest:\n                smallest = value\n            if largest is None or value > largest:\n                largest = value\n        mean = total / count if count else 0\n        return {\"total\": total, \"count\": count, \"min\": smallest, \"max\": largest, \"mean\": mean}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "python-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.py",
+   "text": "def summarize_copy(values):\n    total = 0\n    count = 0\n    smallest = None\n    largest = None\n    for value in values:\n        total += value\n        count += 1\n        if smallest is None or value < smallest:\n            smallest = value\n        if largest is None or value > largest:\n            largest = value\n    mean = total / count if count else 0\n    return {\"total\": total, \"count\": count, \"min\": smallest, \"max\": largest, \"mean\": mean}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "python-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def head_copy(values):\n    total = 0\n    count = 0\n    smallest = None\n    largest = None\n    for value in values:\n        total += value\n    return total",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "python-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.py",
+   "text": "def summarize_copy(numbers):\n    acc = 0\n    seen = 0\n    lowest = None\n    highest = None\n    for number in numbers:\n        acc += number\n        seen += 1\n        if lowest is None or number < lowest:\n            lowest = number\n        if highest is None or number > highest:\n            highest = number\n    average = acc / seen if seen else 0\n    return {\"acc\": acc, \"seen\": seen, \"min\": lowest, \"max\": highest, \"average\": average}\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "python-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def summarize_copy(numbers):\n    acc = 0\n    seen = 0\n    lowest = None\n    highest = None\n    for number in numbers:\n        acc += number\n        seen += 1\n        if lowest is None or number < lowest:\n            lowest = number\n        if highest is None or number > highest:\n            highest = number\n    average = acc / seen if seen else 0\n    return {\"acc\": acc, \"seen\": seen, \"min\": lowest, \"max\": highest, \"average\": average}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "python-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "if True:\n    def summarize_copy(numbers):\n        acc = 0\n        seen = 0\n        lowest = None\n        highest = None\n        for number in numbers:\n            acc += number\n            seen += 1\n            if lowest is None or number < lowest:\n                lowest = number\n            if highest is None or number > highest:\n                highest = number\n        average = acc / seen if seen else 0\n        return {\"acc\": acc, \"seen\": seen, \"min\": lowest, \"max\": highest, \"average\": average}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "python-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.py",
+   "text": "def summarize_copy(numbers):\n    acc = 0\n    seen = 0\n    lowest = None\n    highest = None\n    for number in numbers:\n        acc += number\n        seen += 1\n        if lowest is None or number < lowest:\n            lowest = number\n        if highest is None or number > highest:\n            highest = number\n    average = acc / seen if seen else 0\n    return {\"acc\": acc, \"seen\": seen, \"min\": lowest, \"max\": highest, \"average\": average}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "python-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def head_copy(numbers):\n    acc = 0\n    seen = 0\n    lowest = None\n    highest = None\n    for number in numbers:\n        acc += number\n    return acc",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "python-lit-0",
+   "desc": "type ignore",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "x = int('3')  # type: ignore",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-1",
+   "desc": "type ignore",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "y = int('4')  #type:ignore[arg-type]",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-2",
+   "desc": "noqa",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import os  # noqa",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-3",
+   "desc": "noqa",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import sys  # noqa: F401",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-4",
+   "desc": "no cover",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "if __debug__:  # pragma: no cover\n    print('debug')",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-5",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import pytest\n\n\n@pytest.mark.skip(reason='later')\ndef test_later():\n    assert summarize([1])",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-6",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import pytest\n\n\ndef test_skip_inline():\n    pytest.skip('later')",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-7",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import unittest\n\n\n@unittest.skip('later')\ndef test_unittest_skip():\n    assert True",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-8",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "from unittest import skip\n\n\n@skip\ndef test_bare_skip():\n    assert True",
+   "expect": "caught"
+  },
+  {
+   "id": "python-lit-9",
+   "desc": "bare except",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def guarded():\n    try:\n        return int('x')\n    except:\n        return 0",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "python-int-0",
+   "desc": "except Exception: pass",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def swallow():\n    try:\n        return int('x')\n    except Exception:\n        pass",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-1",
+   "desc": "except BaseException: pass",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def swallow_all():\n    try:\n        return int('x')\n    except BaseException:\n        return None",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-2",
+   "desc": "pyright: ignore",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "z = int('3')  # pyright: ignore[reportArgumentType]",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-3",
+   "desc": "cast(Any, x)",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "from typing import Any, cast\n\nloose = cast(Any, summarize)",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-4",
+   "desc": "typing.no_type_check",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import typing\n\n\n@typing.no_type_check\ndef unchecked(a):\n    return a + 1",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-5",
+   "desc": "mypy: ignore-errors (file)",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "# mypy: ignore-errors",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-6",
+   "desc": "pylint: disable",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def broad():  # pylint: disable=broad-except\n    return 1",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-7",
+   "desc": "ruff: noqa (file)",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "# ruff: noqa: E501",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-8",
+   "desc": "contextlib.suppress(Exception)",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import contextlib\n\nwith contextlib.suppress(Exception):\n    int('x')",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-9",
+   "desc": "pytest.mark.xfail",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import pytest\n\n\n@pytest.mark.xfail(reason='flaky')\ndef test_flaky():\n    assert summarize([1])",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-10",
+   "desc": "unittest.expectedFailure",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import unittest\n\n\n@unittest.expectedFailure\ndef test_expected():\n    assert False",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-11",
+   "desc": "pragma: no branch",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "if __debug__:  # pragma: no branch\n    print('x')",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-12",
+   "desc": "warnings.filterwarnings ignore",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import warnings\n\nwarnings.filterwarnings('ignore')",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-13",
+   "desc": "pytest.mark.skipif",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import pytest\n\n\n@pytest.mark.skipif(True, reason='later')\ndef test_skipif():\n    assert True",
+   "expect": "caught"
+  },
+  {
+   "id": "python-int-14",
+   "desc": "pytest.importorskip",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "import pytest\n\nnp = pytest.importorskip('numpy')",
+   "expect": "missed"
+  },
+  {
+   "id": "python-int-15",
+   "desc": "explicit Any",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "from typing import Any\n\n\ndef anything(x: Any) -> Any:\n    return x",
+   "expect": "missed"
+  }
+ ],
+ "layering": [
+  {
+   "id": "python-layer-0",
+   "desc": "static import",
+   "mode": "insert_top",
+   "file": "src/models/item.py",
+   "text": "from services.billing import charge",
+   "expect": "caught"
+  },
+  {
+   "id": "python-layer-1",
+   "desc": "relative import",
+   "mode": "insert_top",
+   "file": "src/models/item.py",
+   "text": "from ..services.billing import charge",
+   "expect": "caught"
+  },
+  {
+   "id": "python-layer-2",
+   "desc": "importlib.import_module",
+   "mode": "append",
+   "file": "src/models/item.py",
+   "text": "import importlib\n\nbilling = importlib.import_module(\"services.billing\")",
+   "expect": "missed"
+  }
+ ],
+ "dead_symbols": [
+  {
+   "id": "python-dead-0",
+   "desc": "dead function",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def legacy_total(values):\n    return sum(values)",
+   "expect": "caught"
+  },
+  {
+   "id": "python-dead-1",
+   "desc": "dead class",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "class LegacyFormatter:\n    pass",
+   "expect": "caught"
+  },
+  {
+   "id": "python-dead-2",
+   "desc": "dead function, all-lowercase name",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def oldtotal(values):\n    return sum(values)",
+   "expect": "missed"
+  },
+  {
+   "id": "python-dead-3",
+   "desc": "dead function named like a live local",
+   "mode": "append",
+   "file": "src/core/stats.py",
+   "text": "def prices(values):\n    return list(values)",
+   "expect": "missed"
+  }
+ ]
+}

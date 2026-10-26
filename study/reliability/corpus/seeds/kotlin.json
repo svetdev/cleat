@@ -1,0 +1,353 @@
+{
+ "complexity": [
+  {
+   "id": "kotlin-cx-ifs",
+   "desc": "8 sequential if statements",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun seededIfs(x: Int, yIn: Int): Int {\n    var y = yIn\n    if (x == 1) {\n        y = 1\n    }\n    if (x == 2) {\n        y = 2\n    }\n    if (x == 3) {\n        y = 3\n    }\n    if (x == 4) {\n        y = 4\n    }\n    if (x == 5) {\n        y = 5\n    }\n    if (x == 6) {\n        y = 6\n    }\n    if (x == 7) {\n        y = 7\n    }\n    if (x == 8) {\n        y = 8\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-cx-bool",
+   "desc": "one if whose condition has 7 boolean operators",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun seededBool(x: Int, yIn: Int): Int {\n    var y = yIn\n    if (x > 0 && x > 1 || x > 2 && x > 3 || x > 4 && x > 5 || x > 6 && x > 7) {\n        y = 1\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-cx-loops",
+   "desc": "4 loops and 4 ifs",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun seededLoops(x: Int, yIn: Int): Int {\n    var y = yIn\n    for (i in 0 until x) {\n        y += i\n    }\n    if (x == 1) {\n        y = 1\n    }\n    while (y > 100) {\n        y -= 1\n    }\n    if (x == 2) {\n        y = 2\n    }\n    for (i in 0 until x) {\n        y += i\n    }\n    if (x == 3) {\n        y = 3\n    }\n    while (y > 101) {\n        y -= 1\n    }\n    if (x == 4) {\n        y = 4\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-cx-switch",
+   "desc": "a switch/match/when with 8 cases and a default",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun seededSwitch(x: Int, yIn: Int): Int {\n    var y = yIn\n    when (x) {\n        1 -> y = 1\n        2 -> y = 2\n        3 -> y = 3\n        4 -> y = 4\n        5 -> y = 5\n        6 -> y = 6\n        7 -> y = 7\n        8 -> y = 8\n        else -> y = 0\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-cx-handlers",
+   "desc": "8 exception handlers (rust: if-let on a parse; go: if err == nil)",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun seededHandlers(x: Int, yIn: Int): Int {\n    var y = yIn\n    try {\n        y = \"$x\".toInt()\n    } catch (e: NumberFormatException) {\n        y = 0\n    }\n    try {\n        y = \"$x\".toInt()\n    } catch (e: NumberFormatException) {\n        y = 1\n    }\n    try {\n        y = \"$x\".toInt()\n    } catch (e: NumberFormatException) {\n        y = 2\n    }\n    try {\n        y = \"$x\".toInt()\n    } catch (e: NumberFormatException) {\n        y = 3\n    }\n    try {\n        y = \"$x\".toInt()\n    } catch (e: NumberFormatException) {\n        y = 4\n    }\n    try {\n        y = \"$x\".toInt()\n    } catch (e: NumberFormatException) {\n        y = 5\n    }\n    try {\n        y = \"$x\".toInt()\n    } catch (e: NumberFormatException) {\n        y = 6\n    }\n    try {\n        y = \"$x\".toInt()\n    } catch (e: NumberFormatException) {\n        y = 7\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-cx-ternary",
+   "desc": "8 conditional expressions (go: 8 ifs)",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun seededTernary(x: Int, yIn: Int): Int {\n    var y = yIn\n    y = if (x > 0) y + 1 else y\n    y = if (x > 1) y + 1 else y\n    y = if (x > 2) y + 1 else y\n    y = if (x > 3) y + 1 else y\n    y = if (x > 4) y + 1 else y\n    y = if (x > 5) y + 1 else y\n    y = if (x > 6) y + 1 else y\n    y = if (x > 7) y + 1 else y\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-cx-special",
+   "desc": "when without subject (8 conditions)",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun seededSpecial(x: Int, yIn: Int): Int {\n    var y = yIn\n    when {\n        x > 0 -> y = 0\n        x > 10 -> y = 1\n        x > 20 -> y = 2\n        x > 30 -> y = 3\n        x > 40 -> y = 4\n        x > 50 -> y = 5\n        x > 60 -> y = 6\n        x > 70 -> y = 7\n        else -> y = 0\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-cx-long",
+   "desc": "a 62-statement straight-line body (cyclomatic 1, past 60 lines)",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun seededLong(x: Int, yIn: Int): Int {\n    var y = yIn\n    y = y + 0\n    y = y + 1\n    y = y + 2\n    y = y + 3\n    y = y + 4\n    y = y + 5\n    y = y + 6\n    y = y + 7\n    y = y + 8\n    y = y + 9\n    y = y + 10\n    y = y + 11\n    y = y + 12\n    y = y + 13\n    y = y + 14\n    y = y + 15\n    y = y + 16\n    y = y + 17\n    y = y + 18\n    y = y + 19\n    y = y + 20\n    y = y + 21\n    y = y + 22\n    y = y + 23\n    y = y + 24\n    y = y + 25\n    y = y + 26\n    y = y + 27\n    y = y + 28\n    y = y + 29\n    y = y + 30\n    y = y + 31\n    y = y + 32\n    y = y + 33\n    y = y + 34\n    y = y + 35\n    y = y + 36\n    y = y + 37\n    y = y + 38\n    y = y + 39\n    y = y + 40\n    y = y + 41\n    y = y + 42\n    y = y + 43\n    y = y + 44\n    y = y + 45\n    y = y + 46\n    y = y + 47\n    y = y + 48\n    y = y + 49\n    y = y + 50\n    y = y + 51\n    y = y + 52\n    y = y + 53\n    y = y + 54\n    y = y + 55\n    y = y + 56\n    y = y + 57\n    y = y + 58\n    y = y + 59\n    y = y + 60\n    y = y + 61\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-cx-grow",
+   "desc": "the existing classify grown by 7 ifs in place (9 decision points)",
+   "mode": "insert_after",
+   "file": "src/core/Stats.kt",
+   "anchor": "fun classify(score: Int): String {\n",
+   "text": "    if (score == 0) {\n        return \"s0\"\n    }\n    if (score == 1) {\n        return \"s1\"\n    }\n    if (score == 2) {\n        return \"s2\"\n    }\n    if (score == 3) {\n        return \"s3\"\n    }\n    if (score == 4) {\n        return \"s4\"\n    }\n    if (score == 5) {\n        return \"s5\"\n    }\n    if (score == 6) {\n        return \"s6\"\n    }\n",
+   "expect": "caught"
+  }
+ ],
+ "duplication": [
+  {
+   "id": "kotlin-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.kt",
+   "text": "package com.acme.core\n\nfun summarizeCopy(values: List<Int>): Summary {\n    var total = 0\n    var count = 0\n    var largest = Int.MIN_VALUE\n    for (value in values) {\n        total += value\n        count += 1\n        if (value > largest) {\n            largest = value\n        }\n    }\n    return Summary(total = total, count = count, largest = largest)\n}\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun summarizeCopy(values: List<Int>): Summary {\n    var total = 0\n    var count = 0\n    var largest = Int.MIN_VALUE\n    for (value in values) {\n        total += value\n        count += 1\n        if (value > largest) {\n            largest = value\n        }\n    }\n    return Summary(total = total, count = count, largest = largest)\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "    fun summarizeCopy(values: List<Int>): Summary {\n        var total = 0\n        var count = 0\n        var largest = Int.MIN_VALUE\n        for (value in values) {\n            total += value\n            count += 1\n            if (value > largest) {\n                largest = value\n            }\n        }\n        return Summary(total = total, count = count, largest = largest)\n    }",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/Item.kt",
+   "text": "fun summarizeCopy(values: List<Int>): Summary {\n    var total = 0\n    var count = 0\n    var largest = Int.MIN_VALUE\n    for (value in values) {\n        total += value\n        count += 1\n        if (value > largest) {\n            largest = value\n        }\n    }\n    return Summary(total = total, count = count, largest = largest)\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun headCopy(values: List<Int>): Int {\n    var total = 0\n    var count = 0\n    var largest = Int.MIN_VALUE\n    for (value in values) {\n        total += value\n        count += 1\n    }\n    return total\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.kt",
+   "text": "package com.acme.core\n\nfun summarizeCopy(numbers: List<Int>): Summary {\n    var acc = 0\n    var seen = 0\n    var highest = Int.MIN_VALUE\n    for (number in numbers) {\n        acc += number\n        seen += 1\n        if (number > highest) {\n            highest = number\n        }\n    }\n    return Summary(acc = acc, seen = seen, highest = highest)\n}\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun summarizeCopy(numbers: List<Int>): Summary {\n    var acc = 0\n    var seen = 0\n    var highest = Int.MIN_VALUE\n    for (number in numbers) {\n        acc += number\n        seen += 1\n        if (number > highest) {\n            highest = number\n        }\n    }\n    return Summary(acc = acc, seen = seen, highest = highest)\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "    fun summarizeCopy(numbers: List<Int>): Summary {\n        var acc = 0\n        var seen = 0\n        var highest = Int.MIN_VALUE\n        for (number in numbers) {\n            acc += number\n            seen += 1\n            if (number > highest) {\n                highest = number\n            }\n        }\n        return Summary(acc = acc, seen = seen, highest = highest)\n    }",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/Item.kt",
+   "text": "fun summarizeCopy(numbers: List<Int>): Summary {\n    var acc = 0\n    var seen = 0\n    var highest = Int.MIN_VALUE\n    for (number in numbers) {\n        acc += number\n        seen += 1\n        if (number > highest) {\n            highest = number\n        }\n    }\n    return Summary(acc = acc, seen = seen, highest = highest)\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun headCopy(numbers: List<Int>): Int {\n    var acc = 0\n    var seen = 0\n    var highest = Int.MIN_VALUE\n    for (number in numbers) {\n        acc += number\n        seen += 1\n    }\n    return acc\n}",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "kotlin-lit-0",
+   "desc": "not-null assertion",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun lengthOf(s: String?): Int = s!!.length",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-lit-1",
+   "desc": "suppress",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "@Suppress(\"UNCHECKED_CAST\")\nfun <T> castIt(v: Any): T = v as T",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-lit-2",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "class LaterTest {\n    @Ignore\n    fun later() {}\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-lit-3",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "class LaterTest5 {\n    @Disabled\n    fun later() {}\n}",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "kotlin-int-0",
+   "desc": "!! not-null",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun firstChar(s: String?): Char = s!!.first()",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-int-1",
+   "desc": "@Suppress",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "@Suppress(\"DEPRECATION\")\nfun old(): Int = 1",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-int-2",
+   "desc": "@file:Suppress",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "@file:Suppress(\"unused\")",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-3",
+   "desc": "unsafe cast as",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun asString(v: Any): String = v as String",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-4",
+   "desc": "runCatching swallows",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun quiet(): Int? = runCatching { \"x\".toInt() }.getOrNull()",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-5",
+   "desc": "empty catch",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun swallow() {\n    try {\n        \"x\".toInt()\n    } catch (e: Exception) {\n    }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-6",
+   "desc": "lateinit",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "class Holder {\n    lateinit var name: String\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-7",
+   "desc": "@SuppressWarnings in Kotlin",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "@SuppressWarnings(\"unchecked\")\nfun legacy(): Int = 1",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-8",
+   "desc": "TODO() placeholder",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun later(): Int = TODO(\"not implemented\")",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-9",
+   "desc": "Any typed value",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun anything(v: Any): Any = v",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-10",
+   "desc": "ktlint-disable",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "// ktlint-disable no-wildcard-imports\nimport kotlin.math.*",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-int-11",
+   "desc": "@Ignore with reason",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "class LaterReasonTest {\n    @Ignore(\"flaky\")\n    fun later() {}\n}",
+   "expect": "caught"
+  }
+ ],
+ "layering": [
+  {
+   "id": "kotlin-layer-0",
+   "desc": "import",
+   "mode": "insert_top",
+   "file": "src/models/Item.kt",
+   "text": "import com.acme.services.Billing",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-layer-1",
+   "desc": "fully qualified name, no import",
+   "mode": "append",
+   "file": "src/models/Item.kt",
+   "text": "fun billIt(): Any = com.acme.services.Billing()",
+   "expect": "missed"
+  }
+ ],
+ "dead_symbols": [
+  {
+   "id": "kotlin-dead-0",
+   "desc": "dead function",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun legacyTotal(values: List<Int>): Int = values.size",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-dead-1",
+   "desc": "dead class",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "class LegacyFormatter",
+   "expect": "caught"
+  },
+  {
+   "id": "kotlin-dead-2",
+   "desc": "dead function, all-lowercase name",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun oldtotal(values: List<Int>): Int = values.size",
+   "expect": "missed"
+  },
+  {
+   "id": "kotlin-dead-3",
+   "desc": "dead function named like a live local",
+   "mode": "append",
+   "file": "src/core/Stats.kt",
+   "text": "fun prices(values: List<Int>): List<Int> = values",
+   "expect": "missed"
+  }
+ ]
+}

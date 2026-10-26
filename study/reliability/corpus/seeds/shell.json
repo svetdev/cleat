@@ -1,0 +1,221 @@
+{
+ "complexity": [],
+ "duplication": [
+  {
+   "id": "shell-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/extra.sh",
+   "text": "#!/usr/bin/env bash\nsummarize_copy() {\n  local total=0\n  local count=0\n  local largest=0\n  for value in \"$@\"; do\n    total=$((total + value))\n    count=$((count + 1))\n    if [ \"$value\" -gt \"$largest\" ]; then\n      largest=$value\n    fi\n  done\n  echo \"total=$total count=$count largest=$largest\"\n}\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "shell-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "summarize_copy() {\n  local total=0\n  local count=0\n  local largest=0\n  for value in \"$@\"; do\n    total=$((total + value))\n    count=$((count + 1))\n    if [ \"$value\" -gt \"$largest\" ]; then\n      largest=$value\n    fi\n  done\n  echo \"total=$total count=$count largest=$largest\"\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "shell-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "    summarize_copy() {\n      local total=0\n      local count=0\n      local largest=0\n      for value in \"$@\"; do\n        total=$((total + value))\n        count=$((count + 1))\n        if [ \"$value\" -gt \"$largest\" ]; then\n          largest=$value\n        fi\n      done\n      echo \"total=$total count=$count largest=$largest\"\n    }",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "shell-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/main.sh",
+   "text": "summarize_copy() {\n  local total=0\n  local count=0\n  local largest=0\n  for value in \"$@\"; do\n    total=$((total + value))\n    count=$((count + 1))\n    if [ \"$value\" -gt \"$largest\" ]; then\n      largest=$value\n    fi\n  done\n  echo \"total=$total count=$count largest=$largest\"\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "shell-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "head_copy() {\n  local total=0\n  local count=0\n  local largest=0\n  for value in \"$@\"; do\n    total=$((total + value))\n    count=$((count + 1))\n  done\n  echo \"$total\"\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "shell-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/extra.sh",
+   "text": "#!/usr/bin/env bash\nsummarize_copy() {\n  local acc=0\n  local seen=0\n  local highest=0\n  for number in \"$@\"; do\n    acc=$((acc + number))\n    seen=$((seen + 1))\n    if [ \"$value\" -gt \"$largest\" ]; then\n      highest=$value\n    fi\n  done\n  echo \"acc=$total seen=$count highest=$largest\"\n}\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "summarize_copy() {\n  local acc=0\n  local seen=0\n  local highest=0\n  for number in \"$@\"; do\n    acc=$((acc + number))\n    seen=$((seen + 1))\n    if [ \"$value\" -gt \"$largest\" ]; then\n      highest=$value\n    fi\n  done\n  echo \"acc=$total seen=$count highest=$largest\"\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "    summarize_copy() {\n      local acc=0\n      local seen=0\n      local highest=0\n      for number in \"$@\"; do\n        acc=$((acc + number))\n        seen=$((seen + 1))\n        if [ \"$value\" -gt \"$largest\" ]; then\n          highest=$value\n        fi\n      done\n      echo \"acc=$total seen=$count highest=$largest\"\n    }",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/main.sh",
+   "text": "summarize_copy() {\n  local acc=0\n  local seen=0\n  local highest=0\n  for number in \"$@\"; do\n    acc=$((acc + number))\n    seen=$((seen + 1))\n    if [ \"$value\" -gt \"$largest\" ]; then\n      highest=$value\n    fi\n  done\n  echo \"acc=$total seen=$count highest=$largest\"\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "head_copy() {\n  local acc=0\n  local seen=0\n  local highest=0\n  for number in \"$@\"; do\n    acc=$((acc + number))\n    seen=$((seen + 1))\n  done\n  echo \"$total\"\n}",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "shell-lit-0",
+   "desc": "errors ignored",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "rm -f /tmp/acme.lock || true",
+   "expect": "caught"
+  },
+  {
+   "id": "shell-lit-1",
+   "desc": "errors ignored",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "set +e",
+   "expect": "caught"
+  },
+  {
+   "id": "shell-lit-2",
+   "desc": "shellcheck disable",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "# shellcheck disable=SC2086\necho $1",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "shell-int-0",
+   "desc": "|| : no-op",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "rm /tmp/acme.lock || :",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-1",
+   "desc": "|| echo swallows",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "rm /tmp/acme.lock || echo \"no lock\"",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-2",
+   "desc": "|| exit 0",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "rm /tmp/acme.lock || exit 0",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-3",
+   "desc": "set +o errexit",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "set +o errexit",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-4",
+   "desc": "set +u",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "set +u",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-5",
+   "desc": "trap '' ERR",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "trap '' ERR",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-6",
+   "desc": "|| return 0",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "cleanup() {\n  rm /tmp/acme.lock || return 0\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-7",
+   "desc": "( set +e; cmd ) subshell",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "( set +e; rm /tmp/acme.lock )",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-8",
+   "desc": "shellcheck directive with shell= first",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "# shellcheck shell=bash disable=SC2034",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-9",
+   "desc": "set +o pipefail",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "set +o pipefail",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-10",
+   "desc": "if ! cmd; then :; fi",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "if ! rm /tmp/acme.lock; then :; fi",
+   "expect": "missed"
+  },
+  {
+   "id": "shell-int-11",
+   "desc": "indented set +e in a function",
+   "mode": "append",
+   "file": "src/lib.sh",
+   "text": "relaxed() {\n  set +e\n  rm /tmp/acme.lock\n}",
+   "expect": "caught"
+  }
+ ],
+ "layering": [],
+ "dead_symbols": []
+}

@@ -13,8 +13,10 @@ count of 41 would let an old escape vanish as a new one appears, forever; a
 site cannot.
 
 The site's identity is its file and the text of its line, so editing the file
-above it does not unbaseline it. The same line twice in one file is one entry
-with a count, and that count ratchets too.
+above it does not unbaseline it; a line whose only change is a renamed
+identifier — the same escape, the same shape — is the same site too, so a
+rename is not new debt. The same line twice in one file is one entry with a
+count, and that count ratchets too.
 
 Everything that names the project is the `escapes` section of quality.json:
 
@@ -99,6 +101,11 @@ def _record(seen, rel, line, text, kind):
         seen[key] = (line, kind, 1)
 
 
+def same_site(finding, entry):
+    """One escape under another spelling: the same kind, on a line of the same shape."""
+    return entry.get("escape") == finding.values.get("escape") and ratchet.shape(entry["text"]) == ratchet.shape(finding.text)
+
+
 def list_languages():
     for name in sorted(LANGUAGES):
         print("%-11s %s" % (name, ", ".join(sorted(language(name)["patterns"]))))
@@ -144,7 +151,7 @@ def main():
     entries, stored = ratchet.read(baseline_path)
     untouched = ratchet.outside(entries, args.only)
     found, entries = ratchet.restrict(found, entries, args.only)
-    verdict = ratchet.judge(found, entries, ["count"], stored, measured)
+    verdict = ratchet.judge(found, entries, ["count"], stored, measured, same=same_site)
     def with_count(v):
         return "%s%s" % (v.get("escape", "?"), " x%d" % v["count"] if v.get("count", 1) > 1 else "")
     gate = ratchet.Gate(
@@ -153,7 +160,7 @@ def main():
         fix="Fix what the escape hides: give the value its real type, make the test pass or delete it, handle the "
             "error. Accepting a new escape into the baseline is a policy decision for a person — see quality/README.md.",
         remedy="quality/bin/check-escapes.py --tighten",
-        show=with_count)
+        show=with_count, site="line")
     ok_line = "OK: %d escape site(s) in the tree, all %d in the baseline%s" % (
         len(found), len(found), " (%d in inline Rust tests skipped)" % skipped if skipped else "")
     return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict,

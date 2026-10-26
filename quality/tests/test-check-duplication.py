@@ -86,6 +86,22 @@ try:
     check("--repo-only skips the changed-lines judgment but still fails on density", code == 1 and "overlap" not in out and "got worse" in out, out)
 
 
+    # inside a clone that already existed, a rename or a reorder is not a copy
+    write(c, "def other():\n    x = 1\n    y = 2\n    z = 3\n    return x + y + z\n")
+    renamed = BLOCK.replace("total", "subtotal").replace("item", "line")
+    write(a, "def total_a(items):\n    subtotal = 0\n" + renamed + "    return subtotal\n")
+    write(b, "def total_b(items):\n    subtotal = 0\n" + renamed + "    return subtotal\n")
+    code, out = run(config)
+    check("a local renamed through both copies of an accepted clone is not a new copy", code == 0 and "the block has a twin" not in out, out)
+    write(b, "\n\ndef first():\n    return 1\n\n\ndef total_b(items):\n    subtotal = 0\n" + renamed + "    return subtotal\n")
+    code, out = run(config)
+    check("nor is a copy moved down its file by a reorder", code == 0 and "the block has a twin" not in out, out)
+    write(c, "def other():\n    x = 1\n    y = 2\n    z = 3\n    return x + y + z\n\n\ndef total_c(items):\n    subtotal = 0\n" + renamed + "    return subtotal\n")
+    code, out = run(config)
+    check("but a third copy, renamed like the others, is", code == 1 and "the block has a twin" in out, out)
+    git(repo, "checkout", "-q", "--", "src/a.py", "src/b.py")
+    write(c, "def other():\n    x = 1\n    y = 2\n    z = 3\n    return x + y + z\n\n\ndef total_c(items):\n    total = 0\n" + BLOCK + "    return total\n")
+
     lines = changed.changed_lines(repo, changed.base_ref(repo))
     check("changed lines come from the diff against the base", lines.get("src/c.py") == set(range(6, 19)), str(lines))
     write(os.path.join(repo, "src", "new.py"), "x = 1\ny = 2\n")

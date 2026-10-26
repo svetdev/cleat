@@ -75,6 +75,15 @@ try:
     code, out = run(config)
     check("a site shifted by edits above it still matches", code == 0, out)
 
+    # a rename on the site's own line: the same escape on a line of the same shape is the same site
+    write(py, "import os\nimport sys\n\n\ncwd = os.getcwd()  # type: " + "ignore\ny = 1  # no" + "qa\ndef f():\n    try:\n        pass\n    except:\n        pass\n")
+    code, out = run(config)
+    check("a local renamed on an escape's line is the same site, not a new one", code == 0 and "escape site(s) changed their line" in out, out)
+    write(py, "import os\nimport sys\n\n\ncwd = os.getcwd()  # type: " + "ignore\nz = 1  # no" + "qa\nw = 2  # no" + "qa\ndef f():\n    try:\n        pass\n    except:\n        pass\n")
+    code, out = run(config)
+    check("but a second line of that shape is still a new site", code == 1 and "src/thing.py:7  noqa" in out, out)
+    write(py, "import os\nimport sys\n\n\nx = os.getcwd()  # type: " + "ignore\ny = 1  # no" + "qa\ndef f():\n    try:\n        pass\n    except:\n        pass\n")
+
     write(py, "import os\nimport sys\n\n\nx = os.getcwd()  # type: ignore\ny = 1  # noqa\nz = 2  # noqa: E501\ndef f():\n    try:\n        pass\n    except:\n        pass\n")
     code, out = run(config)
     check("a new site fails", code == 1, out)

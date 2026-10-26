@@ -25,7 +25,10 @@ over — a finding matching no entry, an entry matching no finding — by the
 function's name within one file: an edited signature is the same function,
 `changed` when it is no worse and `worsened` against its old entry when it is,
 never `new` — so touching a baselined function's declaration does not reopen
-its debt. Every finding carries every value the gate measured
+its debt. A gate may name a last pairing too, by shape: identifiers blanked, so a
+finding whose site only renamed something — a function, a local on an escape's
+line — is the same site, `changed` or `worsened`, never `new`. Every finding
+carries every value the gate measured
 (`{"cc": 9, "lines": 61}`, `{"cc": 6, "coverage": 0.25, "crap": 21.4}`). The
 gate names which of those values ratchet — the ones where higher is worse.
 
@@ -52,6 +55,7 @@ import hashlib
 import json
 import os
 import re
+import zlib
 
 # The name a declaration line declares: `const handler = …`, else the identifier before
 # the first parenthesis that is not a keyword (`def f(`, `func f(`, `fn f<T>(`, `function f(`).
@@ -59,6 +63,10 @@ BINDING_RE = re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]
 CALLED_RE = re.compile(r"([A-Za-z_$][\w$]*)\s*(?:<[^()]*>)?\s*\(")
 NOT_NAMES = frozenset({"if", "for", "while", "switch", "catch", "return", "function", "async", "await", "new",
                        "fn", "func", "def", "fun", "sub"})
+IDENTIFIER_RE = re.compile(r"[A-Za-z_$][\w$]*")
+TOKEN_RE = re.compile(r"[A-Za-z_$][\w$]*|\d+|\S")
+SHINGLE = 5        # tokens per shingle in a body's fingerprint
+SIGNATURE = 16     # minimum hashes kept per fingerprint
 
 
 class Finding:
@@ -272,16 +280,38 @@ def declared_name(text):
     return next((m.group(1) for m in CALLED_RE.finditer(text) if m.group(1) not in NOT_NAMES), None)
 
 
-def _renamed(verdict, metrics):
-    """Pair each new finding with a stale entry declaring the same name in the same file,
-    nearest recorded line first: the same function with an edited declaration line."""
+def shape(text):
+    """A line with every identifier blanked and its spacing collapsed: what a rename leaves alone."""
+    return IDENTIFIER_RE.sub("_", " ".join(text.split()))
+
+
+def fingerprint(text):
+    """A short signature of a body's token shape — identifiers blanked, spacing ignored — whose
+    agreement with another estimates how much of the two bodies is the same (MinHash)."""
+    tokens = ["_" if IDENTIFIER_RE.fullmatch(tok) else tok for tok in TOKEN_RE.findall(text)]
+    shingles = {" ".join(tokens[i:i + SHINGLE]) for i in range(max(1, len(tokens) - SHINGLE + 1))}
+    return "".join("%04x" % (min(zlib.crc32(("%d %s" % (seed, s)).encode()) for s in shingles) & 0xFFFF)
+                   for seed in range(SIGNATURE))
+
+
+def resemblance(a, b):
+    """The share of two fingerprints' minimum hashes that agree; 0.0 when either is missing."""
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    parts = [(a[i:i + 4], b[i:i + 4]) for i in range(0, len(a), 4)]
+    return sum(x == y for x, y in parts) / float(len(parts))
+
+
+def _pair_leftovers(verdict, metrics, same):
+    """Pair each new finding with a stale entry in the same file that `same(finding, entry)`
+    accepts, nearest recorded line first: one site under another spelling, `changed` when
+    it is no worse and `worsened` against its old entry when it is."""
     stale = list(verdict.stale)
     for finding in list(verdict.new):
-        name = declared_name(finding.text)
-        same = [e for e in stale if name and e["file"] == finding.file and declared_name(e["text"]) == name]
-        if not same:
+        candidates = [e for e in stale if e["file"] == finding.file and same(finding, e)]
+        if not candidates:
             continue
-        entry = min(same, key=lambda e: abs(e.get("line", finding.line) - finding.line))
+        entry = min(candidates, key=lambda e: abs(e.get("line", finding.line) - finding.line))
         stale.remove(entry)
         verdict.new.remove(finding)
         worse = compare(finding, entry, metrics) == "worsened"
@@ -289,10 +319,22 @@ def _renamed(verdict, metrics):
     verdict.stale = stale
 
 
-def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None, renames=False):
+def same_name(finding, entry):
+    """The same function with an edited declaration line: the same declared name."""
+    name = declared_name(finding.text)
+    return bool(name) and declared_name(entry["text"]) == name
+
+
+def _pairings(renames, same):
+    """The leftover pairings a gate asked for, in order: by declared name, then its own."""
+    return [p for p in (same_name if renames else None, same) if p]
+
+
+def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None, renames=False, same=None):
     """Sort `findings` against the baseline `entries` into the six outcomes. Identical
     `(file, text)` can repeat within a run; `_match_group` tells them apart. With
-    `renames` — a gate over functions — what is left is paired by declared name."""
+    `renames` — a gate over functions — what is left is paired by declared name; with
+    `same`, a gate's own test of one site under another spelling, last of all by that."""
     verdict = Verdict()
     groups = {}
     for e in entries:
@@ -306,8 +348,8 @@ def judge(findings, entries, metrics, stored_provenance=None, current_provenance
             getattr(verdict, compare(finding, entry, metrics)).append((finding, entry))
         verdict.new += unmatched
         verdict.stale += stale
-    if renames:
-        _renamed(verdict, metrics)
+    for pairing in _pairings(renames, same):
+        _pair_leftovers(verdict, metrics, pairing)
     verdict.new.sort(key=lambda f: (f.file, f.line))
     verdict.drift = drift_between(stored_provenance, current_provenance)
     return verdict
@@ -324,9 +366,11 @@ class Gate:
     remedy — the command that tightens the baseline (`--tighten`); it can only lower the file
     show   — values → "cc 9, 61 lines", for a finding line
     brief  — values → the same for a baseline entry (default: `show`)
+    site   — what keys a finding, for the note on one that moved: "declaration line"
     """
 
-    def __init__(self, noun, over, fix, remedy, show, brief=None):
+    def __init__(self, noun, over, fix, remedy, show, brief=None, site="declaration line"):
+        self.site = site
         self.noun = noun
         self.over = over
         self.fix = fix
@@ -380,8 +424,8 @@ def _print_notes(verdict, gate):
 def _print_moved(verdict, gate):
     """The entries whose function changed under them, no worse: a declaration line, a value."""
     if verdict.changed:
-        _print_listed("NOTE: %d baselined %s changed their declaration line, no worse — the baseline still records the old one:"
-                      % (len(verdict.changed), gate.noun),
+        _print_listed("NOTE: %d baselined %s changed their %s, no worse — the baseline still records the old one:"
+                      % (len(verdict.changed), gate.noun, gate.site),
                       ["%s:%d  %s, baseline says %s  %s (was: %s)" % (f.file, f.line, gate.show(f.values), gate.brief(e), f.text[:50], e["text"][:50])
                        for f, e in verdict.changed])
     if verdict.improved:

@@ -1,0 +1,401 @@
+{
+ "complexity": [
+  {
+   "id": "rust-cx-ifs",
+   "desc": "8 sequential if statements",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn seededIfs(x: i64, y: i64) -> i64 {\n    let mut y = y;\n    if x == 1 {\n        y = 1;\n    }\n    if x == 2 {\n        y = 2;\n    }\n    if x == 3 {\n        y = 3;\n    }\n    if x == 4 {\n        y = 4;\n    }\n    if x == 5 {\n        y = 5;\n    }\n    if x == 6 {\n        y = 6;\n    }\n    if x == 7 {\n        y = 7;\n    }\n    if x == 8 {\n        y = 8;\n    }\n    y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-cx-bool",
+   "desc": "one if whose condition has 7 boolean operators",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn seededBool(x: i64, y: i64) -> i64 {\n    let mut y = y;\n    if x > 0 && x > 1 || x > 2 && x > 3 || x > 4 && x > 5 || x > 6 && x > 7 {\n        y = 1;\n    }\n    y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-cx-loops",
+   "desc": "4 loops and 4 ifs",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn seededLoops(x: i64, y: i64) -> i64 {\n    let mut y = y;\n    for i in 0..x {\n        y += i;\n    }\n    if x == 1 {\n        y = 1;\n    }\n    while y > 100 {\n        y -= 1;\n    }\n    if x == 2 {\n        y = 2;\n    }\n    for i in 0..x {\n        y += i;\n    }\n    if x == 3 {\n        y = 3;\n    }\n    while y > 101 {\n        y -= 1;\n    }\n    if x == 4 {\n        y = 4;\n    }\n    y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-cx-switch",
+   "desc": "a switch/match/when with 8 cases and a default",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn seededSwitch(x: i64, y: i64) -> i64 {\n    let mut y = y;\n    match x {\n        1 => y = 1,\n        2 => y = 2,\n        3 => y = 3,\n        4 => y = 4,\n        5 => y = 5,\n        6 => y = 6,\n        7 => y = 7,\n        8 => y = 8,\n        _ => y = 0,\n    }\n    y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-cx-handlers",
+   "desc": "8 exception handlers (rust: if-let on a parse; go: if err == nil)",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn seededHandlers(x: i64, y: i64) -> i64 {\n    let mut y = y;\n    if let Ok(v) = \"0\".parse::<i64>() {\n        y += v;\n    }\n    if let Ok(v) = \"1\".parse::<i64>() {\n        y += v;\n    }\n    if let Ok(v) = \"2\".parse::<i64>() {\n        y += v;\n    }\n    if let Ok(v) = \"3\".parse::<i64>() {\n        y += v;\n    }\n    if let Ok(v) = \"4\".parse::<i64>() {\n        y += v;\n    }\n    if let Ok(v) = \"5\".parse::<i64>() {\n        y += v;\n    }\n    if let Ok(v) = \"6\".parse::<i64>() {\n        y += v;\n    }\n    if let Ok(v) = \"7\".parse::<i64>() {\n        y += v;\n    }\n    y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-cx-ternary",
+   "desc": "8 conditional expressions (go: 8 ifs)",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn seededTernary(x: i64, y: i64) -> i64 {\n    let mut y = y;\n    y = if x > 0 { y + 1 } else { y };\n    y = if x > 1 { y + 1 } else { y };\n    y = if x > 2 { y + 1 } else { y };\n    y = if x > 3 { y + 1 } else { y };\n    y = if x > 4 { y + 1 } else { y };\n    y = if x > 5 { y + 1 } else { y };\n    y = if x > 6 { y + 1 } else { y };\n    y = if x > 7 { y + 1 } else { y };\n    y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-cx-special",
+   "desc": "match arms with guards (8)",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn seededSpecial(x: i64, y: i64) -> i64 {\n    let mut y = y;\n    match x {\n        v if v > 0 => y += v,\n        v if v > 10 => y += v,\n        v if v > 20 => y += v,\n        v if v > 30 => y += v,\n        v if v > 40 => y += v,\n        v if v > 50 => y += v,\n        v if v > 60 => y += v,\n        v if v > 70 => y += v,\n        _ => y = 0,\n    }\n    y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-cx-long",
+   "desc": "a 62-statement straight-line body (cyclomatic 1, past 60 lines)",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn seededLong(x: i64, y: i64) -> i64 {\n    let mut y = y;\n    y = y + 0;\n    y = y + 1;\n    y = y + 2;\n    y = y + 3;\n    y = y + 4;\n    y = y + 5;\n    y = y + 6;\n    y = y + 7;\n    y = y + 8;\n    y = y + 9;\n    y = y + 10;\n    y = y + 11;\n    y = y + 12;\n    y = y + 13;\n    y = y + 14;\n    y = y + 15;\n    y = y + 16;\n    y = y + 17;\n    y = y + 18;\n    y = y + 19;\n    y = y + 20;\n    y = y + 21;\n    y = y + 22;\n    y = y + 23;\n    y = y + 24;\n    y = y + 25;\n    y = y + 26;\n    y = y + 27;\n    y = y + 28;\n    y = y + 29;\n    y = y + 30;\n    y = y + 31;\n    y = y + 32;\n    y = y + 33;\n    y = y + 34;\n    y = y + 35;\n    y = y + 36;\n    y = y + 37;\n    y = y + 38;\n    y = y + 39;\n    y = y + 40;\n    y = y + 41;\n    y = y + 42;\n    y = y + 43;\n    y = y + 44;\n    y = y + 45;\n    y = y + 46;\n    y = y + 47;\n    y = y + 48;\n    y = y + 49;\n    y = y + 50;\n    y = y + 51;\n    y = y + 52;\n    y = y + 53;\n    y = y + 54;\n    y = y + 55;\n    y = y + 56;\n    y = y + 57;\n    y = y + 58;\n    y = y + 59;\n    y = y + 60;\n    y = y + 61;\n    y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-cx-grow",
+   "desc": "the existing classify grown by 7 ifs in place (9 decision points)",
+   "mode": "insert_after",
+   "file": "src/base/stats.rs",
+   "anchor": "pub fn classify(score: i64) -> &'static str {\n",
+   "text": "    if score == 0 {\n        return \"s0\";\n    }\n    if score == 1 {\n        return \"s1\";\n    }\n    if score == 2 {\n        return \"s2\";\n    }\n    if score == 3 {\n        return \"s3\";\n    }\n    if score == 4 {\n        return \"s4\";\n    }\n    if score == 5 {\n        return \"s5\";\n    }\n    if score == 6 {\n        return \"s6\";\n    }\n",
+   "expect": "caught"
+  }
+ ],
+ "duplication": [
+  {
+   "id": "rust-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/base/extra.rs",
+   "text": "pub fn summarize_copy(values: &[i64]) -> Summary {\n    let mut total = 0;\n    let mut count = 0;\n    let mut largest = i64::MIN;\n    for value in values {\n        total += value;\n        count += 1;\n        if *value > largest {\n            largest = *value;\n        }\n    }\n    Summary { total: total, count: count, largest: largest }\n}\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn summarize_copy(values: &[i64]) -> Summary {\n    let mut total = 0;\n    let mut count = 0;\n    let mut largest = i64::MIN;\n    for value in values {\n        total += value;\n        count += 1;\n        if *value > largest {\n            largest = *value;\n        }\n    }\n    Summary { total: total, count: count, largest: largest }\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "    pub fn summarize_copy(values: &[i64]) -> Summary {\n        let mut total = 0;\n        let mut count = 0;\n        let mut largest = i64::MIN;\n        for value in values {\n            total += value;\n            count += 1;\n            if *value > largest {\n                largest = *value;\n            }\n        }\n        Summary { total: total, count: count, largest: largest }\n    }",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.rs",
+   "text": "pub fn summarize_copy(values: &[i64]) -> Summary {\n    let mut total = 0;\n    let mut count = 0;\n    let mut largest = i64::MIN;\n    for value in values {\n        total += value;\n        count += 1;\n        if *value > largest {\n            largest = *value;\n        }\n    }\n    Summary { total: total, count: count, largest: largest }\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn head_copy(values: &[i64]) -> i64 {\n    let mut total = 0;\n    let mut count = 0;\n    let mut largest = i64::MIN;\n    for value in values {\n        total += value;\n        count += 1;\n    }\n    total\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/base/extra.rs",
+   "text": "pub fn summarize_copy(numbers: &[i64]) -> Summary {\n    let mut acc = 0;\n    let mut seen = 0;\n    let mut highest = i64::MIN;\n    for number in numbers {\n        acc += number;\n        seen += 1;\n        if *number > highest {\n            highest = *number;\n        }\n    }\n    Summary { acc: acc, seen: seen, highest: highest }\n}\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn summarize_copy(numbers: &[i64]) -> Summary {\n    let mut acc = 0;\n    let mut seen = 0;\n    let mut highest = i64::MIN;\n    for number in numbers {\n        acc += number;\n        seen += 1;\n        if *number > highest {\n            highest = *number;\n        }\n    }\n    Summary { acc: acc, seen: seen, highest: highest }\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "    pub fn summarize_copy(numbers: &[i64]) -> Summary {\n        let mut acc = 0;\n        let mut seen = 0;\n        let mut highest = i64::MIN;\n        for number in numbers {\n            acc += number;\n            seen += 1;\n            if *number > highest {\n                highest = *number;\n            }\n        }\n        Summary { acc: acc, seen: seen, highest: highest }\n    }",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.rs",
+   "text": "pub fn summarize_copy(numbers: &[i64]) -> Summary {\n    let mut acc = 0;\n    let mut seen = 0;\n    let mut highest = i64::MIN;\n    for number in numbers {\n        acc += number;\n        seen += 1;\n        if *number > highest {\n            highest = *number;\n        }\n    }\n    Summary { acc: acc, seen: seen, highest: highest }\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn head_copy(numbers: &[i64]) -> i64 {\n    let mut acc = 0;\n    let mut seen = 0;\n    let mut highest = i64::MIN;\n    for number in numbers {\n        acc += number;\n        seen += 1;\n    }\n    acc\n}",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "rust-lit-0",
+   "desc": "unwrap",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn parse_unwrap(s: &str) -> i64 {\n    s.parse().unwrap()\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-lit-1",
+   "desc": "expect",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn parse_expect(s: &str) -> i64 {\n    s.parse().expect(\"number\")\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-lit-2",
+   "desc": "unsafe",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn raw_read(p: *const i64) -> i64 {\n    unsafe { *p }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-lit-3",
+   "desc": "allow",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "#[allow(dead_code)]\nfn quiet() {}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-lit-4",
+   "desc": "allow",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "#![allow(unused)]",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-lit-5",
+   "desc": "todo",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn later() -> i64 {\n    todo!()\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-lit-6",
+   "desc": "todo",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn later_too() -> i64 {\n    unimplemented!()\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-lit-7",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "#[test]\n#[ignore]\nfn slow_test() {}",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "rust-int-0",
+   "desc": ".expect(\"\")",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn parse_empty(s: &str) -> i64 {\n    s.parse().expect(\"\")\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-int-1",
+   "desc": "#[allow(...)]",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "#[allow(clippy::needless_return)]\npub fn needless() -> i64 {\n    return 1;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-int-2",
+   "desc": "#![allow(clippy::all)]",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "#![allow(clippy::all)]",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-int-3",
+   "desc": "let _ = discards a Result",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn discard() {\n    let _ = \"x\".parse::<i64>();\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-4",
+   "desc": ".ok(); swallows",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn swallow() {\n    \"x\".parse::<i64>().ok();\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-5",
+   "desc": ".unwrap_or_default()",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn quiet(s: &str) -> i64 {\n    s.parse().unwrap_or_default()\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-6",
+   "desc": "unsafe fn",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub unsafe fn raw(p: *const i64) -> i64 {\n    *p\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-7",
+   "desc": "unsafe impl Send",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub struct Handle(*mut u8);\nunsafe impl Send for Handle {}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-8",
+   "desc": "panic! placeholder",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn later() -> i64 {\n    panic!(\"not yet\")\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-9",
+   "desc": "unreachable!",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn never(x: i64) -> i64 {\n    if x > 0 { x } else { unreachable!() }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-10",
+   "desc": "#[ignore = reason]",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "#[test]\n#[ignore = \"slow\"]\nfn slow_with_reason() {}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-int-11",
+   "desc": "#[expect(lint)]",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "#[expect(clippy::unwrap_used)]\npub fn expected() -> i64 {\n    1\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-12",
+   "desc": "if let Err(_) swallow",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn quiet_err() {\n    if let Err(_) = \"x\".parse::<i64>() {}\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-int-13",
+   "desc": "#[ignore] inside #[cfg(test)] mod",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "#[cfg(test)]\nmod tests {\n    #[test]\n    #[ignore]\n    fn later() {}\n}",
+   "expect": "?"
+  }
+ ],
+ "layering": [
+  {
+   "id": "rust-layer-0",
+   "desc": "use crate::services",
+   "mode": "insert_top",
+   "file": "src/models/item.rs",
+   "text": "use crate::services::billing::charge;",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-layer-1",
+   "desc": "fully qualified path, no use",
+   "mode": "append",
+   "file": "src/models/item.rs",
+   "text": "pub fn total_of(items: &[Item]) -> i64 {\n    crate::services::billing::charge(items).total\n}",
+   "expect": "missed"
+  }
+ ],
+ "dead_symbols": [
+  {
+   "id": "rust-dead-0",
+   "desc": "dead function",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn legacy_total(values: &[i64]) -> i64 {\n    values.len() as i64\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-dead-1",
+   "desc": "dead type",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub struct LegacyFormatter;",
+   "expect": "caught"
+  },
+  {
+   "id": "rust-dead-2",
+   "desc": "dead function, all-lowercase name",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn oldtotal(values: &[i64]) -> i64 {\n    values.len() as i64\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "rust-dead-3",
+   "desc": "dead function named like a live local",
+   "mode": "append",
+   "file": "src/base/stats.rs",
+   "text": "pub fn prices(values: &[i64]) -> Vec<i64> {\n    values.to_vec()\n}",
+   "expect": "missed"
+  }
+ ]
+}

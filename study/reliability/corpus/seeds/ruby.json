@@ -1,0 +1,361 @@
+{
+ "complexity": [
+  {
+   "id": "ruby-cx-ifs",
+   "desc": "8 sequential if statements",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def seededIfs(x, y)\n  if x == 1\n    y = 1\n  end\n  if x == 2\n    y = 2\n  end\n  if x == 3\n    y = 3\n  end\n  if x == 4\n    y = 4\n  end\n  if x == 5\n    y = 5\n  end\n  if x == 6\n    y = 6\n  end\n  if x == 7\n    y = 7\n  end\n  if x == 8\n    y = 8\n  end\n  y\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-cx-bool",
+   "desc": "one if whose condition has 7 boolean operators",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def seededBool(x, y)\n  if x > 0 && x > 1 || x > 2 && x > 3 || x > 4 && x > 5 || x > 6 && x > 7\n    y = 1\n  end\n  y\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-cx-loops",
+   "desc": "4 loops and 4 ifs",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def seededLoops(x, y)\n  for i in 0...x\n    y += i\n  end\n  if x == 1\n    y = 1\n  end\n  while y > 100\n    y -= 1\n  end\n  if x == 2\n    y = 2\n  end\n  for i in 0...x\n    y += i\n  end\n  if x == 3\n    y = 3\n  end\n  while y > 101\n    y -= 1\n  end\n  if x == 4\n    y = 4\n  end\n  y\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-cx-switch",
+   "desc": "a switch/match/when with 8 cases and a default",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def seededSwitch(x, y)\n  case x\n  when 1\n    y = 1\n  when 2\n    y = 2\n  when 3\n    y = 3\n  when 4\n    y = 4\n  when 5\n    y = 5\n  when 6\n    y = 6\n  when 7\n    y = 7\n  when 8\n    y = 8\n  else\n    y = 0\n  end\n  y\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-cx-handlers",
+   "desc": "8 exception handlers (rust: if-let on a parse; go: if err == nil)",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def seededHandlers(x, y)\n  begin\n    y = Integer(x.to_s)\n  rescue ArgumentError\n    y = 0\n  end\n  begin\n    y = Integer(x.to_s)\n  rescue ArgumentError\n    y = 1\n  end\n  begin\n    y = Integer(x.to_s)\n  rescue ArgumentError\n    y = 2\n  end\n  begin\n    y = Integer(x.to_s)\n  rescue ArgumentError\n    y = 3\n  end\n  begin\n    y = Integer(x.to_s)\n  rescue ArgumentError\n    y = 4\n  end\n  begin\n    y = Integer(x.to_s)\n  rescue ArgumentError\n    y = 5\n  end\n  begin\n    y = Integer(x.to_s)\n  rescue ArgumentError\n    y = 6\n  end\n  begin\n    y = Integer(x.to_s)\n  rescue ArgumentError\n    y = 7\n  end\n  y\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-cx-ternary",
+   "desc": "8 conditional expressions (go: 8 ifs)",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def seededTernary(x, y)\n  y = x > 0 ? y + 1 : y\n  y = x > 1 ? y + 1 : y\n  y = x > 2 ? y + 1 : y\n  y = x > 3 ? y + 1 : y\n  y = x > 4 ? y + 1 : y\n  y = x > 5 ? y + 1 : y\n  y = x > 6 ? y + 1 : y\n  y = x > 7 ? y + 1 : y\n  y\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-cx-special",
+   "desc": "unless statements (8)",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def seededSpecial(x, y)\n  unless x == 0\n    y += 1\n  end\n  unless x == 1\n    y += 1\n  end\n  unless x == 2\n    y += 1\n  end\n  unless x == 3\n    y += 1\n  end\n  unless x == 4\n    y += 1\n  end\n  unless x == 5\n    y += 1\n  end\n  unless x == 6\n    y += 1\n  end\n  unless x == 7\n    y += 1\n  end\n  y\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-cx-long",
+   "desc": "a 62-statement straight-line body (cyclomatic 1, past 60 lines)",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def seededLong(x, y)\n  y = y + 0\n  y = y + 1\n  y = y + 2\n  y = y + 3\n  y = y + 4\n  y = y + 5\n  y = y + 6\n  y = y + 7\n  y = y + 8\n  y = y + 9\n  y = y + 10\n  y = y + 11\n  y = y + 12\n  y = y + 13\n  y = y + 14\n  y = y + 15\n  y = y + 16\n  y = y + 17\n  y = y + 18\n  y = y + 19\n  y = y + 20\n  y = y + 21\n  y = y + 22\n  y = y + 23\n  y = y + 24\n  y = y + 25\n  y = y + 26\n  y = y + 27\n  y = y + 28\n  y = y + 29\n  y = y + 30\n  y = y + 31\n  y = y + 32\n  y = y + 33\n  y = y + 34\n  y = y + 35\n  y = y + 36\n  y = y + 37\n  y = y + 38\n  y = y + 39\n  y = y + 40\n  y = y + 41\n  y = y + 42\n  y = y + 43\n  y = y + 44\n  y = y + 45\n  y = y + 46\n  y = y + 47\n  y = y + 48\n  y = y + 49\n  y = y + 50\n  y = y + 51\n  y = y + 52\n  y = y + 53\n  y = y + 54\n  y = y + 55\n  y = y + 56\n  y = y + 57\n  y = y + 58\n  y = y + 59\n  y = y + 60\n  y = y + 61\n  y\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-cx-grow",
+   "desc": "the existing classify grown by 7 ifs in place (9 decision points)",
+   "mode": "insert_after",
+   "file": "src/core/stats.rb",
+   "anchor": "  def self.classify(score)\n",
+   "text": "    return \"s0\" if score == 0\n    return \"s1\" if score == 1\n    return \"s2\" if score == 2\n    return \"s3\" if score == 3\n    return \"s4\" if score == 4\n    return \"s5\" if score == 5\n    return \"s6\" if score == 6\n",
+   "expect": "caught"
+  }
+ ],
+ "duplication": [
+  {
+   "id": "ruby-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.rb",
+   "text": "module Extra\n  def self.summarize_copy(values)\n    total = 0\n    count = 0\n    largest = nil\n    values.each do |value|\n      total += value\n      count += 1\n      largest = value if largest.nil? || value > largest\n    end\n    mean = count.zero? ? 0 : total.fdiv(count)\n    { total: total, count: count, largest: largest, mean: mean }\n  end\nend\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "module StatsCopy\n  def self.summarize_copy(values)\n    total = 0\n    count = 0\n    largest = nil\n    values.each do |value|\n      total += value\n      count += 1\n      largest = value if largest.nil? || value > largest\n    end\n    mean = count.zero? ? 0 : total.fdiv(count)\n    { total: total, count: count, largest: largest, mean: mean }\n  end\nend",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "module StatsDeep\n      def self.summarize_copy(values)\n        total = 0\n        count = 0\n        largest = nil\n        values.each do |value|\n          total += value\n          count += 1\n          largest = value if largest.nil? || value > largest\n        end\n        mean = count.zero? ? 0 : total.fdiv(count)\n        { total: total, count: count, largest: largest, mean: mean }\n      end\nend",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.rb",
+   "text": "module ModelCopy\n  def self.summarize_copy(values)\n    total = 0\n    count = 0\n    largest = nil\n    values.each do |value|\n      total += value\n      count += 1\n      largest = value if largest.nil? || value > largest\n    end\n    mean = count.zero? ? 0 : total.fdiv(count)\n    { total: total, count: count, largest: largest, mean: mean }\n  end\nend",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "module StatsHead\n  def self.head_copy(values)\n    total = 0\n    count = 0\n    largest = nil\n    values.each do |value|\n      total += value\n      count += 1\n    end\n    total\n  end\nend",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.rb",
+   "text": "module Extra\n  def self.summarize_copy(numbers)\n    acc = 0\n    seen = 0\n    highest = nil\n    numbers.each do |number|\n      acc += number\n      seen += 1\n      highest = number if highest.nil? || number > highest\n    end\n    average = seen.zero? ? 0 : acc.fdiv(seen)\n    { acc: acc, seen: seen, highest: highest, average: average }\n  end\nend\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "module StatsCopy\n  def self.summarize_copy(numbers)\n    acc = 0\n    seen = 0\n    highest = nil\n    numbers.each do |number|\n      acc += number\n      seen += 1\n      highest = number if highest.nil? || number > highest\n    end\n    average = seen.zero? ? 0 : acc.fdiv(seen)\n    { acc: acc, seen: seen, highest: highest, average: average }\n  end\nend",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "module StatsDeep\n      def self.summarize_copy(numbers)\n        acc = 0\n        seen = 0\n        highest = nil\n        numbers.each do |number|\n          acc += number\n          seen += 1\n          highest = number if highest.nil? || number > highest\n        end\n        average = seen.zero? ? 0 : acc.fdiv(seen)\n        { acc: acc, seen: seen, highest: highest, average: average }\n      end\nend",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.rb",
+   "text": "module ModelCopy\n  def self.summarize_copy(numbers)\n    acc = 0\n    seen = 0\n    highest = nil\n    numbers.each do |number|\n      acc += number\n      seen += 1\n      highest = number if highest.nil? || number > highest\n    end\n    average = seen.zero? ? 0 : acc.fdiv(seen)\n    { acc: acc, seen: seen, highest: highest, average: average }\n  end\nend",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "module StatsHead\n  def self.head_copy(numbers)\n    acc = 0\n    seen = 0\n    highest = nil\n    numbers.each do |number|\n      acc += number\n      seen += 1\n    end\n    acc\n  end\nend",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "ruby-lit-0",
+   "desc": "rubocop:disable",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "# rubocop:disable Metrics/AbcSize\ndef big; end",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-lit-1",
+   "desc": "skipped test",
+   "mode": "new",
+   "file": "src/core/stats_spec.rb",
+   "text": "it \"later\" do\n  skip\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-lit-2",
+   "desc": "skipped test",
+   "mode": "new",
+   "file": "src/core/stats2_spec.rb",
+   "text": "xit \"later\" do\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-lit-3",
+   "desc": "skipped test",
+   "mode": "new",
+   "file": "src/core/stats3_spec.rb",
+   "text": "it \"later\" do\n  pending\nend",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "ruby-int-0",
+   "desc": "rescue nil modifier",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def quiet\n  Integer(\"x\") rescue nil\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-1",
+   "desc": "empty rescue",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def swallow\n  Integer(\"x\")\nrescue StandardError\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-2",
+   "desc": "rescue Exception => e; nil",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def swallow_all\n  Integer(\"x\")\nrescue Exception => e\n  nil\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-3",
+   "desc": "rubocop:todo",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "# rubocop:todo Metrics/MethodLength\ndef long_one; end",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-4",
+   "desc": "send to a private method",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def peek(obj)\n  obj.send(:secret)\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-5",
+   "desc": "standard:disable",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "# standard:disable Style/StringLiterals\nX = 'x'",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-6",
+   "desc": "T.unsafe (Sorbet)",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def unsafe_call(x)\n  T.unsafe(x).anything\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-7",
+   "desc": "typed: false (Sorbet)",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "# typed: false",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-8",
+   "desc": "T.untyped (Sorbet)",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def loose(x)\n  T.let(x, T.untyped)\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-9",
+   "desc": "xdescribe",
+   "mode": "new",
+   "file": "src/core/later_spec.rb",
+   "text": "xdescribe \"later\" do\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-10",
+   "desc": "it ..., skip: true",
+   "mode": "new",
+   "file": "src/core/later2_spec.rb",
+   "text": "it \"later\", skip: true do\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-int-11",
+   "desc": "instance_variable_get",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def peek_ivar(obj)\n  obj.instance_variable_get(:@secret)\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-int-12",
+   "desc": "fit (focused spec, the .only of RSpec)",
+   "mode": "new",
+   "file": "src/core/focus_spec.rb",
+   "text": "fit \"only this\" do\nend",
+   "expect": "missed"
+  }
+ ],
+ "layering": [
+  {
+   "id": "ruby-layer-0",
+   "desc": "a services constant named in models",
+   "mode": "append",
+   "file": "src/models/item.rb",
+   "text": "class Item\n  def bill\n    Billing.charge([self])\n  end\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-layer-1",
+   "desc": "send by string",
+   "mode": "append",
+   "file": "src/models/item.rb",
+   "text": "class Item\n  def bill_dynamic\n    Object.const_get(\"Billing\").charge([self])\n  end\nend",
+   "expect": "missed"
+  }
+ ],
+ "dead_symbols": [
+  {
+   "id": "ruby-dead-0",
+   "desc": "dead method",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def legacy_total(values)\n  values.sum\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-dead-1",
+   "desc": "dead class",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "class LegacyFormatter\nend",
+   "expect": "caught"
+  },
+  {
+   "id": "ruby-dead-2",
+   "desc": "dead method, all-lowercase name",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def oldtotal(values)\n  values.sum\nend",
+   "expect": "missed"
+  },
+  {
+   "id": "ruby-dead-3",
+   "desc": "dead method named like a live local",
+   "mode": "append",
+   "file": "src/core/stats.rb",
+   "text": "def items(values)\n  values\nend",
+   "expect": "missed"
+  }
+ ]
+}

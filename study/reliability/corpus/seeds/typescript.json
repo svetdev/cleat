@@ -1,0 +1,529 @@
+{
+ "complexity": [
+  {
+   "id": "typescript-cx-ifs",
+   "desc": "8 sequential if statements",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function seededIfs(x: number, y: number): number {\n  if (x === 1) {\n    y = 1;\n  }\n  if (x === 2) {\n    y = 2;\n  }\n  if (x === 3) {\n    y = 3;\n  }\n  if (x === 4) {\n    y = 4;\n  }\n  if (x === 5) {\n    y = 5;\n  }\n  if (x === 6) {\n    y = 6;\n  }\n  if (x === 7) {\n    y = 7;\n  }\n  if (x === 8) {\n    y = 8;\n  }\n  return y;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-cx-bool",
+   "desc": "one if whose condition has 7 boolean operators",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function seededBool(x: number, y: number): number {\n  if (x > 0 && x > 1 || x > 2 && x > 3 || x > 4 && x > 5 || x > 6 && x > 7) {\n    y = 1;\n  }\n  return y;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-cx-loops",
+   "desc": "4 loops and 4 ifs",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function seededLoops(x: number, y: number): number {\n  for (let i = 0; i < x; i++) {\n    y += i;\n  }\n  if (x === 1) {\n    y = 1;\n  }\n  while (y > 100) {\n    y -= 1;\n  }\n  if (x === 2) {\n    y = 2;\n  }\n  for (let i = 0; i < x; i++) {\n    y += i;\n  }\n  if (x === 3) {\n    y = 3;\n  }\n  while (y > 101) {\n    y -= 1;\n  }\n  if (x === 4) {\n    y = 4;\n  }\n  return y;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-cx-switch",
+   "desc": "a switch/match/when with 8 cases and a default",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function seededSwitch(x: number, y: number): number {\n  switch (x) {\n    case 1:\n      y = 1;\n      break;\n    case 2:\n      y = 2;\n      break;\n    case 3:\n      y = 3;\n      break;\n    case 4:\n      y = 4;\n      break;\n    case 5:\n      y = 5;\n      break;\n    case 6:\n      y = 6;\n      break;\n    case 7:\n      y = 7;\n      break;\n    case 8:\n      y = 8;\n      break;\n    default:\n      y = 0;\n  }\n  return y;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-cx-handlers",
+   "desc": "8 exception handlers (rust: if-let on a parse; go: if err == nil)",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function seededHandlers(x: number, y: number): number {\n  try {\n    y = JSON.parse(String(x));\n  } catch {\n    y = 0;\n  }\n  try {\n    y = JSON.parse(String(x));\n  } catch {\n    y = 1;\n  }\n  try {\n    y = JSON.parse(String(x));\n  } catch {\n    y = 2;\n  }\n  try {\n    y = JSON.parse(String(x));\n  } catch {\n    y = 3;\n  }\n  try {\n    y = JSON.parse(String(x));\n  } catch {\n    y = 4;\n  }\n  try {\n    y = JSON.parse(String(x));\n  } catch {\n    y = 5;\n  }\n  try {\n    y = JSON.parse(String(x));\n  } catch {\n    y = 6;\n  }\n  try {\n    y = JSON.parse(String(x));\n  } catch {\n    y = 7;\n  }\n  return y;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-cx-ternary",
+   "desc": "8 conditional expressions (go: 8 ifs)",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function seededTernary(x: number, y: number): number {\n  y = x > 0 ? y + 1 : y;\n  y = x > 1 ? y + 1 : y;\n  y = x > 2 ? y + 1 : y;\n  y = x > 3 ? y + 1 : y;\n  y = x > 4 ? y + 1 : y;\n  y = x > 5 ? y + 1 : y;\n  y = x > 6 ? y + 1 : y;\n  y = x > 7 ? y + 1 : y;\n  return y;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-cx-special",
+   "desc": "nullish coalescing ?? (8)",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function seededSpecial(x: number, y: number): number {\n  const m = new Map<number, number>();\n  y = m.get(0) ?? y;\n  y = m.get(1) ?? y;\n  y = m.get(2) ?? y;\n  y = m.get(3) ?? y;\n  y = m.get(4) ?? y;\n  y = m.get(5) ?? y;\n  y = m.get(6) ?? y;\n  y = m.get(7) ?? y;\n  return y;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-cx-long",
+   "desc": "a 62-statement straight-line body (cyclomatic 1, past 60 lines)",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function seededLong(x: number, y: number): number {\n  y = y + 0;\n  y = y + 1;\n  y = y + 2;\n  y = y + 3;\n  y = y + 4;\n  y = y + 5;\n  y = y + 6;\n  y = y + 7;\n  y = y + 8;\n  y = y + 9;\n  y = y + 10;\n  y = y + 11;\n  y = y + 12;\n  y = y + 13;\n  y = y + 14;\n  y = y + 15;\n  y = y + 16;\n  y = y + 17;\n  y = y + 18;\n  y = y + 19;\n  y = y + 20;\n  y = y + 21;\n  y = y + 22;\n  y = y + 23;\n  y = y + 24;\n  y = y + 25;\n  y = y + 26;\n  y = y + 27;\n  y = y + 28;\n  y = y + 29;\n  y = y + 30;\n  y = y + 31;\n  y = y + 32;\n  y = y + 33;\n  y = y + 34;\n  y = y + 35;\n  y = y + 36;\n  y = y + 37;\n  y = y + 38;\n  y = y + 39;\n  y = y + 40;\n  y = y + 41;\n  y = y + 42;\n  y = y + 43;\n  y = y + 44;\n  y = y + 45;\n  y = y + 46;\n  y = y + 47;\n  y = y + 48;\n  y = y + 49;\n  y = y + 50;\n  y = y + 51;\n  y = y + 52;\n  y = y + 53;\n  y = y + 54;\n  y = y + 55;\n  y = y + 56;\n  y = y + 57;\n  y = y + 58;\n  y = y + 59;\n  y = y + 60;\n  y = y + 61;\n  return y;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-cx-grow",
+   "desc": "the existing classify grown by 7 ifs in place (9 decision points)",
+   "mode": "insert_after",
+   "file": "src/core/stats.ts",
+   "anchor": "export function classify(score: number): string {\n",
+   "text": "  if (score === 0) {\n    return \"s0\";\n  }\n  if (score === 1) {\n    return \"s1\";\n  }\n  if (score === 2) {\n    return \"s2\";\n  }\n  if (score === 3) {\n    return \"s3\";\n  }\n  if (score === 4) {\n    return \"s4\";\n  }\n  if (score === 5) {\n    return \"s5\";\n  }\n  if (score === 6) {\n    return \"s6\";\n  }\n",
+   "expect": "caught"
+  }
+ ],
+ "duplication": [
+  {
+   "id": "typescript-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.ts",
+   "text": "export function summarizeCopy(values: number[]): Summary {\n  let total = 0;\n  let count = 0;\n  let largest = Number.NEGATIVE_INFINITY;\n  for (const value of values) {\n    total += value;\n    count += 1;\n    if (value > largest) {\n      largest = value;\n    }\n  }\n  const mean = count > 0 ? total / count : 0;\n  return { total: total, count: count, largest: largest, mean: mean };\n}\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function summarizeCopy(values: number[]): Summary {\n  let total = 0;\n  let count = 0;\n  let largest = Number.NEGATIVE_INFINITY;\n  for (const value of values) {\n    total += value;\n    count += 1;\n    if (value > largest) {\n      largest = value;\n    }\n  }\n  const mean = count > 0 ? total / count : 0;\n  return { total: total, count: count, largest: largest, mean: mean };\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "    export function summarizeCopy(values: number[]): Summary {\n      let total = 0;\n      let count = 0;\n      let largest = Number.NEGATIVE_INFINITY;\n      for (const value of values) {\n        total += value;\n        count += 1;\n        if (value > largest) {\n          largest = value;\n        }\n      }\n      const mean = count > 0 ? total / count : 0;\n      return { total: total, count: count, largest: largest, mean: mean };\n    }",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.ts",
+   "text": "export function summarizeCopy(values: number[]): Summary {\n  let total = 0;\n  let count = 0;\n  let largest = Number.NEGATIVE_INFINITY;\n  for (const value of values) {\n    total += value;\n    count += 1;\n    if (value > largest) {\n      largest = value;\n    }\n  }\n  const mean = count > 0 ? total / count : 0;\n  return { total: total, count: count, largest: largest, mean: mean };\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function headCopy(values: number[]): number {\n  let total = 0;\n  let count = 0;\n  let largest = Number.NEGATIVE_INFINITY;\n  for (const value of values) {\n    total += value;\n    count += 1;\n    }\n  return total;\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.ts",
+   "text": "export function summarizeCopy(numbers: number[]): Summary {\n  let acc = 0;\n  let seen = 0;\n  let highest = Number.NEGATIVE_INFINITY;\n  for (const number of numbers) {\n    acc += number;\n    seen += 1;\n    if (number > highest) {\n      highest = number;\n    }\n  }\n  const average = seen > 0 ? acc / seen : 0;\n  return { acc: acc, seen: seen, highest: highest, average: average };\n}\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function summarizeCopy(numbers: number[]): Summary {\n  let acc = 0;\n  let seen = 0;\n  let highest = Number.NEGATIVE_INFINITY;\n  for (const number of numbers) {\n    acc += number;\n    seen += 1;\n    if (number > highest) {\n      highest = number;\n    }\n  }\n  const average = seen > 0 ? acc / seen : 0;\n  return { acc: acc, seen: seen, highest: highest, average: average };\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "    export function summarizeCopy(numbers: number[]): Summary {\n      let acc = 0;\n      let seen = 0;\n      let highest = Number.NEGATIVE_INFINITY;\n      for (const number of numbers) {\n        acc += number;\n        seen += 1;\n        if (number > highest) {\n          highest = number;\n        }\n      }\n      const average = seen > 0 ? acc / seen : 0;\n      return { acc: acc, seen: seen, highest: highest, average: average };\n    }",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.ts",
+   "text": "export function summarizeCopy(numbers: number[]): Summary {\n  let acc = 0;\n  let seen = 0;\n  let highest = Number.NEGATIVE_INFINITY;\n  for (const number of numbers) {\n    acc += number;\n    seen += 1;\n    if (number > highest) {\n      highest = number;\n    }\n  }\n  const average = seen > 0 ? acc / seen : 0;\n  return { acc: acc, seen: seen, highest: highest, average: average };\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function headCopy(numbers: number[]): number {\n  let acc = 0;\n  let seen = 0;\n  let highest = Number.NEGATIVE_INFINITY;\n  for (const number of numbers) {\n    acc += number;\n    seen += 1;\n    }\n  return acc;\n}",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "typescript-lit-0",
+   "desc": "any",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export let loose: any = 1;",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-1",
+   "desc": "any",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export const asAny = (1 as any) + 1;",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-2",
+   "desc": "any",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export const angle = <any>loose;",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-3",
+   "desc": "ts-ignore",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "// @ts-ignore\nexport const ignored: number = \"x\";",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-4",
+   "desc": "ts-ignore",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "// @ts-expect-error\nexport const expected: number = \"x\";",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-5",
+   "desc": "ts-ignore",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "// @ts-nocheck",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-6",
+   "desc": "eslint-disable",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "/* eslint-disable */",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-7",
+   "desc": "eslint-disable",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "// eslint-disable-next-line no-console\nconsole.log(\"x\");",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-8",
+   "desc": "non-null assertion",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function nameOf(m: Map<string, { n: string }>): string {\n  return m.get(\"k\")!.n;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-9",
+   "desc": "non-null assertion",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function firstOf(list: { id: number }[]): number {\n  return list[0]!.id;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-10",
+   "desc": "non-null assertion",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function callOf(f: () => { n: string } | undefined): string {\n  return f()!.n;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-11",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "it.skip(\"later\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-12",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "test.only(\"only\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-13",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "describe.skip(\"later\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-14",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "xit(\"later\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-15",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "xtest(\"later\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-16",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "xdescribe(\"later\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-17",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "it.only(\"only\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-18",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "describe.only(\"only\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-19",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "test.skip(\"later\", () => {});",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-lit-20",
+   "desc": "ts-ignore and any in a .js file",
+   "mode": "append",
+   "file": "src/core/format.js",
+   "text": "/** @type {any} */\nexport const fromJs = /** @type {any} */ (null);\n// @ts-ignore",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "typescript-int-0",
+   "desc": "@ts-expect-error with reason",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "// @ts-expect-error -- legacy shape\nexport const legacy: number = \"x\";",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-int-1",
+   "desc": "/* @ts-ignore */ block form",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "/* @ts-ignore */\nexport const blockIgnored: number = \"x\";",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-int-2",
+   "desc": "as unknown as T",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export const forced = (\"x\" as unknown) as Summary;",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-3",
+   "desc": "as unknown as T (one line)",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export const forced2 = \"x\" as unknown as Summary;",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-4",
+   "desc": "Function type",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export const callback: Function = () => 1;",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-5",
+   "desc": "empty catch",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function swallow(): number {\n  try {\n    return JSON.parse(\"x\");\n  } catch {}\n  return 0;\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-6",
+   "desc": "promise .catch(() => {})",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export const quiet = Promise.resolve(1).catch(() => {});",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-7",
+   "desc": "eslint inline rule off",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "/* eslint no-console: \"off\" */",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-8",
+   "desc": "prettier-ignore",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "// prettier-ignore\nexport const ugly = [1,2,3];",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-9",
+   "desc": "test.skipIf (vitest)",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "test.skipIf(true)(\"later\", () => {});",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-10",
+   "desc": "describe.skip.each",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "describe.skip.each([1])(\"later %i\", () => {});",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-11",
+   "desc": "non-null without member access",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function pick(m: Map<string, number>): number {\n  const n = m.get(\"k\")!;\n  return n;\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-12",
+   "desc": "Array<any>",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export const bag: Array<any> = [];",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-int-13",
+   "desc": "catch with ignore comment",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function swallowToo(): void {\n  try {\n    JSON.parse(\"x\");\n  } catch (e) {\n    /* ignore */\n  }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-14",
+   "desc": "uncaughtException no-op",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "process.on(\"uncaughtException\", () => {});",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-int-15",
+   "desc": "it.todo",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "it.todo(\"write this\");",
+   "expect": "missed"
+  }
+ ],
+ "layering": [
+  {
+   "id": "typescript-layer-0",
+   "desc": "static import",
+   "mode": "insert_top",
+   "file": "src/models/item.ts",
+   "text": "import { charge } from \"../services/billing\";",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-layer-1",
+   "desc": "dynamic import()",
+   "mode": "insert_top",
+   "file": "src/models/item.ts",
+   "text": "export const lazy = () => import(\"../services/billing\");",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-layer-2",
+   "desc": "type-only import",
+   "mode": "insert_top",
+   "file": "src/models/item.ts",
+   "text": "import type { charge as Charge } from \"../services/billing\";",
+   "expect": "caught"
+  }
+ ],
+ "dead_symbols": [
+  {
+   "id": "typescript-dead-0",
+   "desc": "dead function",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function legacyTotal(values: number[]): number {\n  return values.length;\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-dead-1",
+   "desc": "dead class",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export class LegacyFormatter {}",
+   "expect": "caught"
+  },
+  {
+   "id": "typescript-dead-2",
+   "desc": "dead function, all-lowercase name",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function oldtotal(values: number[]): number {\n  return values.length;\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "typescript-dead-3",
+   "desc": "dead function named like a live local",
+   "mode": "append",
+   "file": "src/core/stats.ts",
+   "text": "export function prices(values: number[]): number[] {\n  return values;\n}",
+   "expect": "missed"
+  }
+ ]
+}

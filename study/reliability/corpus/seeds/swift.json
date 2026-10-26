@@ -1,0 +1,433 @@
+{
+ "complexity": [
+  {
+   "id": "swift-cx-ifs",
+   "desc": "8 sequential if statements",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func seededIfs(_ x: Int, _ yIn: Int) -> Int {\n    var y = yIn\n    if x == 1 {\n        y = 1\n    }\n    if x == 2 {\n        y = 2\n    }\n    if x == 3 {\n        y = 3\n    }\n    if x == 4 {\n        y = 4\n    }\n    if x == 5 {\n        y = 5\n    }\n    if x == 6 {\n        y = 6\n    }\n    if x == 7 {\n        y = 7\n    }\n    if x == 8 {\n        y = 8\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-cx-bool",
+   "desc": "one if whose condition has 7 boolean operators",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func seededBool(_ x: Int, _ yIn: Int) -> Int {\n    var y = yIn\n    if x > 0 && x > 1 || x > 2 && x > 3 || x > 4 && x > 5 || x > 6 && x > 7 {\n        y = 1\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-cx-loops",
+   "desc": "4 loops and 4 ifs",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func seededLoops(_ x: Int, _ yIn: Int) -> Int {\n    var y = yIn\n    for i in 0..<x {\n        y += i\n    }\n    if x == 1 {\n        y = 1\n    }\n    while y > 100 {\n        y -= 1\n    }\n    if x == 2 {\n        y = 2\n    }\n    for i in 0..<x {\n        y += i\n    }\n    if x == 3 {\n        y = 3\n    }\n    while y > 101 {\n        y -= 1\n    }\n    if x == 4 {\n        y = 4\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-cx-switch",
+   "desc": "a switch/match/when with 8 cases and a default",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func seededSwitch(_ x: Int, _ yIn: Int) -> Int {\n    var y = yIn\n    switch x {\n    case 1:\n        y = 1\n    case 2:\n        y = 2\n    case 3:\n        y = 3\n    case 4:\n        y = 4\n    case 5:\n        y = 5\n    case 6:\n        y = 6\n    case 7:\n        y = 7\n    case 8:\n        y = 8\n    default:\n        y = 0\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-cx-handlers",
+   "desc": "8 exception handlers (rust: if-let on a parse; go: if err == nil)",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func seededHandlers(_ x: Int, _ yIn: Int) -> Int {\n    var y = yIn\n    do {\n        y = try Int(String(x), format: .number)\n    } catch {\n        y = 0\n    }\n    do {\n        y = try Int(String(x), format: .number)\n    } catch {\n        y = 1\n    }\n    do {\n        y = try Int(String(x), format: .number)\n    } catch {\n        y = 2\n    }\n    do {\n        y = try Int(String(x), format: .number)\n    } catch {\n        y = 3\n    }\n    do {\n        y = try Int(String(x), format: .number)\n    } catch {\n        y = 4\n    }\n    do {\n        y = try Int(String(x), format: .number)\n    } catch {\n        y = 5\n    }\n    do {\n        y = try Int(String(x), format: .number)\n    } catch {\n        y = 6\n    }\n    do {\n        y = try Int(String(x), format: .number)\n    } catch {\n        y = 7\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-cx-ternary",
+   "desc": "8 conditional expressions (go: 8 ifs)",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func seededTernary(_ x: Int, _ yIn: Int) -> Int {\n    var y = yIn\n    y = x > 0 ? y + 1 : y\n    y = x > 1 ? y + 1 : y\n    y = x > 2 ? y + 1 : y\n    y = x > 3 ? y + 1 : y\n    y = x > 4 ? y + 1 : y\n    y = x > 5 ? y + 1 : y\n    y = x > 6 ? y + 1 : y\n    y = x > 7 ? y + 1 : y\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-cx-special",
+   "desc": "guard statements (8)",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func seededSpecial(_ x: Int, _ yIn: Int) -> Int {\n    var y = yIn\n    guard x != 0 else {\n        return 0\n    }\n    guard x != 1 else {\n        return 1\n    }\n    guard x != 2 else {\n        return 2\n    }\n    guard x != 3 else {\n        return 3\n    }\n    guard x != 4 else {\n        return 4\n    }\n    guard x != 5 else {\n        return 5\n    }\n    guard x != 6 else {\n        return 6\n    }\n    guard x != 7 else {\n        return 7\n    }\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-cx-long",
+   "desc": "a 62-statement straight-line body (cyclomatic 1, past 60 lines)",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func seededLong(_ x: Int, _ yIn: Int) -> Int {\n    var y = yIn\n    y = y + 0\n    y = y + 1\n    y = y + 2\n    y = y + 3\n    y = y + 4\n    y = y + 5\n    y = y + 6\n    y = y + 7\n    y = y + 8\n    y = y + 9\n    y = y + 10\n    y = y + 11\n    y = y + 12\n    y = y + 13\n    y = y + 14\n    y = y + 15\n    y = y + 16\n    y = y + 17\n    y = y + 18\n    y = y + 19\n    y = y + 20\n    y = y + 21\n    y = y + 22\n    y = y + 23\n    y = y + 24\n    y = y + 25\n    y = y + 26\n    y = y + 27\n    y = y + 28\n    y = y + 29\n    y = y + 30\n    y = y + 31\n    y = y + 32\n    y = y + 33\n    y = y + 34\n    y = y + 35\n    y = y + 36\n    y = y + 37\n    y = y + 38\n    y = y + 39\n    y = y + 40\n    y = y + 41\n    y = y + 42\n    y = y + 43\n    y = y + 44\n    y = y + 45\n    y = y + 46\n    y = y + 47\n    y = y + 48\n    y = y + 49\n    y = y + 50\n    y = y + 51\n    y = y + 52\n    y = y + 53\n    y = y + 54\n    y = y + 55\n    y = y + 56\n    y = y + 57\n    y = y + 58\n    y = y + 59\n    y = y + 60\n    y = y + 61\n    return y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-cx-grow",
+   "desc": "the existing classify grown by 7 ifs in place (9 decision points)",
+   "mode": "insert_after",
+   "file": "src/core/Stats.swift",
+   "anchor": "func classify(_ score: Int) -> String {\n",
+   "text": "    if score == 0 {\n        return \"s0\"\n    }\n    if score == 1 {\n        return \"s1\"\n    }\n    if score == 2 {\n        return \"s2\"\n    }\n    if score == 3 {\n        return \"s3\"\n    }\n    if score == 4 {\n        return \"s4\"\n    }\n    if score == 5 {\n        return \"s5\"\n    }\n    if score == 6 {\n        return \"s6\"\n    }\n",
+   "expect": "caught"
+  }
+ ],
+ "duplication": [
+  {
+   "id": "swift-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.swift",
+   "text": "func summarizeCopy(_ values: [Int]) -> Summary {\n    var total = 0\n    var count = 0\n    var largest = Int.min\n    for value in values {\n        total += value\n        count += 1\n        if value > largest {\n            largest = value\n        }\n    }\n    let result = Summary(total: total, count: count, largest: largest)\n    return result\n}\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func summarizeCopy(_ values: [Int]) -> Summary {\n    var total = 0\n    var count = 0\n    var largest = Int.min\n    for value in values {\n        total += value\n        count += 1\n        if value > largest {\n            largest = value\n        }\n    }\n    let result = Summary(total: total, count: count, largest: largest)\n    return result\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "    func summarizeCopy(_ values: [Int]) -> Summary {\n        var total = 0\n        var count = 0\n        var largest = Int.min\n        for value in values {\n            total += value\n            count += 1\n            if value > largest {\n                largest = value\n            }\n        }\n        let result = Summary(total: total, count: count, largest: largest)\n        return result\n    }",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/Item.swift",
+   "text": "func summarizeCopy(_ values: [Int]) -> Summary {\n    var total = 0\n    var count = 0\n    var largest = Int.min\n    for value in values {\n        total += value\n        count += 1\n        if value > largest {\n            largest = value\n        }\n    }\n    let result = Summary(total: total, count: count, largest: largest)\n    return result\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func headCopy(_ values: [Int]) -> Int {\n    var total = 0\n    var count = 0\n    var largest = Int.min\n    for value in values {\n        total += value\n        count += 1\n    }\n    return total\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.swift",
+   "text": "func summarizeCopy(_ numbers: [Int]) -> Summary {\n    var acc = 0\n    var seen = 0\n    var highest = Int.min\n    for number in numbers {\n        acc += number\n        seen += 1\n        if number > highest {\n            highest = number\n        }\n    }\n    let packed = Summary(acc: acc, seen: seen, highest: highest)\n    return packed\n}\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func summarizeCopy(_ numbers: [Int]) -> Summary {\n    var acc = 0\n    var seen = 0\n    var highest = Int.min\n    for number in numbers {\n        acc += number\n        seen += 1\n        if number > highest {\n            highest = number\n        }\n    }\n    let packed = Summary(acc: acc, seen: seen, highest: highest)\n    return packed\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "    func summarizeCopy(_ numbers: [Int]) -> Summary {\n        var acc = 0\n        var seen = 0\n        var highest = Int.min\n        for number in numbers {\n            acc += number\n            seen += 1\n            if number > highest {\n                highest = number\n            }\n        }\n        let packed = Summary(acc: acc, seen: seen, highest: highest)\n        return packed\n    }",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/Item.swift",
+   "text": "func summarizeCopy(_ numbers: [Int]) -> Summary {\n    var acc = 0\n    var seen = 0\n    var highest = Int.min\n    for number in numbers {\n        acc += number\n        seen += 1\n        if number > highest {\n            highest = number\n        }\n    }\n    let packed = Summary(acc: acc, seen: seen, highest: highest)\n    return packed\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func headCopy(_ numbers: [Int]) -> Int {\n    var acc = 0\n    var seen = 0\n    var highest = Int.min\n    for number in numbers {\n        acc += number\n        seen += 1\n    }\n    return acc\n}",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "swift-lit-0",
+   "desc": "force try",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func loadForced() -> Int {\n    return try! Int(\"3\", format: .number)\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-1",
+   "desc": "force cast",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func castForced(_ v: Any) -> String {\n    return v as! String\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-2",
+   "desc": "force unwrap",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func unwrapDot(_ s: String?) -> Int {\n    return s!.count\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-3",
+   "desc": "force unwrap",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func unwrapComma(_ s: Int?) -> Int {\n    return max(s!, 1)\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-4",
+   "desc": "force unwrap",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func unwrapParen(_ s: Int?) -> Int {\n    return abs(s!)\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-5",
+   "desc": "force unwrap",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func unwrapBracket(_ s: Int?) -> [Int] {\n    return [s!]\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-6",
+   "desc": "force unwrap",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func unwrapEnd(_ s: Int?) -> Int {\n    let v = s!\n    return v\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-7",
+   "desc": "force unwrap",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func unwrapSemi(_ s: Int?) -> Int {\n    let v = s!; return v\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-8",
+   "desc": "swiftlint:disable",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "// swiftlint:disable force_cast",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-9",
+   "desc": "unchecked Sendable",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "final class Box: @unchecked Sendable {\n    var value = 0\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-10",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "import XCTest\n\nfinal class LaterTests: XCTestCase {\n    func testLater() throws {\n        throw XCTSkip(\"later\")\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-lit-11",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "import XCTest\n\nfinal class LaterIfTests: XCTestCase {\n    func testLater() throws {\n        try XCTSkipIf(true)\n    }\n}",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "swift-int-0",
+   "desc": "try? swallows the error",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func loadQuiet() -> Int? {\n    return try? Int(\"3\", format: .number)\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-1",
+   "desc": "empty catch",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func loadSwallow() {\n    do {\n        _ = try Int(\"3\", format: .number)\n    } catch {}\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-2",
+   "desc": "swiftlint:disable:next",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "// swiftlint:disable:next force_cast\nlet forcedNext = (1 as Any) as? Int",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-int-3",
+   "desc": "nonisolated(unsafe)",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "nonisolated(unsafe) var sharedCounter = 0",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-4",
+   "desc": "@preconcurrency import",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "@preconcurrency import Foundation",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-5",
+   "desc": "unsafeBitCast",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func bits(_ x: Float) -> UInt32 {\n    return unsafeBitCast(x, to: UInt32.self)\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-6",
+   "desc": "unsafelyUnwrapped",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func fast(_ s: Int?) -> Int {\n    return s.unsafelyUnwrapped\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-7",
+   "desc": "fatalError placeholder",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func later() -> Int {\n    fatalError(\"unimplemented\")\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-8",
+   "desc": "XCTSkipIf",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "import XCTest\n\nfinal class SkipIfTests: XCTestCase {\n    func testLater() throws {\n        try XCTSkipIf(true, \"later\")\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-int-9",
+   "desc": "Swift Testing .disabled",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "import Testing\n\n@Test(.disabled(\"flaky\")) func flaky() {}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-10",
+   "desc": "unsafe pointer",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func raw() -> Int {\n    let p = UnsafeMutablePointer<Int>.allocate(capacity: 1)\n    return p.pointee\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-11",
+   "desc": "force unwrap before an operator",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func plusOne(_ d: [String: Int]) -> Int {\n    return d[\"k\"]! + 1\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-12",
+   "desc": "MainActor.assumeIsolated",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func onMain() {\n    MainActor.assumeIsolated {\n        print(\"x\")\n    }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-int-13",
+   "desc": "implicitly unwrapped optional",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "final class Holder {\n    var value: Int!\n}",
+   "expect": "missed"
+  }
+ ],
+ "layering": [
+  {
+   "id": "swift-layer-0",
+   "desc": "a services type named in models",
+   "mode": "append",
+   "file": "src/models/Item.swift",
+   "text": "extension Item {\n    func bill() -> Summary {\n        return BillingService().charge([self])\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-layer-1",
+   "desc": "a services free function called from models",
+   "mode": "append",
+   "file": "src/models/Item.swift",
+   "text": "extension Item {\n    func billFree() -> Summary {\n        return chargeAll([self])\n    }\n}",
+   "expect": "missed"
+  }
+ ],
+ "dead_symbols": [
+  {
+   "id": "swift-dead-0",
+   "desc": "dead function",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func legacyTotal(_ values: [Int]) -> Int {\n    return values.count\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-dead-1",
+   "desc": "dead type",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "final class LegacyFormatter {}",
+   "expect": "caught"
+  },
+  {
+   "id": "swift-dead-2",
+   "desc": "dead function, all-lowercase name",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func oldtotal(_ values: [Int]) -> Int {\n    return values.count\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "swift-dead-3",
+   "desc": "dead function named like a live local",
+   "mode": "append",
+   "file": "src/core/Stats.swift",
+   "text": "func prices(_ values: [Int]) -> [Int] {\n    return values\n}",
+   "expect": "missed"
+  }
+ ]
+}

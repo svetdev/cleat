@@ -250,7 +250,7 @@ def complexity_section(plan, languages):
         return None
     return {"tool": "lizard", "sources": ["."], "languages": lizard_languages,
             "exclude": ["*/%s/*" % d for d in sorted(SKIP_DIRS)],
-            "ceilings": {"cc": 8, "lines": 60}, "baseline": "quality/complexity-baseline.json"}
+            "ceilings": {"cc": 8, "lines": 60}, "helpers": "inline", "baseline": "quality/complexity-baseline.json"}
 
 
 COVERAGE_REPORT_NAMES = ("lcov.info", "coverage.xml", "cobertura.xml", "cobertura-coverage.xml")

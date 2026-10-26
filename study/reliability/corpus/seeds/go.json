@@ -1,0 +1,353 @@
+{
+ "complexity": [
+  {
+   "id": "go-cx-ifs",
+   "desc": "8 sequential if statements",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SeededIfs(x int, y int) int {\n\tif x == 1 {\n\t\ty = 1\n\t}\n\tif x == 2 {\n\t\ty = 2\n\t}\n\tif x == 3 {\n\t\ty = 3\n\t}\n\tif x == 4 {\n\t\ty = 4\n\t}\n\tif x == 5 {\n\t\ty = 5\n\t}\n\tif x == 6 {\n\t\ty = 6\n\t}\n\tif x == 7 {\n\t\ty = 7\n\t}\n\tif x == 8 {\n\t\ty = 8\n\t}\n\treturn y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-cx-bool",
+   "desc": "one if whose condition has 7 boolean operators",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SeededBool(x int, y int) int {\n\tif x > 0 && x > 1 || x > 2 && x > 3 || x > 4 && x > 5 || x > 6 && x > 7 {\n\t\ty = 1\n\t}\n\treturn y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-cx-loops",
+   "desc": "4 loops and 4 ifs",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SeededLoops(x int, y int) int {\n\tfor i := 0; i < x; i++ {\n\t\ty += i\n\t}\n\tif x == 1 {\n\t\ty = 1\n\t}\n\tfor y > 100 {\n\t\ty--\n\t}\n\tif x == 2 {\n\t\ty = 2\n\t}\n\tfor i := 0; i < x; i++ {\n\t\ty += i\n\t}\n\tif x == 3 {\n\t\ty = 3\n\t}\n\tfor y > 101 {\n\t\ty--\n\t}\n\tif x == 4 {\n\t\ty = 4\n\t}\n\treturn y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-cx-switch",
+   "desc": "a switch/match/when with 8 cases and a default",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SeededSwitch(x int, y int) int {\n\tswitch x {\n\tcase 1:\n\t\ty = 1\n\tcase 2:\n\t\ty = 2\n\tcase 3:\n\t\ty = 3\n\tcase 4:\n\t\ty = 4\n\tcase 5:\n\t\ty = 5\n\tcase 6:\n\t\ty = 6\n\tcase 7:\n\t\ty = 7\n\tcase 8:\n\t\ty = 8\n\tdefault:\n\t\ty = 0\n\t}\n\treturn y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-cx-handlers",
+   "desc": "8 exception handlers (rust: if-let on a parse; go: if err == nil)",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SeededHandlers(x int, y int) int {\n\tif v, err := strconv.Atoi(\"0\"); err == nil {\n\t\ty += v\n\t}\n\tif v, err := strconv.Atoi(\"1\"); err == nil {\n\t\ty += v\n\t}\n\tif v, err := strconv.Atoi(\"2\"); err == nil {\n\t\ty += v\n\t}\n\tif v, err := strconv.Atoi(\"3\"); err == nil {\n\t\ty += v\n\t}\n\tif v, err := strconv.Atoi(\"4\"); err == nil {\n\t\ty += v\n\t}\n\tif v, err := strconv.Atoi(\"5\"); err == nil {\n\t\ty += v\n\t}\n\tif v, err := strconv.Atoi(\"6\"); err == nil {\n\t\ty += v\n\t}\n\tif v, err := strconv.Atoi(\"7\"); err == nil {\n\t\ty += v\n\t}\n\treturn y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-cx-ternary",
+   "desc": "8 conditional expressions (go: 8 ifs)",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SeededTernary(x int, y int) int {\n\tif x > 0 {\n\t\ty++\n\t}\n\tif x > 1 {\n\t\ty++\n\t}\n\tif x > 2 {\n\t\ty++\n\t}\n\tif x > 3 {\n\t\ty++\n\t}\n\tif x > 4 {\n\t\ty++\n\t}\n\tif x > 5 {\n\t\ty++\n\t}\n\tif x > 6 {\n\t\ty++\n\t}\n\tif x > 7 {\n\t\ty++\n\t}\n\treturn y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-cx-special",
+   "desc": "tagless switch (8 conditions)",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SeededSpecial(x int, y int) int {\n\tswitch {\n\tcase x > 0:\n\t\ty = 0\n\tcase x > 10:\n\t\ty = 1\n\tcase x > 20:\n\t\ty = 2\n\tcase x > 30:\n\t\ty = 3\n\tcase x > 40:\n\t\ty = 4\n\tcase x > 50:\n\t\ty = 5\n\tcase x > 60:\n\t\ty = 6\n\tcase x > 70:\n\t\ty = 7\n\t}\n\treturn y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-cx-long",
+   "desc": "a 62-statement straight-line body (cyclomatic 1, past 60 lines)",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SeededLong(x int, y int) int {\n\ty = y + 0\n\ty = y + 1\n\ty = y + 2\n\ty = y + 3\n\ty = y + 4\n\ty = y + 5\n\ty = y + 6\n\ty = y + 7\n\ty = y + 8\n\ty = y + 9\n\ty = y + 10\n\ty = y + 11\n\ty = y + 12\n\ty = y + 13\n\ty = y + 14\n\ty = y + 15\n\ty = y + 16\n\ty = y + 17\n\ty = y + 18\n\ty = y + 19\n\ty = y + 20\n\ty = y + 21\n\ty = y + 22\n\ty = y + 23\n\ty = y + 24\n\ty = y + 25\n\ty = y + 26\n\ty = y + 27\n\ty = y + 28\n\ty = y + 29\n\ty = y + 30\n\ty = y + 31\n\ty = y + 32\n\ty = y + 33\n\ty = y + 34\n\ty = y + 35\n\ty = y + 36\n\ty = y + 37\n\ty = y + 38\n\ty = y + 39\n\ty = y + 40\n\ty = y + 41\n\ty = y + 42\n\ty = y + 43\n\ty = y + 44\n\ty = y + 45\n\ty = y + 46\n\ty = y + 47\n\ty = y + 48\n\ty = y + 49\n\ty = y + 50\n\ty = y + 51\n\ty = y + 52\n\ty = y + 53\n\ty = y + 54\n\ty = y + 55\n\ty = y + 56\n\ty = y + 57\n\ty = y + 58\n\ty = y + 59\n\ty = y + 60\n\ty = y + 61\n\treturn y\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-cx-grow",
+   "desc": "the existing classify grown by 7 ifs in place (9 decision points)",
+   "mode": "insert_after",
+   "file": "src/core/stats.go",
+   "anchor": "func Classify(score int) string {\n",
+   "text": "\tif score == 0 {\n\t\treturn \"s0\"\n\t}\n\tif score == 1 {\n\t\treturn \"s1\"\n\t}\n\tif score == 2 {\n\t\treturn \"s2\"\n\t}\n\tif score == 3 {\n\t\treturn \"s3\"\n\t}\n\tif score == 4 {\n\t\treturn \"s4\"\n\t}\n\tif score == 5 {\n\t\treturn \"s5\"\n\t}\n\tif score == 6 {\n\t\treturn \"s6\"\n\t}\n",
+   "expect": "caught"
+  }
+ ],
+ "duplication": [
+  {
+   "id": "go-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.go",
+   "text": "package core\n\nfunc SummarizeCopy(values []int) Summary {\n\ttotal := 0\n\tcount := 0\n\tlargest := 0\n\tfor _, value := range values {\n\t\ttotal += value\n\t\tcount++\n\t\tif value > largest {\n\t\t\tlargest = value\n\t\t}\n\t}\n\treturn Summary{Total: total, Count: count, Largest: largest}\n}\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "go-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SummarizeCopy(values []int) Summary {\n\ttotal := 0\n\tcount := 0\n\tlargest := 0\n\tfor _, value := range values {\n\t\ttotal += value\n\t\tcount++\n\t\tif value > largest {\n\t\t\tlargest = value\n\t\t}\n\t}\n\treturn Summary{Total: total, Count: count, Largest: largest}\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "go-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "\tfunc SummarizeCopy(values []int) Summary {\n\t\ttotal := 0\n\t\tcount := 0\n\t\tlargest := 0\n\t\tfor _, value := range values {\n\t\t\ttotal += value\n\t\t\tcount++\n\t\t\tif value > largest {\n\t\t\t\tlargest = value\n\t\t\t}\n\t\t}\n\t\treturn Summary{Total: total, Count: count, Largest: largest}\n\t}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "go-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.go",
+   "text": "func SummarizeCopy(values []int) Summary {\n\ttotal := 0\n\tcount := 0\n\tlargest := 0\n\tfor _, value := range values {\n\t\ttotal += value\n\t\tcount++\n\t\tif value > largest {\n\t\t\tlargest = value\n\t\t}\n\t}\n\treturn Summary{Total: total, Count: count, Largest: largest}\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "go-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func HeadCopy(values []int) int {\n\ttotal := 0\n\tcount := 0\n\tlargest := 0\n\tfor _, value := range values {\n\t\ttotal += value\n\t\tcount++\n    }\n\treturn total\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "go-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.go",
+   "text": "package core\n\nfunc SummarizeCopy(numbers []int) Summary {\n\tacc := 0\n\tseen := 0\n\thighest := 0\n\tfor _, number := range numbers {\n\t\tacc += number\n\t\tseen++\n\t\tif number > highest {\n\t\t\thighest = number\n\t\t}\n\t}\n\treturn Summary{Total: acc, Count: seen, Largest: highest}\n}\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "go-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func SummarizeCopy(numbers []int) Summary {\n\tacc := 0\n\tseen := 0\n\thighest := 0\n\tfor _, number := range numbers {\n\t\tacc += number\n\t\tseen++\n\t\tif number > highest {\n\t\t\thighest = number\n\t\t}\n\t}\n\treturn Summary{Total: acc, Count: seen, Largest: highest}\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "go-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "\tfunc SummarizeCopy(numbers []int) Summary {\n\t\tacc := 0\n\t\tseen := 0\n\t\thighest := 0\n\t\tfor _, number := range numbers {\n\t\t\tacc += number\n\t\t\tseen++\n\t\t\tif number > highest {\n\t\t\t\thighest = number\n\t\t\t}\n\t\t}\n\t\treturn Summary{Total: acc, Count: seen, Largest: highest}\n\t}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "go-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/item.go",
+   "text": "func SummarizeCopy(numbers []int) Summary {\n\tacc := 0\n\tseen := 0\n\thighest := 0\n\tfor _, number := range numbers {\n\t\tacc += number\n\t\tseen++\n\t\tif number > highest {\n\t\t\thighest = number\n\t\t}\n\t}\n\treturn Summary{Total: acc, Count: seen, Largest: highest}\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "go-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func HeadCopy(numbers []int) int {\n\tacc := 0\n\tseen := 0\n\thighest := 0\n\tfor _, number := range numbers {\n\t\tacc += number\n\t\tseen++\n    }\n\treturn acc\n}",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "go-lit-0",
+   "desc": "nolint",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func quiet() int { return 1 } //nolint",
+   "expect": "caught"
+  },
+  {
+   "id": "go-lit-1",
+   "desc": "nolint",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func quieter() int { return 2 } // nolint:errcheck",
+   "expect": "caught"
+  },
+  {
+   "id": "go-lit-2",
+   "desc": "skipped test",
+   "mode": "new",
+   "file": "src/core/stats_test.go",
+   "text": "func TestLater(t *testing.T) {\n\tt.Skip(\"later\")\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-lit-3",
+   "desc": "skipped test",
+   "mode": "new",
+   "file": "src/core/stats2_test.go",
+   "text": "func TestLaterNow(t *testing.T) {\n\tt.SkipNow()\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-lit-4",
+   "desc": "skipped test",
+   "mode": "new",
+   "file": "src/core/stats3_test.go",
+   "text": "func TestLaterF(t *testing.T) {\n\tt.Skipf(\"later %d\", 1)\n}",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "go-int-0",
+   "desc": "_ = discards an error",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func discard() {\n\t_ = os.Remove(\"/tmp/x\")\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-1",
+   "desc": "v, _ := discards an error",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func parseQuiet(s string) int {\n\tv, _ := strconv.Atoi(s)\n\treturn v\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-2",
+   "desc": "//nolint:errcheck",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func quietErr() {\n\tos.Remove(\"/tmp/x\") //nolint:errcheck\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-int-3",
+   "desc": "//lint:ignore (staticcheck)",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "//lint:ignore SA1019 legacy\nfunc legacy() {}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-4",
+   "desc": "b.Skip in a benchmark",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func BenchmarkLater(b *testing.B) {\n\tb.Skip(\"later\")\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-5",
+   "desc": "any / interface{} parameter",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func anything(v any) any {\n\treturn v\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-6",
+   "desc": "unsafe.Pointer",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func raw(x *int64) *float64 {\n\treturn (*float64)(unsafe.Pointer(x))\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-7",
+   "desc": "recover() swallows a panic",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func swallow() {\n\tdefer func() { recover() }()\n\tpanic(\"x\")\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-8",
+   "desc": "//go:build ignore",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "//go:build ignore\n\npackage core",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-9",
+   "desc": "unchecked type assertion",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func asString(v any) string {\n\treturn v.(string)\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-int-10",
+   "desc": "#nosec (gosec)",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func weak() {\n\t_ = md5.Sum(nil) // #nosec G401\n}",
+   "expect": "missed"
+  }
+ ],
+ "layering": [
+  {
+   "id": "go-layer-0",
+   "desc": "import the services package",
+   "mode": "insert_top",
+   "file": "src/models/item.go",
+   "text": "import _ \"example.com/acme/src/services\"",
+   "expect": "caught"
+  },
+  {
+   "id": "go-layer-1",
+   "desc": "dot import",
+   "mode": "append",
+   "file": "src/models/item.go",
+   "text": "import . \"example.com/acme/src/services\"",
+   "expect": "missed"
+  }
+ ],
+ "dead_symbols": [
+  {
+   "id": "go-dead-0",
+   "desc": "dead function",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func LegacyTotal(values []int) int {\n\treturn len(values)\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-dead-1",
+   "desc": "dead type",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "type LegacyFormatter struct{}",
+   "expect": "caught"
+  },
+  {
+   "id": "go-dead-2",
+   "desc": "dead function, all-lowercase name",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func oldtotal(values []int) int {\n\treturn len(values)\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "go-dead-3",
+   "desc": "dead function named like a live local",
+   "mode": "append",
+   "file": "src/core/stats.go",
+   "text": "func prices(values []int) []int {\n\treturn values\n}",
+   "expect": "missed"
+  }
+ ]
+}

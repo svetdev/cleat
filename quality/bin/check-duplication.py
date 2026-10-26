@@ -14,7 +14,11 @@ build says otherwise. Two judgments, from one reading:
 
 Clones are not baselined by pair: a pair's identity shifts as either side is
 edited, so such a baseline would churn stale entries forever. The density is
-one number; the changed-lines scope needs no baseline at all.
+one number; the changed-lines scope needs no baseline at all — the base is
+its baseline. A clone touching a changed line fails when its block, with
+identifiers blanked, now appears more often across the clone's files and the
+changed files than it did at the base: a copy made fails, while a rename or a
+reorder inside a clone that already existed does not.
 
 Clones come from the built-in finder (exact after whitespace normalisation,
 nothing to install) or from a jscpd report when `report.jscpd` names one.
@@ -38,6 +42,7 @@ nothing to install) or from a jscpd report when `report.jscpd` names one.
 """
 
 import argparse
+import collections
 import json
 import os
 import sys
@@ -78,13 +83,54 @@ def describe(clone):
 
 
 def judge_changed(clones, config, base):
-    """The clones that touch a changed line, and how many lines changed — none when the
-    tree is not a git repository, so density alone is judged."""
+    """The clones that touch a changed line and copy a block more often than the base had
+    it, and how many lines changed — none when the tree is not a git repository, so
+    density alone is judged."""
     try:
         lines = changed.changed_lines(config.root, base)
     except changed.ChangedError:
         return [], 0
-    return [c for c in clones if c.touches(lines)], sum(len(v) for v in lines.values())
+    shapes = Shapes(config.root, base)
+    touching = [c for c in clones if c.touches(lines) and shapes.copied(c, set(lines))]
+    return touching, sum(len(v) for v in lines.values())
+
+
+class Shapes:
+    """Significant lines with identifiers blanked, of a file now and at the base, read once."""
+
+    def __init__(self, root, base):
+        self.root, self.base, self.cache, self.windows, self.seen = root, base, {}, {}, {}
+
+    def lines(self, rel, at_base):
+        key = (rel, at_base)
+        if key not in self.cache:
+            if at_base:
+                code, text = changed._git(self.root, "show", "%s:%s" % (self.base, rel))
+                text = text if code == 0 else ""
+            else:
+                path = os.path.join(self.root, rel)
+                text = open(path, errors="replace").read() if os.path.isfile(path) else ""
+            self.cache[key] = [(n, ratchet.shape(s)) for n, s in duplication.significant(text)]
+        return self.cache[key]
+
+    def count(self, rel, block, at_base):
+        """How many times `block` appears in the file — every window of its length counted once
+        per file and length, so a tree with thousands of clones is not rescanned per clone."""
+        key = (rel, at_base, len(block))
+        if key not in self.windows:
+            shaped = [s for _, s in self.lines(rel, at_base)]
+            self.windows[key] = collections.Counter(tuple(shaped[i:i + len(block)]) for i in range(len(shaped) - len(block) + 1))
+        return self.windows[key][block]
+
+    def copied(self, clone, changed_files):
+        """Whether the clone's block appears more often now than at the base."""
+        rel, start, end = clone.locations[0]
+        block = tuple(s for n, s in self.lines(rel, False) if start <= n <= end)
+        files = frozenset({loc[0] for loc in clone.locations} | changed_files)
+        if (block, files) not in self.seen:
+            now = sum(self.count(f, block, False) for f in files)
+            self.seen[(block, files)] = not block or now > sum(self.count(f, block, True) for f in files)
+        return self.seen[(block, files)]
 
 
 def measure(section, config):

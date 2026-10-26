@@ -1,0 +1,345 @@
+{
+ "complexity": [
+  {
+   "id": "java-cx-ifs",
+   "desc": "8 sequential if statements",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SeededIfsHolder {\n    static int seededIfs(int x, int y) {\n        if (x == 1) {\n            y = 1;\n        }\n        if (x == 2) {\n            y = 2;\n        }\n        if (x == 3) {\n            y = 3;\n        }\n        if (x == 4) {\n            y = 4;\n        }\n        if (x == 5) {\n            y = 5;\n        }\n        if (x == 6) {\n            y = 6;\n        }\n        if (x == 7) {\n            y = 7;\n        }\n        if (x == 8) {\n            y = 8;\n        }\n        return y;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-cx-bool",
+   "desc": "one if whose condition has 7 boolean operators",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SeededBoolHolder {\n    static int seededBool(int x, int y) {\n        if (x > 0 && x > 1 || x > 2 && x > 3 || x > 4 && x > 5 || x > 6 && x > 7) {\n            y = 1;\n        }\n        return y;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-cx-loops",
+   "desc": "4 loops and 4 ifs",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SeededLoopsHolder {\n    static int seededLoops(int x, int y) {\n        for (int i = 0; i < x; i++) {\n            y += i;\n        }\n        if (x == 1) {\n            y = 1;\n        }\n        while (y > 100) {\n            y -= 1;\n        }\n        if (x == 2) {\n            y = 2;\n        }\n        for (int i = 0; i < x; i++) {\n            y += i;\n        }\n        if (x == 3) {\n            y = 3;\n        }\n        while (y > 101) {\n            y -= 1;\n        }\n        if (x == 4) {\n            y = 4;\n        }\n        return y;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-cx-switch",
+   "desc": "a switch/match/when with 8 cases and a default",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SeededSwitchHolder {\n    static int seededSwitch(int x, int y) {\n        switch (x) {\n            case 1:\n                y = 1;\n                break;\n            case 2:\n                y = 2;\n                break;\n            case 3:\n                y = 3;\n                break;\n            case 4:\n                y = 4;\n                break;\n            case 5:\n                y = 5;\n                break;\n            case 6:\n                y = 6;\n                break;\n            case 7:\n                y = 7;\n                break;\n            case 8:\n                y = 8;\n                break;\n            default:\n                y = 0;\n        }\n        return y;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-cx-handlers",
+   "desc": "8 exception handlers (rust: if-let on a parse; go: if err == nil)",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SeededHandlersHolder {\n    static int seededHandlers(int x, int y) {\n        try {\n            y = Integer.parseInt(\"\" + x);\n        } catch (NumberFormatException e) {\n            y = 0;\n        }\n        try {\n            y = Integer.parseInt(\"\" + x);\n        } catch (NumberFormatException e) {\n            y = 1;\n        }\n        try {\n            y = Integer.parseInt(\"\" + x);\n        } catch (NumberFormatException e) {\n            y = 2;\n        }\n        try {\n            y = Integer.parseInt(\"\" + x);\n        } catch (NumberFormatException e) {\n            y = 3;\n        }\n        try {\n            y = Integer.parseInt(\"\" + x);\n        } catch (NumberFormatException e) {\n            y = 4;\n        }\n        try {\n            y = Integer.parseInt(\"\" + x);\n        } catch (NumberFormatException e) {\n            y = 5;\n        }\n        try {\n            y = Integer.parseInt(\"\" + x);\n        } catch (NumberFormatException e) {\n            y = 6;\n        }\n        try {\n            y = Integer.parseInt(\"\" + x);\n        } catch (NumberFormatException e) {\n            y = 7;\n        }\n        return y;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-cx-ternary",
+   "desc": "8 conditional expressions (go: 8 ifs)",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SeededTernaryHolder {\n    static int seededTernary(int x, int y) {\n        y = x > 0 ? y + 1 : y;\n        y = x > 1 ? y + 1 : y;\n        y = x > 2 ? y + 1 : y;\n        y = x > 3 ? y + 1 : y;\n        y = x > 4 ? y + 1 : y;\n        y = x > 5 ? y + 1 : y;\n        y = x > 6 ? y + 1 : y;\n        y = x > 7 ? y + 1 : y;\n        return y;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-cx-special",
+   "desc": "switch expression with arrows (8 cases)",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SeededSpecialHolder {\n    static int seededSpecial(int x, int y) {\n        y = switch (x) {\n            case 1 -> 1;\n            case 2 -> 2;\n            case 3 -> 3;\n            case 4 -> 4;\n            case 5 -> 5;\n            case 6 -> 6;\n            case 7 -> 7;\n            case 8 -> 8;\n            default -> 0;\n        };\n        return y;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-cx-long",
+   "desc": "a 62-statement straight-line body (cyclomatic 1, past 60 lines)",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SeededLongHolder {\n    static int seededLong(int x, int y) {\n        y = y + 0;\n        y = y + 1;\n        y = y + 2;\n        y = y + 3;\n        y = y + 4;\n        y = y + 5;\n        y = y + 6;\n        y = y + 7;\n        y = y + 8;\n        y = y + 9;\n        y = y + 10;\n        y = y + 11;\n        y = y + 12;\n        y = y + 13;\n        y = y + 14;\n        y = y + 15;\n        y = y + 16;\n        y = y + 17;\n        y = y + 18;\n        y = y + 19;\n        y = y + 20;\n        y = y + 21;\n        y = y + 22;\n        y = y + 23;\n        y = y + 24;\n        y = y + 25;\n        y = y + 26;\n        y = y + 27;\n        y = y + 28;\n        y = y + 29;\n        y = y + 30;\n        y = y + 31;\n        y = y + 32;\n        y = y + 33;\n        y = y + 34;\n        y = y + 35;\n        y = y + 36;\n        y = y + 37;\n        y = y + 38;\n        y = y + 39;\n        y = y + 40;\n        y = y + 41;\n        y = y + 42;\n        y = y + 43;\n        y = y + 44;\n        y = y + 45;\n        y = y + 46;\n        y = y + 47;\n        y = y + 48;\n        y = y + 49;\n        y = y + 50;\n        y = y + 51;\n        y = y + 52;\n        y = y + 53;\n        y = y + 54;\n        y = y + 55;\n        y = y + 56;\n        y = y + 57;\n        y = y + 58;\n        y = y + 59;\n        y = y + 60;\n        y = y + 61;\n        return y;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-cx-grow",
+   "desc": "the existing classify grown by 7 ifs in place (9 decision points)",
+   "mode": "insert_after",
+   "file": "src/core/Stats.java",
+   "anchor": "    public static String classify(int score) {\n",
+   "text": "        if (score == 0) {\n            return \"s0\";\n        }\n        if (score == 1) {\n            return \"s1\";\n        }\n        if (score == 2) {\n            return \"s2\";\n        }\n        if (score == 3) {\n            return \"s3\";\n        }\n        if (score == 4) {\n            return \"s4\";\n        }\n        if (score == 5) {\n            return \"s5\";\n        }\n        if (score == 6) {\n            return \"s6\";\n        }\n",
+   "expect": "caught"
+  }
+ ],
+ "duplication": [
+  {
+   "id": "java-dup-t1-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.java",
+   "text": "package com.acme.core;\n\nimport java.util.List;\n\nfinal class Extra {\n    public static int[] summarizeCopy(List<Integer> values) {\n        int total = 0;\n        int count = 0;\n        int largest = Integer.MIN_VALUE;\n        for (int value : values) {\n            total += value;\n            count += 1;\n            if (value > largest) {\n                largest = value;\n            }\n        }\n        int[] result = {total, count, largest};\n        return result;\n    }\n}\n",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "java-dup-t1-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class StatsCopy {\n    public static int[] summarizeCopy(List<Integer> values) {\n        int total = 0;\n        int count = 0;\n        int largest = Integer.MIN_VALUE;\n        for (int value : values) {\n            total += value;\n            count += 1;\n            if (value > largest) {\n                largest = value;\n            }\n        }\n        int[] result = {total, count, largest};\n        return result;\n    }\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "java-dup-t1-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class StatsDeep {\n        public static int[] summarizeCopy(List<Integer> values) {\n            int total = 0;\n            int count = 0;\n            int largest = Integer.MIN_VALUE;\n            for (int value : values) {\n                total += value;\n                count += 1;\n                if (value > largest) {\n                    largest = value;\n                }\n            }\n            int[] result = {total, count, largest};\n            return result;\n        }\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "java-dup-t1-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/Item.java",
+   "text": "final class ModelCopy {\n    public static int[] summarizeCopy(List<Integer> values) {\n        int total = 0;\n        int count = 0;\n        int largest = Integer.MIN_VALUE;\n        for (int value : values) {\n            total += value;\n            count += 1;\n            if (value > largest) {\n                largest = value;\n            }\n        }\n        int[] result = {total, count, largest};\n        return result;\n    }\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "java-dup-t1-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class StatsHead {\n    public static int headCopy(List<Integer> values) {\n        int total = 0;\n        int count = 0;\n        int largest = Integer.MIN_VALUE;\n        for (int value : values) {\n            total += value;\n            count += 1;\n    }\n        return total;\n    }\n}",
+   "kind": "t1",
+   "expect": "caught"
+  },
+  {
+   "id": "java-dup-t2-newfile",
+   "desc": "summarize copied whole into a new file",
+   "mode": "new",
+   "file": "src/core/extra.java",
+   "text": "package com.acme.core;\n\nimport java.util.List;\n\nfinal class Extra {\n    public static int[] summarizeCopy(List<Integer> numbers) {\n        int acc = 0;\n        int seen = 0;\n        int highest = Integer.MIN_VALUE;\n        for (int number : numbers) {\n            acc += number;\n            seen += 1;\n            if (number > highest) {\n                highest = number;\n            }\n        }\n        int[] packed = {acc, seen, highest};\n        return packed;\n    }\n}\n",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "java-dup-t2-samefile",
+   "desc": "summarize copied whole into the same file",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class StatsCopy {\n    public static int[] summarizeCopy(List<Integer> numbers) {\n        int acc = 0;\n        int seen = 0;\n        int highest = Integer.MIN_VALUE;\n        for (int number : numbers) {\n            acc += number;\n            seen += 1;\n            if (number > highest) {\n                highest = number;\n            }\n        }\n        int[] packed = {acc, seen, highest};\n        return packed;\n    }\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "java-dup-t2-reindented",
+   "desc": "summarize copied whole, one level deeper",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class StatsDeep {\n        public static int[] summarizeCopy(List<Integer> numbers) {\n            int acc = 0;\n            int seen = 0;\n            int highest = Integer.MIN_VALUE;\n            for (int number : numbers) {\n                acc += number;\n                seen += 1;\n                if (number > highest) {\n                    highest = number;\n                }\n            }\n            int[] packed = {acc, seen, highest};\n            return packed;\n        }\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "java-dup-t2-otherlayer",
+   "desc": "summarize copied whole into the models file",
+   "mode": "append",
+   "file": "src/models/Item.java",
+   "text": "final class ModelCopy {\n    public static int[] summarizeCopy(List<Integer> numbers) {\n        int acc = 0;\n        int seen = 0;\n        int highest = Integer.MIN_VALUE;\n        for (int number : numbers) {\n            acc += number;\n            seen += 1;\n            if (number > highest) {\n                highest = number;\n            }\n        }\n        int[] packed = {acc, seen, highest};\n        return packed;\n    }\n}",
+   "kind": "t2",
+   "expect": "missed"
+  },
+  {
+   "id": "java-dup-t2-sixlines",
+   "desc": "the first six significant lines of summarize's body, in a new function",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class StatsHead {\n    public static int headCopy(List<Integer> numbers) {\n        int acc = 0;\n        int seen = 0;\n        int highest = Integer.MIN_VALUE;\n        for (int number : numbers) {\n            acc += number;\n            seen += 1;\n    }\n        return acc;\n    }\n}",
+   "kind": "t2",
+   "expect": "missed"
+  }
+ ],
+ "escapes_literal": [
+  {
+   "id": "java-lit-0",
+   "desc": "suppress warnings",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Quiet {\n    @SuppressWarnings(\"unchecked\")\n    static Object raw(Object v) {\n        return v;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-lit-1",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class LaterTest {\n    @Ignore\n    void later() {}\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-lit-2",
+   "desc": "skipped test",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class LaterTest5 {\n    @Disabled\n    void later() {}\n}",
+   "expect": "caught"
+  }
+ ],
+ "escapes_intent": [
+  {
+   "id": "java-int-0",
+   "desc": "@SuppressWarnings",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Quiet2 {\n    @SuppressWarnings(\"rawtypes\")\n    static Object raw(Object v) {\n        return v;\n    }\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-int-1",
+   "desc": "empty catch Exception",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Swallow {\n    static void run() {\n        try {\n            Integer.parseInt(\"x\");\n        } catch (Exception e) {\n        }\n    }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-2",
+   "desc": "catch Throwable ignore",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class SwallowAll {\n    static void run() {\n        try {\n            Integer.parseInt(\"x\");\n        } catch (Throwable t) {\n            /* ignore */\n        }\n    }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-3",
+   "desc": "@Disabled with reason",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class LaterReasonTest {\n    @Disabled(\"flaky\")\n    void later() {}\n}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-int-4",
+   "desc": "Assumptions.assumeTrue(false)",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class AssumeTest {\n    void later() {\n        Assumptions.assumeTrue(false);\n    }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-5",
+   "desc": "// NOPMD",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Pmd {\n    static int x = 1; // NOPMD\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-6",
+   "desc": "// CHECKSTYLE:OFF",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "// CHECKSTYLE:OFF\nfinal class Style {}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-7",
+   "desc": "unchecked double cast",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Casts {\n    static java.util.List<String> force(Object raw) {\n        return (java.util.List<String>) (Object) raw;\n    }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-8",
+   "desc": "raw type",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Raw {\n    static java.util.List make() {\n        return new java.util.ArrayList();\n    }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-9",
+   "desc": "@SuppressFBWarnings",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Fb {\n    @SuppressFBWarnings(\"NP_NULL_ON_SOME_PATH\")\n    static void run() {}\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-10",
+   "desc": "UnsupportedOperationException placeholder",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Later {\n    static int later() {\n        throw new UnsupportedOperationException(\"TODO\");\n    }\n}",
+   "expect": "missed"
+  },
+  {
+   "id": "java-int-11",
+   "desc": "unchecked cast without suppression",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class Casts2 {\n    static java.util.List<String> force(Object raw) {\n        return (java.util.List<String>) raw;\n    }\n}",
+   "expect": "missed"
+  }
+ ],
+ "layering": [
+  {
+   "id": "java-layer-0",
+   "desc": "import",
+   "mode": "insert_top",
+   "file": "src/models/Item.java",
+   "text": "import com.acme.services.Billing;",
+   "expect": "caught"
+  },
+  {
+   "id": "java-layer-1",
+   "desc": "fully qualified name, no import",
+   "mode": "append",
+   "file": "src/models/Item.java",
+   "text": "final class Up {\n    Object b = new com.acme.services.Billing();\n}",
+   "expect": "missed"
+  }
+ ],
+ "dead_symbols": [
+  {
+   "id": "java-dead-0",
+   "desc": "dead method",
+   "mode": "insert_before_last_brace",
+   "file": "src/core/Stats.java",
+   "text": "    static int legacyTotal(int[] values) {\n        return values.length;\n    }",
+   "expect": "caught"
+  },
+  {
+   "id": "java-dead-1",
+   "desc": "dead class",
+   "mode": "append",
+   "file": "src/core/Stats.java",
+   "text": "final class LegacyFormatter {}",
+   "expect": "caught"
+  },
+  {
+   "id": "java-dead-2",
+   "desc": "dead method, all-lowercase name",
+   "mode": "insert_before_last_brace",
+   "file": "src/core/Stats.java",
+   "text": "    static int oldtotal(int[] values) {\n        return values.length;\n    }",
+   "expect": "missed"
+  },
+  {
+   "id": "java-dead-3",
+   "desc": "dead method named like a live local",
+   "mode": "insert_before_last_brace",
+   "file": "src/core/Stats.java",
+   "text": "    static int[] prices(int[] values) {\n        return values;\n    }",
+   "expect": "missed"
+  }
+ ]
+}

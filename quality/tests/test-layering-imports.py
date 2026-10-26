@@ -84,6 +84,7 @@ try:
     write(os.path.join(go, "services", "store.go"), 'package services\n\nimport "example.com/app/models"\n')
     code, out = run(config_for(tmp, go, "go"))
     check("go: a model importing a service package fails, at the line inside the import block", code == 1 and "models/thing.go:5 -> services (services)" in out, out)
+    check("go: a service importing the models package is the allowed direction, not a violation", "services/store.go" not in out, out)
 
     # ---- kotlin: package-qualified imports, with the package prefix stripped
     kt = os.path.join(tmp, "kt")

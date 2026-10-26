@@ -130,9 +130,11 @@ class Rules:
         return Root(os.path.abspath(config.path(root)), exempt)
 
 
-def layer_of(relative):
+def layer_of(relative, directory=False):
+    """The layer a path sits in: its first directory. A file at the root is the app's; a
+    directory — what a Go import resolves to, a package — is its own first part."""
     parts = relative.split(os.sep)
-    return parts[0] if len(parts) > 1 else "App"
+    return parts[0] if len(parts) > 1 or directory else "App"
 
 
 def judge(app, exempt, rules, strict_dead, references_in_app):
@@ -148,7 +150,7 @@ def judge(app, exempt, rules, strict_dead, references_in_app):
     exempt_used = set()
     for path, number, name, target, target_root in references:
         source = os.path.relpath(path, app)
-        if rules.permits(layer_of(source), layer_of(os.path.relpath(target, target_root))):
+        if rules.permits(layer_of(source), layer_of(os.path.relpath(target, target_root), os.path.isdir(target))):
             continue
         key = (source, name)
         if key in exempt:

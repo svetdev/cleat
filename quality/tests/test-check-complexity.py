@@ -296,7 +296,7 @@ try:
     code, out = run(config, "--csv", worse_csv)
     check("a baselined function whose cyclomatic grew fails", code == 1, out)
     check("it is reported as worse, with both readings", "got worse" in out and "cc 12, 1 lines, was cc 9, 1 lines" in out, out)
-    check("the failure output names the fix, never the accept command", "--write-baseline" not in out and "Split the function" in out, out)
+    check("the failure output names the fix, never the accept command", "--write-baseline" not in out and "Make the function simpler" in out, out)
     longer = [r if r[7] != "long_one" else r[:4] + (70,) + r[5:] for r in rows]
     longer_csv = os.path.join(tmp, "longer.csv"); write_csv(longer_csv, longer)
     code, out = run(config, "--csv", longer_csv)
@@ -488,6 +488,48 @@ try:
               code == 0 and "tool_fn" not in out, out)
     else:
         check("lizard is not installed, so --only's scoping is not exercised against a real run", True)
+
+    # --- A rename is the same function; a single-use helper counts with its caller.
+    flow = os.path.join(tmp, "flow")
+    flow_py = os.path.join(flow, "src", "flow.py")
+    flow_config = os.path.join(flow, "quality.json")
+    flow_csv = os.path.join(flow, "lizard.csv")
+    write(flow_config, json.dumps({"complexity": {"tool": "lizard", "sources": ["src"], "languages": ["python"],
+                                                  "ceilings": {"cc": 8, "lines": 60}, "helpers": "inline",
+                                                  "baseline": "complexity-baseline.json"}}))
+
+    def flow_tree(source, functions):
+        """Write the source and the CSV lizard would give for it: (name, cc, start, end) per function."""
+        write(flow_py, source)
+        write(flow_csv, "\n".join('%d,%d,10,1,%d,"%s@%d-%d@%s","%s","%s","%s ( x )",%d,%d'
+                                   % (end - start + 1, cc, end - start + 1, name, start, end, flow_py, flow_py, name, name, start, end)
+                                   for name, cc, start, end in functions) + "\n")
+
+    body = "".join("    if x == %d:\n        return %d\n" % (i, i) for i in range(9))
+    flow_tree("def route(x):\n" + body + "    return -1\n", [("route", 10, 1, 20)])
+    run(flow_config, "--csv", flow_csv, "--write-baseline")
+    flow_tree("def dispatch(x):\n" + body + "    return -1\n", [("dispatch", 10, 1, 20)])
+    code, out = run(flow_config, "--csv", flow_csv)
+    check("a function renamed, its body the same, is the same function — not new debt",
+          code == 0 and "new production" not in out and "changed their declaration line" in out, out)
+    run(flow_config, "--csv", flow_csv, "--tighten")
+
+    first, rest = body[:body.index("    if x == 5")], body[body.index("    if x == 5"):]
+    flow_tree("def dispatch(x):\n" + first + "    return _rest(x)\n\n\ndef _rest(x):\n" + rest + "    return -1\n",
+              [("dispatch", 6, 1, 12), ("_rest", 5, 15, 24)])
+    code, out = run(flow_config, "--csv", flow_csv)
+    check("branches moved into a helper only it calls still count against it: cc 10 as before, only its length fell",
+          code == 0 and "cc 10 (6 its own, with 1 single-use helper), 12 lines, baseline says cc 10, 20 lines" in out, out)
+    flow_tree("def dispatch(x):\n" + first + "    return _rest(x)\n\n\ndef _rest(x):\n" + rest + "    if x < 0:\n        return 0\n    return -1\n",
+              [("dispatch", 6, 1, 12), ("_rest", 6, 15, 26)])
+    code, out = run(flow_config, "--csv", flow_csv)
+    check("and a branch added in the helper makes the caller worse, named with its helper",
+          code == 1 and "cc 11 (6 its own, with 1 single-use helper)" in out, out)
+    flow_tree("def dispatch(x):\n" + first + "    return _rest(x)\n\n\ndef _rest(x):\n" + rest + "    return -1\n\n\ndef other(x):\n    return _rest(x)\n",
+              [("dispatch", 6, 1, 12), ("_rest", 5, 15, 24), ("other", 1, 27, 28)])
+    code, out = run(flow_config, "--csv", flow_csv)
+    check("a helper two functions use is shared logic: the caller is under the gate, its entry fixed",
+          code == 0 and "0 over the gate" in out and "matched nothing" in out, out)
 
     # --- Against this checkout, when it configures the section and lizard is installed.
     repo = os.path.dirname(os.path.dirname(HERE))
