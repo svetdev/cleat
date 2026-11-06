@@ -27,7 +27,7 @@ import re
 import subprocess
 
 FILENAME = ".events.jsonl"
-NEW_RE = re.compile(r"FAIL: (\d+) new ")
+NEW_RE = re.compile(r"FAIL: (\d+) new |FAIL: (\d+) clone pair\(s\) overlap the ")   # the second: duplication judging changed lines
 WORSE_RE = re.compile(r"FAIL: (\d+) baselined .* got worse")
 
 
@@ -63,11 +63,11 @@ def changed_files(root):
 
 def gate_result(name, code, output):
     """One gate's line of the hook event: status, and the new / worsened counts the
-    engine printed when it failed."""
+    engine printed when it failed (a clone overlapping the changed lines counts as new)."""
     status = {0: "ok", 1: "fail"}.get(code, "err")
     new = NEW_RE.search(output)
     worse = WORSE_RE.search(output)
-    return {"name": name, "status": status, "new": int(new.group(1)) if new else 0,
+    return {"name": name, "status": status, "new": int(new.group(1) or new.group(2)) if new else 0,
             "worsened": int(worse.group(1)) if worse else 0}
 
 

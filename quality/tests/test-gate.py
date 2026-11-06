@@ -93,6 +93,10 @@ try:
     hooks = [e for e in lines if e["mode"] == "hook"]
     check("a hook event carries the verdict and each gate's result with its new-violation count",
           hooks and hooks[0]["verdict"] == "fail" and any(g["name"] == "escapes" and g["status"] == "fail" and g["new"] == 1 for g in hooks[0]["gates"]), str(hooks[:1]))
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+    import events
+    clones = events.gate_result("duplication", 1, "FAIL: 2 clone pair(s) overlap the 32 line(s) changed against the base — the block has a twin:\n")
+    check("duplication judging changed lines records its clone pairs as new, not 0", clones["new"] == 2, str(clones))
     check("the second-stop firing is marked", any(e.get("again") for e in hooks), str(hooks))
     proc = subprocess.run([sys.executable, SCRIPT, "--guard"], capture_output=True, text=True, cwd=tmp,
                           input=json.dumps({"tool_name": "Edit", "tool_input": {"file_path": os.path.join(tmp, "quality.json")}}))

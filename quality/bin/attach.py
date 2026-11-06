@@ -15,12 +15,16 @@ attached too.
   python3 quality/bin/attach.py --add                    # add the gates attach would write that the config lacks
   python3 quality/bin/attach.py --git-hooks              # also a pre-push git hook running the gates
   python3 quality/bin/attach.py --ci                     # also the CI workflow, CODEOWNERS and the ruleset command
+  python3 quality/bin/attach.py --no-tests               # do not run the project's tests, nor attach them
 
 What it writes, and why each one:
 
   quality.json                   the project's facts — languages, documents, ceilings, baselines;
                                  the gates: document ceilings, test hygiene, escapes, duplication,
-                                 complexity (with lizard), changed-line coverage (with a report)
+                                 complexity (with lizard), changed-line coverage (with a report),
+                                 and the project's own tests as a `commands` entry when they pass
+                                 today (run once to find out; a change that breaks the build or a
+                                 test is then the agent's next task, not the next person's)
   quality/*-baseline.json        the debt that exists today, accepted once; from here it only tightens
   .claude/settings.json          a Stop hook running the gates (a failure is handed back to the agent
                                  as its next task) and a PreToolUse guard refusing commands that
@@ -64,6 +68,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -109,8 +114,11 @@ AGENT_BLOCK = """
 
 `python3 quality/bin/gate.py` runs every quality gate; it also runs when you
 stop, and a failing gate is handed back to you as the next thing to fix. A
-failure names the file, the line and what fixes it — split the function, give
-the value its real type, make the test pass, handle the error.
+failure names the file, the line and what fixes it. Fix it as the code around
+it would: follow the project's existing patterns and idioms, and keep the
+change as small as the task allows — simpler or shared logic, the value's real
+type, a passing test, a handled error. The task still comes first: keep every
+behaviour it asks for.
 
 Do not edit `quality.json`, anything under `quality/`, or the hooks to make a
 gate pass, and do not run `--write-baseline`: the baselines record debt a
@@ -163,6 +171,8 @@ class Plan:
         self.refreshing = False
         self.force = False
         self.ci = False
+        self.dry_run = False
+        self.run_tests = True    # --no-tests: neither run the project's tests nor attach them
 
     def say(self, path, what):
         self.writes.append((path, what))
@@ -275,6 +285,82 @@ def changed_coverage_section(plan):
     return {"report": report, "minimum": 0.8, "min_lines": 20}
 
 
+TESTS_TIMEOUT = 600   # seconds attach waits for the project's tests on day one
+NPM_PLACEHOLDER = "no test specified"   # what `npm init` puts in an empty test script
+LOCKFILE_MANAGERS = (("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lockb", "bun"), ("bun.lock", "bun"))
+ROOT_TEST_COMMANDS = (("Cargo.toml", "cargo test", "cargo"), ("go.mod", "go test ./...", "go"),
+                      ("Package.swift", "swift test", "swift"))
+PYTEST_MARKERS = (("pyproject.toml", "[tool.pytest"), ("setup.cfg", "[tool:pytest]"), ("tox.ini", "[pytest]"))
+
+
+def package_scripts(root):
+    try:
+        with open(os.path.join(root, "package.json")) as handle:
+            scripts = json.load(handle).get("scripts")
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return scripts if isinstance(scripts, dict) else {}
+
+
+def pytest_configured(root):
+    if any(os.path.isfile(os.path.join(root, name)) for name in ("pytest.ini", "conftest.py")):
+        return True
+    return any(marker in _read_if_exists(os.path.join(root, name)) for name, marker in PYTEST_MARKERS)
+
+
+def test_command(root):
+    """(the command that runs the project's tests, the tool it needs) from what sits at the
+    root — a package.json test script through the lockfile's manager, Cargo.toml, go.mod,
+    Package.swift, a pytest config — or None when nothing there says how."""
+    script = package_scripts(root).get("test")
+    if isinstance(script, str) and NPM_PLACEHOLDER not in script:
+        manager = next((m for lock, m in LOCKFILE_MANAGERS if os.path.isfile(os.path.join(root, lock))), "npm")
+        return "%s test" % manager, manager
+    for marker, command, tool in ROOT_TEST_COMMANDS:
+        if os.path.isfile(os.path.join(root, marker)):
+            return command, tool
+    if pytest_configured(root):
+        return "python3 -m pytest -q", "python3"
+    return None
+
+
+def tests_section(plan):
+    """A `commands` entry running the project's tests, so a change that breaks the build or a
+    test fails the gate like any other. It is attached only when the tests pass today, which
+    attach runs them once to learn: a suite red on day one would hand the agent a failure it
+    did not cause at every stop."""
+    found = test_command(plan.root)
+    if found is None:
+        return None
+    command, tool = found
+    entry = {"name": "tests", "run": command, "needs": [tool]}
+    later = "add %s to \"commands\" in quality.json" % json.dumps(entry)
+    if not plan.run_tests:
+        plan.notes.append("--no-tests: `%s` was neither run nor attached; to gate on it, %s." % (command, later))
+        return None
+    if plan.dry_run:
+        plan.notes.append("would run `%s` once, and attach it as the tests gate if it passes." % command)
+        return None
+    if not shutil.which(tool):
+        plan.notes.append("%s is not installed, so the tests (`%s`) were not attached: install it, then %s." % (tool, command, later))
+        return None
+    started = time.time()
+    try:
+        proc = subprocess.run(["sh", "-c", command], cwd=plan.root, capture_output=True, text=True, timeout=TESTS_TIMEOUT,
+                              stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        plan.notes.append("the tests (`%s`) ran over %d minutes, too long for every agent stop, so they were not attached: "
+                          "%s with \"postflight\": true to run them with --postflight." % (command, TESTS_TIMEOUT // 60, later))
+        return None
+    if proc.returncode != 0:
+        plan.notes.append("the tests fail today (`%s` exited %d), so they were not attached: once they pass, %s."
+                          % (command, proc.returncode, later))
+        return None
+    plan.notes.append("the tests (`%s`) passed in %ds and now run at every agent stop; \"postflight\": true on their "
+                      "entry runs them only with --postflight." % (command, round(time.time() - started)))
+    return [entry]
+
+
 BLOCK_WORDS = len(AGENT_BLOCK.split())
 
 
@@ -318,9 +404,10 @@ def manifests_section(plan):
     return [{"file": pbx, "roots": roots, "extensions": [".swift"]} for pbx in xcode_projects(plan.root)] or None
 
 
-def config_for(plan):
+def config_for(plan, have=()):
     """The tier 0 quality.json (plus complexity when lizard is installed, plus changed-line
-    coverage when a report exists) for what the survey found."""
+    coverage when a report exists, plus the tests when they pass) for what the survey found;
+    a section in `have`, which a config already holds, is not worked out (the tests not run)."""
     languages = list(plan.languages)
     config = {"project": os.path.basename(os.path.abspath(plan.root))}
     if plan.docs:
@@ -331,9 +418,11 @@ def config_for(plan):
         config["duplication"] = {"roots": ["."], "languages": languages, "skip_dirs": ["quality"],
                                  "min_lines": 6, "baseline": "quality/duplication-baseline.json"}
         config["exclusions"] = {"skip_dirs": ["quality"], "baseline": "quality/exclusions-baseline.json"}
-    sections = (("hygiene", hygiene_section(plan, languages)), ("complexity", complexity_section(plan, languages)),
-                ("changed_coverage", changed_coverage_section(plan)), ("manifests", manifests_section(plan)))
-    for key, section in sections:
+    sections = (("hygiene", lambda: hygiene_section(plan, languages)), ("complexity", lambda: complexity_section(plan, languages)),
+                ("changed_coverage", lambda: changed_coverage_section(plan)), ("manifests", lambda: manifests_section(plan)),
+                ("commands", lambda: tests_section(plan)))
+    for key, make in sections:
+        section = None if key in have else make()
         if section is not None:
             config[key] = section
     return config
@@ -721,9 +810,9 @@ def migrate_config(plan, existing, config_path, dry_run):
 
 def settle_config(plan, root, dry_run, force, add):
     """The quality.json the rest of attach works from: written fresh, kept, or added to."""
-    generated = config_for(plan)
     config_path = os.path.join(root, "quality.json")
     if not os.path.isfile(config_path) or force:
+        generated = config_for(plan)
         write_text(plan, "quality.json", json.dumps(generated, indent=2) + "\n", dry_run, force=True)
         write_baselines(plan, generated, dry_run)
         return generated
@@ -732,7 +821,7 @@ def settle_config(plan, root, dry_run, force, add):
     if plan.refreshing:
         existing = migrate_config(plan, existing, config_path, dry_run)
     if add:
-        return add_sections(plan, existing, generated, config_path, dry_run)
+        return add_sections(plan, existing, config_for(plan, have=existing), config_path, dry_run)
     plan.say("quality.json", "kept (already there — --add merges missing gates, --force rewrites it)")
     return existing
 
@@ -756,10 +845,12 @@ def ignore_runtime_files(plan, dry_run):
             handle.write(("" if not existing or existing.endswith("\n") else "\n") + "\n".join(missing) + "\n")
 
 
-def attach(root, dry_run, force, do_refresh=False, add=False, git_hooks=False, ci=False):
+def attach(root, dry_run, force, do_refresh=False, add=False, git_hooks=False, ci=False, run_tests=True):
     plan = Plan(root)
     plan.refreshing = do_refresh
     plan.force = force
+    plan.dry_run = dry_run
+    plan.run_tests = run_tests
     vendor(plan, dry_run, do_refresh)
     survey(plan)
     config = settle_config(plan, root, dry_run, force, add)
@@ -785,7 +876,7 @@ def _found_lines(plan, config):
     if plan.test_roots:
         lines.append("test trees: " + ", ".join(plan.test_roots))
     gates = [k for k in ("doc_size", "hygiene", "escapes", "duplication", "exclusions", "complexity", "changed_coverage",
-                         "manifests") if k in config]
+                         "manifests", "commands") if k in config]
     lines.append("gates: " + (", ".join(gates) if gates else "none — the tree has nothing attach recognises"))
     return lines
 
@@ -835,13 +926,14 @@ def main():
     parser.add_argument("--add", action="store_true", help="add the gates attach would write that an existing quality.json lacks")
     parser.add_argument("--git-hooks", action="store_true", help="also write a pre-push git hook that runs the gates")
     parser.add_argument("--ci", action="store_true", help="also write the CI workflow and CODEOWNERS, and print the ruleset command")
+    parser.add_argument("--no-tests", action="store_true", help="do not run the project's tests, nor attach them as a gate")
     args = parser.parse_args()
     root = os.path.abspath(args.into) if args.into else os.path.dirname(os.path.dirname(HERE))
     if not os.path.isdir(root):
         print("FAIL: no such directory: %s" % root, file=sys.stderr)
         return 2
     try:
-        plan, config = attach(root, args.dry_run, args.force, args.refresh, args.add, args.git_hooks, args.ci)
+        plan, config = attach(root, args.dry_run, args.force, args.refresh, args.add, args.git_hooks, args.ci, not args.no_tests)
     except Busy as problem:
         print("FAIL: %s" % problem, file=sys.stderr)
         return 2

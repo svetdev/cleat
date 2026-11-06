@@ -252,6 +252,48 @@ try:
     code, out = run("--into", root, "--git-hooks")
     check("a hook of someone else's is kept, with the line to add", read(hook) == "#!/bin/sh\necho mine\n" and "add `python3 quality/bin/gate.py`" in out, out)
 
+    # ---- the project's own tests: found at the root, run once, attached only when green today
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+    import attach
+    found = os.path.join(tmp, "found")
+    write(os.path.join(found, "package.json"), json.dumps({"scripts": {"test": "vitest run"}}))
+    write(os.path.join(found, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n")
+    check("a package.json test script runs through the lockfile's manager", attach.test_command(found) == ("pnpm test", "pnpm"), str(attach.test_command(found)))
+    write(os.path.join(found, "package.json"), json.dumps({"scripts": {"test": "echo \"Error: no test specified\" && exit 1"}}))
+    write(os.path.join(found, "Cargo.toml"), "[package]\nname = \"x\"\n")
+    check("npm's placeholder script is no test command; Cargo.toml beside it is", attach.test_command(found) == ("cargo test", "cargo"), str(attach.test_command(found)))
+    check("a tree that says nothing about its tests gets none", attach.test_command(root) is None, str(attach.test_command(root)))
+    if shutil.which("npm"):
+        green = os.path.join(tmp, "green")
+        write(os.path.join(green, "package.json"), json.dumps({"name": "green", "scripts": {"test": "test -f passing"}}))
+        write(os.path.join(green, "passing"), "")
+        subprocess.run(["git", "-C", green, "init", "-q"], check=True)
+        code, out = run("--into", green, "--dry-run")
+        check("--dry-run says it would run the tests, and runs nothing", code == 0 and "would run `npm test` once" in out, out)
+        code, out = run("--into", green)
+        green_config = json.load(open(os.path.join(green, "quality.json")))
+        check("tests that pass today are attached as a commands entry",
+              code == 0 and green_config.get("commands") == [{"name": "tests", "run": "npm test", "needs": ["npm"]}] and "passed in" in out,
+              out + str(green_config.get("commands")))
+        code, gout, gerr = gate(green, "--strict")
+        check("and the gate is green on day one", code == 0 and "tests" in gout, gout + gerr)
+        os.remove(os.path.join(green, "passing"))
+        code, gout, gerr = gate(green, "--strict")
+        check("a change that breaks a test then fails the gate", code == 1 and "FAIL  tests" in gout, gout + gerr)
+        red = os.path.join(tmp, "red")
+        write(os.path.join(red, "package.json"), json.dumps({"name": "red", "scripts": {"test": "exit 1"}}))
+        subprocess.run(["git", "-C", red, "init", "-q"], check=True)
+        code, out = run("--into", red)
+        check("tests red on day one are not attached, and attach says how to add them once green",
+              code == 0 and "commands" not in json.load(open(os.path.join(red, "quality.json"))) and "fail today" in out, out)
+        skipped = os.path.join(tmp, "skipped")
+        write(os.path.join(skipped, "package.json"), json.dumps({"name": "skipped", "scripts": {"test": "test -f passing"}}))
+        subprocess.run(["git", "-C", skipped, "init", "-q"], check=True)
+        code, out = run("--into", skipped, "--no-tests")
+        check("--no-tests neither runs nor attaches them", code == 0 and "commands" not in json.load(open(os.path.join(skipped, "quality.json"))) and "--no-tests" in out, out)
+    else:
+        print("  skip  the tests gate end to end: npm is not installed")
+
     code, out = run("--into", os.path.join(tmp, "missing"))
     check("a directory that does not exist is refused", code == 2, out)
 finally:
