@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """summarize — the paired runs against their pre-registered predictions: one run per arm
-(2026-10-25), or repeated runs, arms named plain-1, cleat-1, … (2026-10-26).
+(2026-10-25), or repeated runs, arms named plain-1, cleat-1, … (the 30-task run, also 2026-10-25).
 
   summarize.py <work dir>
 """
@@ -64,7 +64,7 @@ def main(work):
 
 
 def repeated(work):
-    """The 2026-10-26 checks over runs named <arm>-<repeat>."""
+    """The 30-task checks over runs named <arm>-<repeat>."""
     rows = {t: {arm: row(s) for arm, s in p.items()} for t, p in load(work).items()}
     runs = sorted({a for r in rows.values() for a in r})
     repeats = sorted({a.split("-")[1] for a in runs})

@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """draw — draw the paired-run tasks by the rule pre-registered on 2026-10-25.
 
-  draw.py <clones dir> <work dir> [count] [per repository] [earlier work dir]
+  draw.py <clones dir> <work dir> [count] [per repository] [earlier work dir] [used work dir]
 
 A candidate is a non-merge commit from 2024-01-01 to 2025-06-30 that changes 1 to
 3 production Python files with 10 to 150 added production lines and changes a
-test file. Candidates are drawn in seeded order, at most 2 per repository; each is
+test file. Candidates are drawn in seeded order, at most 4 per repository; each is
 validated in its own virtualenv: the commit's non-production files laid over the
 parent must leave at least one test failing that the full commit passes
 (fail-to-pass), with every test in those files passing at the commit. Every
 candidate tried is written to <work>/tried.jsonl with why it was kept or not;
 the kept ones, with their task text, to <work>/tasks.json. An earlier work dir's
 outcomes are reused for the candidates it tried, so a scaled draw follows the
-same order without validating again.
+same order without validating again; a used work dir's tasks are skipped, so a fresh
+draw takes the next ones in that order.
 """
 
 import datetime
@@ -32,7 +33,7 @@ import mine   # noqa: E402  the JIT study's commit reader and production rule
 START = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc).timestamp()
 END = datetime.datetime(2025, 7, 1, tzinfo=datetime.timezone.utc).timestamp()
 SEED = 20261025
-PER_REPO = 2
+PER_REPO = 4
 PYTHON = "/opt/homebrew/bin/python3.12" if os.path.exists("/opt/homebrew/bin/python3.12") else sys.executable
 EXTRAS = ("test", "tests", "testing", "dev")
 REQUIREMENTS = ("requirements.txt", "requirements/tests.txt", "requirements/test.txt", "requirements-dev.txt", "requirements/dev.txt",
@@ -205,10 +206,11 @@ def earlier(directory):
             for r in map(json.loads, open(os.path.join(directory, "tried.jsonl")))}
 
 
-def main(clones, work, count=10, per_repo=PER_REPO, before=None):
+def main(clones, work, count=10, per_repo=PER_REPO, before=None, used=None):
     count, per_repo = int(count), int(per_repo)
     clones, work = os.path.abspath(clones), os.path.abspath(work)
     known = earlier(before)
+    skip = {t["sha"] for t in json.load(open(os.path.join(used, "tasks.json")))["tasks"]} if used else set()
     os.makedirs(work, exist_ok=True)
     pool = candidates(clones)
     random.Random(SEED).shuffle(pool)
@@ -217,7 +219,7 @@ def main(clones, work, count=10, per_repo=PER_REPO, before=None):
         for cand in pool:
             if len(kept) >= count:
                 break
-            if taken.get(cand["repo"], 0) >= per_repo:
+            if cand["sha"] in skip or taken.get(cand["repo"], 0) >= per_repo:
                 continue
             if cand["sha"] in known and (known[cand["sha"]][0] != "ok" or known[cand["sha"]][1]):
                 why, task = known[cand["sha"]]
