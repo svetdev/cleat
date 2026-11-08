@@ -21,7 +21,7 @@ DRAWS = 2000
 
 def rows(path):
     out = [json.loads(line)["status"] for line in open(path)]
-    return [s == "killed" for s in out if s != "invalid"]
+    return [s == "killed" for s in out if s not in ("invalid", "compiler")]   # compiler: caught with no test
 
 
 def score(kills):
@@ -50,9 +50,11 @@ def report(work):
             if not name.endswith(".jsonl"):
                 continue
             stem = name[:-len(".jsonl")]
-            kind = "control" if stem.endswith("-control") else "written"
-            tree, tests = stem[:-len("-control")].rsplit("-", 1) if kind == "control" else stem.rsplit("-", 1)
-            groups[kind, tests][tree] = rows(os.path.join(base, point, name))
+            kind = next((k for k in ("control", "types") if stem.endswith("-" + k)), "written")
+            tree, tests = (stem[:-len(kind) - 1] if kind != "written" else stem).rsplit("-", 1)
+            kills = rows(os.path.join(base, point, name))
+            if kills:   # a set with nothing scored (every mutant invalid) says nothing
+                groups[kind, tests][tree] = kills
         for (kind, tests), trees in sorted(groups.items()):
             arm = lambda a: [k for t, k in sorted(trees.items()) if t.split("-")[0] == a]
             plain, cleat = arm("plain"), arm("cleat")
