@@ -1,0 +1,14 @@
+{
+  "name": "python",
+  "languages": ["python"],
+  "install": "uv sync --frozen",
+  "test": "uv run --offline pytest -q -p no:cacheprovider {files} --junitxml={out}",
+  "check": "uv run --offline mypy src",
+  "manifests": ["pyproject.toml", "uv.lock"],
+  "agent_commands": ["uv run --offline pytest *", "uv run --offline mypy *"],
+  "hint": "uv run --offline pytest <test file>",
+  "env": {"UV_OFFLINE": "1"},
+  "tool_dirs": ["~/.cache/uv"],
+  "build_dirs": [".venv"],
+  "ignored": [".venv/", "__pycache__/", ".pytest_cache/", ".mypy_cache/"]
+}

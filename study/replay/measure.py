@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """measure — one tree's production code by the 2026-11-03 growth measures.
 
-  measure.py <rust|ts> <tree dir>
-  measure.py <rust|ts> <clone> <sha>      (upstream's tree at a commit)
+  measure.py <rust|ts|replay.json> <tree dir>
+  measure.py <rust|ts|replay.json> <clone> <sha>      (upstream's tree at a commit)
 
 Production lines (non-blank), functions and those over cyclomatic 8 and over 15, both per
 1,000 lines, the 90th-percentile and maximum cyclomatic, and lines inside a 6-line window of

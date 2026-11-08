@@ -21,6 +21,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import chain               # noqa: E402
+import draw                # noqa: E402  (chain put the paired runs on the path)
 import probe as probe_mod  # noqa: E402
 import lang as languages   # noqa: E402
 import score               # noqa: E402
@@ -44,7 +45,7 @@ def one_chain(clones, work, plan, name):
         return name, 0
     root = os.path.join(base, "recheck")
     shutil.rmtree(root, ignore_errors=True)
-    subprocess.run(["cp", "-cR", os.path.join(base, "repo"), root], check=True)
+    draw.copy_tree(os.path.join(base, "repo"), root)
     try:
         for change in todo:
             out_dir = os.path.join(base, "steps", "%03d" % change["index"])

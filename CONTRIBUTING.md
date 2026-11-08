@@ -33,3 +33,14 @@ An extractor (or a reader for a tool's report), the check script, its suite, a r
 ## Reporting
 
 The issue forms ask for the gate, the language, and a minimal snippet that reproduces what you saw. A false positive with a ten-line fixture gets fixed in a day; a description of one takes a week of guessing.
+
+## Sharing replay results
+
+The replay in `study/replay/` can run on your own repository, private included, and share what it found without naming your code. `study/replay/README.md` has the whole run order and what it costs; in short:
+
+1. Copy `study/replay/replay.example.json` and fill in your install and test commands; the test command must write JUnit XML.
+2. `doctor.py <replay.json> <clone>` runs your suite once and says what to fix.
+3. Run the `oracle-1` chain first. `chain.py` starts no agent chain until it resolves 90% of the scored changes.
+4. `share.py card <work dir>` writes `study/contributed/<id>.json` and prints all of it. Read it, then open a pull request with that one file.
+
+A card holds counts, ratios and size buckets: no repository name, path, commit text, date, command or code. Its optional note goes in public, so it names no company, client or person. The pull request shows your account; use another if that matters. Cards are pooled with each other, never with the study's own runs.

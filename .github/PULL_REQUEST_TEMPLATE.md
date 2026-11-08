@@ -9,3 +9,8 @@
 ## If a baseline or ceiling changed
 
 Say why here. Loosening is a policy decision; tightening needs no justification.
+
+## If this adds a replay card
+
+- [ ] The card is the file `share.py card` wrote, unedited but for the note
+- [ ] I read every field, and the note names no company, client or person

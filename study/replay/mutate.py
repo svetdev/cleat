@@ -18,7 +18,9 @@ the source is an unhandled error, not a failed test, so only a test can kill a m
 control: the same mutants in every tree, from the files no tree changed; …-types.jsonl for
 mutants in type code, judged by the root type-check: killed by a new type error in a test file,
 `compiler` when the new errors are all outside them, and then left out of the score); a mutant with a line
-is not run again. TypeScript trees whose vitest runs from the root only (zod).
+is not run again. TypeScript trees whose vitest runs from the root only (zod). A language from an
+adapter (adapter.py) finds the same operators in its text (textsites) and runs its test command;
+a mutant that does not build reports no test and is invalid.
 """
 
 import concurrent.futures
@@ -37,6 +39,7 @@ sys.path.insert(0, HERE)
 import lang as languages   # noqa: E402
 import chain               # noqa: E402
 import draw                # noqa: E402
+import textsites           # noqa: E402
 import tsdraw              # noqa: E402
 
 SEED = 90
@@ -47,13 +50,28 @@ def sites(lang, root, types=False):
     """[(file, offset, old, new)] for every operator site on the tree's production lines the replay
     wrote; with `types`, every site in type code there (mutsites.js --types)."""
     listed = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True).stdout.split("\n")
-    files = sorted(p for p in listed if p.endswith(".ts") and not p.endswith(".d.ts") and lang.production(p))
+    files = mutable(lang, listed)
     lines = written(root)
     return sorted(site for site in all_sites(lang, root, files, types) if line_of(root, site) in lines)
 
 
+def mutable(lang, listed):
+    """The production files mutants go in: TypeScript's that run (not declarations), or every
+    production file of an adapter's language."""
+    if lang.name == "ts":
+        return sorted(p for p in listed if p.endswith(".ts") and not p.endswith(".d.ts") and lang.production(p))
+    return sorted(p for p in listed if p and lang.production(p))
+
+
 def all_sites(lang, root, files, types=False):
-    """[(file, offset, old, new)] for every operator site in `files` (in their type code with `types`)."""
+    """[(file, offset, old, new)] for every operator site in `files` (in their type code with `types`):
+    TypeScript's parser finds them (mutsites.js); for an adapter's language, its text (textsites)."""
+    if lang.name == "rust":
+        raise SystemExit("rust: mutants run through an adapter; write a replay.json (adapter.py)")
+    if lang.name != "ts":
+        if types:
+            raise SystemExit("type-level mutants are built for TypeScript only")
+        return textsites.sites(root, files)
     out = []
     for i in range(0, len(files), 200):
         got = subprocess.run(["node", os.path.join(HERE, "mutsites.js"), *(["--types"] if types else []),
@@ -92,8 +110,11 @@ def line_of(root, site):
     return path, 1 + bisect.bisect_left(LINES[root, path], at)
 
 
-def run_tests(root, files):
-    """{test id: passed} for `files`, vitest from the root, type-checking off."""
+def run_tests(lang, root, files):
+    """{test id: passed} for `files`, or None when the run took too long: TypeScript's through
+    vitest from the root, type-checking off; an adapter's through its test command."""
+    if lang.name != "ts":
+        return lang.run_tests(root, dict(tests=files), "mutant", timeout=TIMEOUT)
     output = os.path.join(root, ".mutreport.json")
     if os.path.exists(output):
         os.remove(output)
@@ -137,15 +158,15 @@ def type_status(got, baseline):
 def prepare(lang, clone, plan, point, snapshot, tests, target):
     """A copy of the snapshot, upstream's test files laid over for `upstream`; the test files to run."""
     shutil.rmtree(target, ignore_errors=True)
-    subprocess.run(["cp", "-cR", snapshot, target], check=True)
+    draw.copy_tree(snapshot, target)
     sha = plan["changes"][point - 1]["sha"]
     if tests == "upstream":
         laid = chain.upstream_tests(lang, clone, sha)
         draw.overlay(clone, sha, target, laid + chain.runner_configs(lang, clone, sha))
-        files = [p for p in laid if tsdraw.is_test(p)]
+        files = [p for p in laid if lang.is_test(p)]
     else:
         listed = subprocess.run(["git", "ls-files"], cwd=target, capture_output=True, text=True).stdout.split("\n")
-        files = [p for p in listed if p and tsdraw.is_test(p)]
+        files = [p for p in listed if p and lang.is_test(p)]
     lang.before_check(target)
     return sorted(p for p in files if os.path.isfile(os.path.join(target, p)))
 
@@ -158,8 +179,7 @@ def shared(lang, snapshots):
     keyed = {}
     for root in snapshots:
         listed = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True).stdout.split("\n")
-        files = sorted(p for p in listed if p.endswith(".ts") and not p.endswith(".d.ts") and lang.production(p)
-                       and "/locales/" not in p)
+        files = [p for p in mutable(lang, listed) if "/locales/" not in p]
         lines, out = written(root), {}
         for site in all_sites(lang, root, files):
             path, at = site[0], site[1]
@@ -187,7 +207,7 @@ def one(lang, clone, plan, point, work, tree, snapshot, tests, n, workers, contr
     copies = [os.path.join(base, "w", "%s-%s-%d" % (tree, tests, k)) for k in range(workers)]
     os.makedirs(os.path.join(base, "w"), exist_ok=True)
     files = prepare(lang, clone, plan, point, snapshot, tests, copies[0])
-    baseline = (type_errors(copies[0]) or set()) if kind == "types" else run_tests(copies[0], files) or {}
+    baseline = (type_errors(copies[0]) or set()) if kind == "types" else run_tests(lang, copies[0], files) or {}
     counted = sorted(t for t, ok in baseline.items() if ok) if kind != "types" else []
     if kind != "types" and not counted:   # a run that timed out or crashed would mark every mutant invalid
         raise SystemExit("%s %s: the unmutated tree reported no passing test; nothing is scored" % (tree, tests))
@@ -204,7 +224,7 @@ def one(lang, clone, plan, point, work, tree, snapshot, tests, n, workers, contr
             text = open(source).read()
             with open(source, "w") as handle:
                 handle.write(text[:at] + new + text[at + len(old):])
-            got = type_errors(root) if kind == "types" else run_tests(root, files)
+            got = type_errors(root) if kind == "types" else run_tests(lang, root, files)
             with open(source, "w") as handle:
                 handle.write(text)
         finally:

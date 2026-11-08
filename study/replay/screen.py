@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """screen — which early stretches of a project's history can be replayed by an agent.
 
-  screen.py <rust|ts> <clones dir> <out.json> [window] [min lines] [max lines]
+  screen.py <rust|ts|replay.json> <clones dir> <out.json> [window] [min lines] [max lines]
 
 A stretch is `window` consecutive first-parent changes to production code, starting
 where the project had between `min lines` and `max lines` of production code. A
@@ -71,25 +71,35 @@ def public_ts(repo, sha, path):
     return True
 
 
+def language(lang):
+    """(production and test rules, manifests, whether a test reaches the code through the public
+    interface) for a built-in name or an adapter's replay.json. An adapter has no public-interface
+    rule: every test that exists counts, which the validation that follows still has to pass."""
+    if lang == "rust":
+        return cargo, MANIFESTS[lang], lambda repo, sha, path: "tests" in path.split("/")[:-1]
+    if lang == "ts":
+        return tsdraw, MANIFESTS[lang], public_ts
+    import lang as languages
+    adapter = languages.get(lang)
+    return adapter, adapter.manifests, lambda repo, sha, path: True
+
+
 def classify(lang, repo, change):
-    rules = cargo if lang == "rust" else tsdraw
+    rules, manifests, reaches = language(lang)
     prod = {p: n for p, n in change["files"].items() if rules.production(p)}
     tests = [p for p in change["files"] if rules.is_test(p)]
     present = set(git(repo, "ls-tree", "-r", "--name-only", change["sha"], "--", *tests).split()) if tests else set()
     tests = [p for p in tests if p in present]
-    if lang == "rust":
-        public = all("tests" in p.split("/")[:-1] for p in tests)
-    else:
-        public = all(public_ts(repo, change["sha"], p) for p in tests)
+    public = all(reaches(repo, change["sha"], p) for p in tests)
     body = change["message"].split("\n", 1)[1] if "\n" in change["message"] else ""
     return dict(prod=bool(prod), added=sum(a for a, _ in prod.values()), net=sum(a - d for a, d in prod.values()),
                 tested=bool(tests), public=bool(tests) and public,
                 text=bool(PR_RE.search(change["message"])) or len(body.split()) >= 15,
-                manifest=any(os.path.basename(p) in MANIFESTS[lang] for p in change["files"]))
+                manifest=any(os.path.basename(p) in manifests for p in change["files"]))
 
 
 def screen(lang, repo, window, low, high):
-    rules = cargo if lang == "rust" else tsdraw
+    rules = language(lang)[0]
     lines, steps = 0, []
     for change in history(repo):
         before = lines

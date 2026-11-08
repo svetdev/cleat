@@ -101,6 +101,7 @@ MANIFESTS = {"ts": ("package.json", "pnpm-lock.yaml", "yarn.lock", "package-lock
 
 class TypeScript:
     name = "ts"
+    manifests = MANIFESTS["ts"]
     public = re.compile(r"^\+\s*export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?"
                         r"(?:function\*?|const|let|var|class|interface|type|enum|namespace)\s+(\w+)", re.M)
     production = staticmethod(tsdraw.production)
@@ -188,7 +189,7 @@ class TypeScript:
             if not tests:
                 return None, "no runnable test file"
             draw.overlay(clone, cand["sha"], root, others)
-            if any(os.path.basename(p) in MANIFESTS["ts"] for p in others):
+            if any(os.path.basename(p) in TypeScript.manifests for p in others):
                 recipe, why = TypeScript.install(root, recipe)
                 if recipe is None:
                     return None, "reinstall failed: " + why
@@ -278,6 +279,7 @@ def rust():
 
     class Rust:
         name = "rust"
+        manifests = MANIFESTS["rust"]
         public = re.compile(r"^\+\s*pub\s+(?:async\s+)?(?:unsafe\s+)?(?:fn|struct|enum|trait|type|const|static|mod)\s+(\w+)", re.M)
         production = staticmethod(cargo.production)
         is_test = staticmethod(cargo.is_test)
@@ -296,7 +298,7 @@ def rust():
             newest semver-compatible versions, which the 2019 locks need to build on Rust 1.99."""
             target = os.path.join(root, "target")
             if Rust.warm and not os.path.exists(target):
-                subprocess.run(["cp", "-cR", Rust.warm, target])
+                draw.copy_tree(Rust.warm, target)
             env = cargo.env(target)
             if update:
                 code, said = sh(["cargo", "update"], root, env)
@@ -318,7 +320,7 @@ def rust():
                     return None, why
                 warm = os.path.join(work, "warm-target")
                 shutil.rmtree(warm, ignore_errors=True)
-                subprocess.run(["cp", "-cR", os.path.join(root, "target"), warm])
+                draw.copy_tree(os.path.join(root, "target"), warm)
                 Rust.warm = warm
                 others = [p for _, _, p in cand["files"] if not cargo.production(p) and os.path.basename(p) != "Cargo.lock"]
                 prods = [p for _, _, p in cand["files"] if cargo.production(p)]
@@ -387,8 +389,12 @@ def rust():
 
 
 def get(name):
+    """A built-in language by name, or an adapter (adapter.py) by the path of its replay.json."""
     if name == "ts":
         return TypeScript
     if name == "rust":
         return rust()
-    raise SystemExit("language %r: not built" % name)
+    if name.endswith(".json"):
+        import adapter
+        return adapter.load(name)
+    raise SystemExit("language %r: not built; write a replay.json (adapter.py) and pass its path" % name)

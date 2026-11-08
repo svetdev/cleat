@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """plan — the changes a replay re-implements, as the 2026-11-03 pre-registration fixes them.
 
-  plan.py <rust|ts> <clones dir> <work dir> <repo> <screen.json> [changes]
+  plan.py <rust|ts|replay.json> <clones dir> <work dir> <repo> <screen.json> [changes]
 
 The stretch is the `changes` (80) first-parent changes to production code from the start the
 screen chose. Each change gets its first parent, its files, the screen's flags, its task

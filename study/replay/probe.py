@@ -60,7 +60,7 @@ def strip(lang, clone, plan, root):
 def prepare(lang, clone, plan, point, source, probe, root):
     """The tree as a probe's agent finds it: copied, stripped, upstream's other edits for the probe laid on."""
     shutil.rmtree(root, ignore_errors=True)
-    subprocess.run(["cp", "-cR", source, root], check=True)
+    draw.copy_tree(source, root)
     strip(lang, clone, plan, root)
     rec = chain.recipe(plan)
     moved, laid = chain.upstream_edits(lang, clone, plan["changes"][point - 1]["sha"], probe, root)

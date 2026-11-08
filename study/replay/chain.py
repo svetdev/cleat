@@ -5,7 +5,8 @@
 
 A chain starts from upstream's tree at the first change's parent, its dependencies installed,
 committed as "base"; the cleat arm then attaches cleat from CLEAT_CLEAT (default the f6e08df
-worktree at .study-work/cleat-head) and commits it. Per change: the tree is reset to its last
+worktree at .study-work/cleat-head where it exists, else this checkout) and commits it; an attach
+that fails stops the chain, which would otherwise run as a second plain arm. Per change: the tree is reset to its last
 commit; every file that is neither production nor test (manifests, configs, docs) is brought
 to upstream's state at the change, the commits between replayed changes included, and committed, and the dependencies reinstalled if a manifest
 moved; the agent gets the change's text, with the paired runs' model, budget, flags and
@@ -22,7 +23,8 @@ file laid over, helpers included. The tree is measured after every change and
 copied at the plan's checkpoints for the probes. Each change writes
 <work>/chains/<chain>/steps/<n>/score.json; a change with one is not run again. A chain named
 oracle-… lays upstream's own production files on instead of running an agent: every scored
-change should then resolve, or the harness, not an arm, is failing it. Its tree keeps the
+change should then resolve, or the harness, not an arm, is failing it; no other chain starts
+until one has resolved 90% of the scored changes it would run to (`oracle_gate`). Its tree keeps the
 base's tests, which upstream's code outgrows, so it is not held to the suite. The work dir must sit
 outside this repository with no CLAUDE.md above it, and each change records any instructions
 file or memory the agent left (`stray`).
@@ -46,8 +48,10 @@ import score               # noqa: E402
 REPO = os.path.dirname(os.path.dirname(HERE))
 WORK_ROOT = os.path.join(REPO, ".study-work")
 INSTRUCTIONS = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md")
-CLEAT = os.environ.get("CLEAT_CLEAT", os.path.join(WORK_ROOT, "cleat-head"))
+PINNED = os.path.join(WORK_ROOT, "cleat-head")   # the study's own runs: cleat at f6e08df
+CLEAT = os.environ.get("CLEAT_CLEAT") or (PINNED if os.path.isdir(PINNED) else REPO)
 ATTEMPTS = 3
+ORACLE_SHARE = 0.9   # the 2026-11-04 pre-registration's gate on the harness
 ACCEPT = """
 
 --- acceptance ---
@@ -107,6 +111,35 @@ def guard(work):
         d = os.path.dirname(d)
 
 
+def oracle_resolved(work, chain, scored):
+    """How many of the scored changes an oracle chain resolved by the full check (analyze.full)."""
+    count = 0
+    for change in scored:
+        path = os.path.join(work, "chains", chain, "steps", "%03d" % change["index"], "score.json")
+        if os.path.isfile(path):
+            with open(path) as handle:
+                count += bool((json.load(handle).get("check_full") or {}).get("resolved"))
+    return count
+
+
+def oracle_gate(work, upto, chains):
+    """No agent chain starts until an oracle chain has resolved at least ORACLE_SHARE of the scored
+    changes it would run to: below that the harness or the language's adapter is failing upstream's
+    own code, and every agent run on top of it would be spent on numbers that mean nothing."""
+    agents = [c for c in chains if not c.startswith("oracle")]
+    scored = [c for c in load(work)["changes"][:upto] if c.get("scored")]
+    if not agents or not scored:
+        return
+    chains_dir = os.path.join(work, "chains")
+    oracles = [c for c in sorted(os.listdir(chains_dir)) if c.startswith("oracle")] if os.path.isdir(chains_dir) else []
+    best = max([oracle_resolved(work, c, scored) for c in oracles] or [0])
+    if best < ORACLE_SHARE * len(scored):
+        raise SystemExit("an oracle chain must resolve at least %d%% of the %d scored changes through change %d "
+                         "before %s run; the best has %d. Run it alone first: chain.py <clones dir> %s %d oracle-1. "
+                         "Where it falls short, its steps' check-full.log show what failed: fix the harness or the "
+                         "adapter, not the arms." % (ORACLE_SHARE * 100, len(scored), upto, ", ".join(agents), best, work, upto))
+
+
 def memories(root):
     """Files the agent's auto memory holds for its directory: a channel between changes."""
     slug = os.path.realpath(root).replace("/", "-").replace(".", "-")
@@ -158,6 +191,8 @@ def setup(lang, plan, clones, work, chain, root):
         out = subprocess.run(["python3", os.path.join(CLEAT, "quality", "bin", "attach.py"), "--into", root],
                              capture_output=True, text=True, env=run.clean_env())
         info["attach"] = out.stdout[-3000:] + out.stderr[-1000:]
+        if out.returncode != 0:
+            raise SystemExit("%s: cleat's attach failed, so this chain would run without it:\n%s" % (chain, info["attach"][-1500:]))
         commit(root, "attach cleat")
         gate = subprocess.run(["python3", "quality/bin/gate.py"], cwd=root, capture_output=True, text=True, env=run.clean_env())
         info["day_one_gate"] = gate.returncode
@@ -186,7 +221,7 @@ def upstream_edits(lang, clone, base, change, root):
     if ".gitignore" in paths:   # upstream's own, with what the replay keeps out of every commit
         with open(os.path.join(root, ".gitignore"), "a") as handle:
             handle.write("\n" + "\n".join(lang.ignored) + "\n")
-    return any(os.path.basename(p) in languages.MANIFESTS[lang.name] for p in paths), paths
+    return any(os.path.basename(p) in lang.manifests for p in paths), paths
 
 
 def previous(plan, change):
@@ -227,7 +262,7 @@ def check(lang, clone, change, root, out_dir, full=False):
     change, so an arm that reshaped a shared test helper is judged on its code, not the helper."""
     copy = os.path.join(out_dir, "check")
     shutil.rmtree(copy, ignore_errors=True)
-    subprocess.run(["cp", "-cR", root, copy], check=True)
+    draw.copy_tree(root, copy)
     try:
         laid = change["overlay"] + runner_configs(lang, clone, change["sha"])
         laid += upstream_tests(lang, clone, change["sha"]) if full else []
@@ -250,7 +285,7 @@ def suite(lang, root, out_dir):
     """lang.suite on an APFS clone of the tree, its runner's output kept beside it."""
     copy = os.path.join(out_dir, "suite")
     shutil.rmtree(copy, ignore_errors=True)
-    subprocess.run(["cp", "-cR", root, copy], check=True)
+    draw.copy_tree(root, copy)
     try:
         lang.before_check(copy)
         got = lang.suite(copy)
@@ -353,7 +388,7 @@ def step(lang, plan, clones, work, chain, root, change, rec):
         snap = os.path.join(work, "chains", chain, "snapshots", str(change["index"]))
         shutil.rmtree(snap, ignore_errors=True)
         os.makedirs(os.path.dirname(snap), exist_ok=True)
-        subprocess.run(["cp", "-cR", root, snap], check=True)
+        draw.copy_tree(root, snap)
     tried = " tries=%d accepted=%s" % (len(info["attempts"]), info["accepted"]) if "attempts" in info else ""
     return (("resolved=%s" % info["check"]["resolved"]) if change["scored"] else "done") + tried, rec
 
@@ -380,6 +415,7 @@ def one_chain(clones, work, chain, upto):
 def main(clones, work, upto, *chains):
     clones, work = os.path.abspath(clones), os.path.abspath(work)
     guard(work)
+    oracle_gate(work, int(upto), chains)
     for chain in chains:   # every chain's directory exists before any agent starts, so each is denied the others
         os.makedirs(os.path.join(work, "chains", chain), exist_ok=True)
     with concurrent.futures.ThreadPoolExecutor(len(chains)) as pool:

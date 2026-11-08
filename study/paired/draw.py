@@ -74,6 +74,15 @@ def tree(clone, sha, target):
     archive.wait()
 
 
+def copy_tree(source, target):
+    """A copy of a tree, cloned where the filesystem can (APFS, `cp -c`) and copied where it
+    cannot: Linux, or a Mac volume that is not APFS. Symlinks stay links (pnpm's node_modules)."""
+    if sys.platform == "darwin" and subprocess.run(["cp", "-cR", source, target], capture_output=True).returncode == 0:
+        return
+    shutil.rmtree(target, ignore_errors=True)
+    subprocess.run(["cp", "-R", source, target], check=True)
+
+
 def install(root):
     """A venv at root/.venv with the project and its test dependencies; the recipe that worked."""
     venv = os.path.join(root, ".venv")
@@ -176,7 +185,12 @@ LINKED = re.compile(r"\b(?:fix(?:es|ed)?|close[sd]?|resolve[sd]?)\s+#(\d+)", re.
 
 
 def gh(path):
-    p = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+    """GitHub's answer for an API path, or None: no gh, no login, no access, or not on GitHub
+    (the task text then falls back to the commit message)."""
+    try:
+        p = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+    except FileNotFoundError:
+        return None
     return json.loads(p.stdout) if p.returncode == 0 and p.stdout.strip() else None
 
 
