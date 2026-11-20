@@ -1,0 +1,1 @@
+`just --clean <path>` removes empty cache entries along with the entries the path names. It should also remove an entry that cannot be read as a cache entry: a file that is not JSON, or is JSON of another shape.

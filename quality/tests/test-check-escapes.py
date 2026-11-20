@@ -58,6 +58,15 @@ try:
     code, out = run(excluded)
     check("a file matching an exclude glob is not read", "thing.test.py" not in out and "thing.py" in out, out)
     os.remove(os.path.join(tmp, "src", "thing.test.py"))
+    spec = os.path.join(tmp, "web", "tests", "thing.spec.ts")
+    write(spec, "const a = build() as any;\nconst b = a!.c;\nit.skip('x', () => {});\n")
+    in_tests = os.path.join(tmp, "quality-tests.json")
+    write(in_tests, json.dumps({"escapes": {"roots": ["web"], "languages": ["typescript"], "baseline": "tests-baseline.json",
+                                            "tests": ["*/tests/*"]}}))
+    code, out = run(in_tests)
+    check("in a file a tests glob names, a type escape is not a site", "thing.spec.ts:1" not in out and "thing.spec.ts:2" not in out and "web/thing.ts:1  any" in out, out)
+    check("but a skipped test still is", "web/tests/thing.spec.ts:3  skipped test" in out, out)
+    shutil.rmtree(os.path.join(tmp, "web", "tests"))
     check("the failure output names the fix and never the accept command",
           "Fix what the escape hides" in out and "--write-baseline" not in out, out)
 
@@ -141,14 +150,14 @@ try:
     check("escapes inside an inline #[cfg(test)] module are not production sites", code == 1 and "2 new escape site(s)" in out and "src/lib.rs:1  unwrap" in out and ":6" not in out, out)
     check("#4: production code appended after the test module's closing brace is judged", "src/lib.rs:9  expect" in out, out)
     code, out = run(config, "--write-baseline"); code, out = run(config)
-    check("and the success line says how many were skipped as tests", code == 0 and "(2 in inline Rust tests skipped)" in out, out)
+    check("and the success line says how many were skipped as tests", code == 0 and "(2 in tests skipped)" in out, out)
     # a raw string with braces and a stray `"` above the module, and the reader still finds its braces
     write(rs, 'pub fn read() -> i32 { let s = "a \"quoted\" { thing"; s.len() as i32 }\n\n'
               '#[cfg(test)]\nmod tests {\n    const SAMPLE: &str = r#"{ "predictions" : [\n{"t":"x", "v":"1"},\n]}"#;\n'
               '    #[test]\n    fn t() { let rows = parse(SAMPLE).unwrap(); assert_eq!(rows.len(), 1); }\n}\n')
     write(config, json.dumps({"escapes": {"roots": ["src"], "languages": ["rust"], "baseline": "rs2-baseline.json"}}))
     code, out = run(config)
-    check("a multi-line raw string inside the test module does not end the module early", code == 0 and "(1 in inline Rust tests skipped)" in out, out)
+    check("a multi-line raw string inside the test module does not end the module early", code == 0 and "(1 in tests skipped)" in out, out)
     write(rs, "pub fn read() -> i32 { let v: Result<i32, ()> = Ok(1); v.unwrap() }\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let x: Result<i32, ()> = Ok(1); x.unwrap(); x.expect(\"no\"); }\n}\n\npub fn after() -> i32 { let v: Result<i32, ()> = Ok(1); v.expect(\"appended below the tests\") }\n")
     write(config, json.dumps({"escapes": {"roots": ["src"], "languages": ["rust"], "skip_rust_tests": False, "baseline": "rs-baseline.json"}}))
     code, out = run(config)

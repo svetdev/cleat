@@ -372,3 +372,262 @@ Append-only log of choices, findings, disproven assumptions and rules for this r
 **Why:** the replay rests on two public projects; other people's private code is where more evidence would come from, and they can share results only if the card cannot leak the code or name the repository. An anonymous card cannot be verified, so it is kept where a fabricated or cherry-picked one cannot move the study's own results. The PR author's account stays visible; that part of anonymity is the contributor's to arrange.
 **Evidence:** the design discussion of this date; follows [2026-11-07] The replay takes a language from an adapter file that whoever runs it fills in, without which no one can run the replay on their own repository.
 **Status:** holds
+
+## [2026-11-10] The agent block states what a simple function is before any gate fails
+**Kind:** decision
+**What:** the block `attach.py` writes now asks for functions that are simple from the start (one job, shallow nesting, few branches), names the attach ceilings (cyclomatic 8, 60 lines) and says a helper with one caller is counted with its caller. The gates and hooks are unchanged.
+**Why:** until now an agent learned the ceiling only by failing it, then cut the function up afterwards; that rework is a likely share of the extra cost and of the indirection the blind reviewer faulted. Stating the target first is cheap, and whether it works is untested: no study arm has had the target stated upfront, and none has had instructions without the gates.
+**Evidence:** `quality/bin/attach.py` `AGENT_BLOCK`; `quality/tests/test-attach.py` (the fixture's CLAUDE.md ceiling moves from 200 to 250 with the longer block). A project already attached keeps its old block, since attach does not rewrite one that is there.
+**Status:** holds
+
+## [2026-11-10] Pilot: with the block and the gates in the tree, the agent runs the gates itself, and the Stop hook never has to refuse
+**Kind:** finding
+**What:** on 8 Python tasks from the 2026-11-02 three-arm run, chosen because both `plain` runs there ended with the complexity gate failing, each run once in three arms: `plain` again ended with it failing in 8 of 8; `toldonly` (attach as usual, the block of 2026-11-10, hooks removed) in 0 of 8; `told` (the same with hooks) in 0 of 8. In every `toldonly` and `told` run the agent ran `gate.py` itself, 2 to 7 times; the first version still failed a gate in 8 of 8 `toldonly` runs and 6 of 8 `told` runs, complexity in most, and was reworked. The Stop hook passed at its first firing in all 8 `told` runs, and in all 16 `fit` runs of the earlier study on these tasks. Resolved: `plain` 7, `toldonly` 6, `told` 7. Median cost $0.39, $0.46 and $0.56; the earlier `fit` runs, $0.59.
+**Why:** the question was whether telling the agent what a simple function is could stand in for the gate. It cannot be read that way: the sentence did not make first versions simple, and what removed the debt in both arms was a check the agent could run and was told about, not the hook refusing a stop. On single tasks the hook is a backstop that did not fire. Whether a block with no runnable gate does anything is still untested, and so is a long chain, where an agent may stop running the gate.
+**Evidence:** `~/cleat-study/quicktold` (outside this repository, no instructions file above it), `study/paired/run.py` with `STUDY_ARMS=plain,toldonly,told STUDY_NO_HOOKS=toldonly`, attach from the uncommitted working tree. 24 runs, 344 s of wall time at 8 in parallel, $11.19 at API prices. A pilot: tasks reused and selected on an earlier outcome, one run per arm, not pre-registered; the `fit` comparison is a different week's runs.
+**Status:** holds
+
+## [2026-11-10] Pilot: the words alone leave the complexity debt nearly where it was
+**Kind:** finding
+**What:** a fourth arm on the 8 tasks of the pilot above, `words`: no attach, no `quality/` and no hooks, only a paragraph in CLAUDE.md asking for functions simple from the start, at most cyclomatic 8 and 60 lines, single-use helpers counted with their caller. It ended with the complexity gate failing in 6 of 8 runs (`plain` 8, `toldonly` and `told` 0), with any gate failing in 7, and with a mean largest cyclomatic among changed functions of 11.1 (`plain` 12.8, `toldonly` 8.0, `told` 8.4). Resolved 7 of 8, median cost $0.49. No `words` run measured its own code: none named lizard, radon or a cyclomatic count.
+**Why:** this is the instructions-only case the first pilot could not isolate. An agent told a number it has no way to check mostly does not meet it; an agent given a check it can run meets it without being forced. So the part of cleat that does the work on a single task is the runnable verdict, and the README's "gates, not instructions" holds here as "a check, not a sentence", while the hook's refusal is still unshown.
+**Evidence:** `~/cleat-study/quicktold`, `study/paired/run.py` with `STUDY_ARMS=words STUDY_WORDS_ONLY=words`; 8 runs, 139 s of wall time, $3.43 at API prices. The same limits as the pilot above: 8 reused tasks picked on an earlier outcome, one run per arm, not pre-registered.
+**Status:** holds
+
+## [2026-11-10] The Stop hook rarely refuses in Python and often in TypeScript and Rust; pooled, cleat costs no resolved tasks
+**Kind:** finding
+**What:** read from the runs already on disk, no new agent run. In the paired studies' `cleat` and `fit` arms the Stop hook refused at least once in 11 of 180 Python runs, 53 of 120 TypeScript runs and 67 of 104 Rust runs; the refusals named complexity in 5 of 16 in Python, 58 of 82 in TypeScript and 165 of 171 in Rust. The agent ran `gate.py` itself in 324 of 344 of those runs, whatever the language. A run the hook never refused never ended with a gate failing (0 of 215); of the 129 it refused, 101 ended clean. Along the replay chains the agent kept running the gate itself (75 to 100% of changes in every third of every chain), and refusals did not fade: by thirds of the event log, starship 12, 18, 19 of about 38 and 13, 15, 21; zod-accept 8, 17, 19 of 55 and 17, 26, 32 of 63; zod 11, 18, 55 of 62 and 5, 21, 39; zustand and just flat or falling. Resolution, `cleat` against `plain` paired by task and repeat over the four paired studies: 165 against 168 of 232, 8 pairs only `cleat` resolved and 11 only `plain` (sign test p 0.65).
+**Why:** the 2026-11-10 pilot's reading that the hook is a backstop that does not fire holds for Python and is wrong outside it: in Rust and TypeScript the agent's own run of the gate does not get it under the complexity ceiling, and the refusal is what does. That is also where cleat costs most (1.7 and 2.2 times). And the paired runs show no cost in resolved tasks; the lower correctness the blind reviewer scored is not visible in the tests.
+**Evidence:** `cleat_events` in each `score.json` under `.study-work/paired30`, `pairedfit`, `paired-ts`, `paired-rust`; `quality/.events.jsonl` and the step transcripts under `~/cleat-study/replay/*/chains/cleat-*`. Not pre-registered; the replay's rising refusals in zod are not explained (a failure left in the tree may be refused again at every later stop), and the replays' own resolution counts are not pooled here.
+**Status:** holds
+
+## [2026-11-10] Under `--only`, a Rust or Swift file beside a second language was measured twice, and the Stop hook refused code that had not changed
+**Kind:** finding
+**What:** lizard reads a file it is handed by name whatever `-l` says. With Rust or Swift configured beside any other language, `check-complexity.py --only`, which is what `gate.py --hook --changed` runs, handed the named `.rs` or `.swift` files to the unmasked pass as well as the masked one, so every function in a changed file was measured twice. The second of each pair matched nothing in the baseline and failed as new, and the unmasked reading added its own misreads (a 316-line "function" where a raw string holds a brace). The full gate over the tree was right all along. Fixed: each pass is handed only its own languages' named files.
+**Why:** it surfaced in a pilot of the Rust ceiling at 8 against 12 on 8 tasks: refusals did not move (25 and 23, median cost $1.43 and $1.33, 6 of 8 resolved in both), because the refused functions were baselined ones the agent had not touched, some of them made simpler by the change. It rewrites the Rust half of the 2026-11-03 result: in the paired Rust runs whose configuration the bug reaches, the hook refused on complexity in 54 of 60 runs (152 refusals) and cleat cost 1.93 times `plain` in total; where it cannot reach (Rust alone), 8 of 44 runs (13 refusals) and 1.21 times, Python's figure. So Rust's 2.2 times, most of its refusals, and possibly the reviewer's preference against cleat there measure this bug, not the gates. The pilot says nothing about the ceiling; the rerun on the fix is the next entry.
+**Evidence:** reproduced on `rust-lang/mdBook` (languages rust and javascript): the agent's final tree passes `check-complexity.py` and fails `check-complexity.py --only src/renderer/html_handlebars/search.rs tests/rendered_output.rs` with 6 new functions against the 5 the baseline holds; with the fix it passes. `quality/bin/extractors/complexity.py` `_lizard_csv`, `_named_files_where`; `quality/tests/test-check-complexity.py` "a Rust file named outright, beside a second language, has each function measured once", which fails without the fix. Pilot in `~/cleat-study/quickrust`: 16 runs, 1,650 s of wall time, $19.99 at API prices. The split of the earlier runs is by repository, so repository differences are mixed into it. The replays are not reached: starship and just are configured with Rust alone, zod and zustand with no masked language, so their refusals are not this bug. A downstream Swift project with a second language is affected the same way.
+**Status:** holds
+
+## [2026-11-10] Pilot rerun on the fix: the Rust hook refusals were the bug, and a ceiling of 12 buys nothing over 8
+**Kind:** finding
+**What:** the same 8 Rust tasks, rerun with the double measurement fixed. At ceiling 8 the Stop hook passed first time in all 8 runs (25 refusals before the fix), median cost fell from $1.43 to $0.79 and median turns from 53.5 to 37. Ceiling 12 against 8 moved nothing: total cost $6.53 against $6.11, 37 turns in both, the same 6 of 8 resolved; the looser arm left two trees with a function over 8 that the tighter arm did not.
+**Why:** it confirms the bug, not the gates, drove the Rust refusals and most of the Rust cost on these tasks, and it answers the question the first pilot could not: on this evidence loosening the Rust ceiling saves no work. The remaining gap to `plain` is unsettled: the earlier `plain` runs on these tasks total $5.49 and $5.73 (1.1 times by total) at a median of $0.41 and $0.51 (1.5 to 1.9 times by median), on another day and one run per arm, so the Rust arm of the 2026-11-03 study still needs rerunning before a cost figure is quoted.
+**Evidence:** `~/cleat-study/quickrust2`: 16 runs, 1,705 s of wall time, $12.64 at API prices; hook verdicts from each tree's event log: ceiling 8, 8 pass and 0 fail; ceiling 12, 6 pass and 4 fail. All 4 are two `casey/just` runs that added a flag to `app()`, a clap builder of 278 and 1,486 lines already in the baseline: the ratchet refuses any added line, the agent stopped with the gate still failing both times, and the ceiling-8 runs of the same tasks passed. A long declarative function in the baseline is refused on every line it gains; whether that is wanted is open. Every final tree judged at 8 with the attach-time baseline: ceiling 8, 8 of 8 pass; ceiling 12, 4 of 8 fail (the two `app()` runs, `create_files` gone from cyclomatic 11 to 12, a new function at 9). Agents ran the gates themselves in all 16 runs.
+**Status:** holds
+
+## [2026-11-17] An agent asked for more effort, with no gates, spends what cleat's agent spends and leaves the debt where it was
+**Kind:** finding
+**What:** a third arm on the 30 Python tasks of the 2026-11-02 agent-block test, twice: no cleat, and a paragraph in the instructions file asking the agent to reread its change, run the whole suite, add tests and rework before stopping. It took a median 22.5 and 23 turns at $0.53 and $0.48, against `cleat`'s 22 and 24 at $0.52 and $0.50 and `plain`'s 18 and 16 at $0.40 and $0.35. It ended with a gate failing in 19 and 19 of 30 runs (complexity 13 and 13), against `plain`'s 19 and 20 (13 and 13) and `cleat`'s 0 and 1. It resolved 19 and 22, `plain` 22 and 20, `cleat` 22 and 22.
+**Why:** every earlier comparison gave the arm with cleat more turns and more money than the arm without, so none could tell the gates from the extra work. With the work matched, the debt does not move: the gates remove it, not the effort. It says nothing on whether that debt matters.
+**Evidence:** `STUDY_ARMS=effort STUDY_EFFORT=effort study/paired/run.py` into `~/cleat-study/effort`, 60 runs, none parked, $36.34 at API prices; the `plain` and `cleat` figures are `.study-work/pairedfit`'s, run on another day. Python only. The arm's effort was asked for, not fixed; that it landed on `cleat`'s was not promised beforehand.
+**Status:** holds
+
+## [2026-11-17] Rust rerun on the fixed gate: cleat costs what it costs in Python, and the reviewer still prefers the run without it
+**Kind:** finding
+**What:** the `cleat` arm of the 2026-11-03 Rust runs (26 tasks, twice) on the gate without the double measurement. The Stop hook refused once in 52 runs (85 times before). Median cost $0.77 and $0.81 against $1.13 and $1.22 before and `plain`'s $0.56 and $0.55; total 1.21 times `plain`, 1.54 before; median turns 30.5 and 31.5 against 51 and 49. No run ended with a gate failing (`plain` 43 of 52); resolved 18 and 17, `plain` 18 and 18. The blind review did not move: `cleat` 17, `plain` 30, 5 ties (share 0.36, p 0.08), 13 to 26 before; mean correctness 3.50 against 3.88.
+**Why:** Rust's 2.2 times in the 2026-11-03 result was the bug; the figure is about 1.4 times by median and 1.2 by total. The reviewer's preference was not the bug: it holds on trees whose agents were never wrongly refused.
+**Evidence:** `STUDY_ARMS=cleat study/paired/rust/rrun.py` into `~/cleat-study/rust-fixed`, $62.56 at API prices; `rreview.py` there against the 2026-11-03 `plain` trees, 104 judgments, $13.67, the reviewer the agents' own model. The `plain` runs are from another day. In the 22 task-runs per repeat whose configuration the bug reached, median cost went from $1.03 and $1.01 to $0.70 and $0.73.
+**Status:** holds
+
+## [2026-11-17] The complexity gate judges test files, and in TypeScript that is what the Stop hook refuses
+**Kind:** finding
+**What:** attach writes the complexity section over `.` with only build and vendor directories excluded, so tests are measured and reported as production functions. A `describe` or `test` callback of cyclomatic 1 runs past 60 lines; adding a test to one makes a baselined function worse, and a new one fails as new. Of the 40 complexity refusals in the 2026-11-03 TypeScript runs, 25 named only test files and 29 named one; in Rust 0 and 20 of 62, in Python none of 4. A ceiling of 12 against 8 on the 8 most-refused TypeScript tasks left refusals at 13 in both arms and 6 of 8 resolved in both.
+**Why:** it surfaced the way the Rust bug did: loosening the ceiling changed nothing because the refusals were not about cyclomatic. TypeScript's 1.7 times cost and its hook refusals are in good part the gate reading test structure as debt. Whether tests should be judged at all, or on cyclomatic alone, is open; nothing is changed yet.
+**Evidence:** `~/cleat-study/quickts`, 16 runs, $14.22 at API prices; refusals such as `src/jsx/dom/index.test.tsx:114  cc 1, 134 lines  describe('replace content', () => {`; one `honojs/hono` tree's baseline holds 85 test-file entries of 171, and its generated `deno_dist/` mirror is judged too. Refusal counts from the Stop hook feedback in `.study-work/paired-ts`, `paired-rust`, `paired30`, files classed as tests by directory or `.test.`/`.spec.` name. A refusal for a baselined function gaining lines within the cyclomatic ceiling alone: 3 of 120 TypeScript runs, none of 180 Python.
+**Status:** holds
+
+## [2026-11-17] A second reviewer does not repeat the TypeScript preference for the run without cleat
+**Kind:** finding
+**What:** the 60 TypeScript pairs of 2026-11-03 judged again by another model (claude-sonnet-5-5): `cleat` 18, `plain` 21, 21 ties (share 0.46, p 0.75), where the agents' own model gave 17, 33 and 10 (p 0.03). The two agree on 36 of 60 pairs and oppose on 5. Mean correctness still leans to `plain`, 3.81 against 3.59.
+**Why:** the pooled preference against cleat rested on one reviewer, the model that wrote the code. In TypeScript it depends on who reviews, so it is weaker than the 2026-11-03 entry reads. Both reviewers are models of one family; no person has judged a pair.
+**Evidence:** `REVIEW_MODEL=claude-sonnet-5-5 study/paired/typescript/tsreview.py .study-work/paired-ts`, 120 judgments, $4.10 at API prices; `review-summary-claude-sonnet-5-5.json` beside `review-summary.json`. Position A preferred in 48 of 106 decided judgments.
+**Status:** holds
+
+## [2026-11-17] A weaker model resolves every replay probe on every tree, so the probes cannot show ease of change
+**Kind:** finding
+**What:** the visible probes at changes 60 and 90 of the gated zod replay, run by claude-haiku-5-5: 12 of 12 resolved on `plain`, on `cleat` and 6 of 6 on upstream at both checkpoints, as with the agents' own model. Median turns 16 and 17.5 at change 60, 21 and 29.5 at 90 (`plain`, `cleat`).
+**Why:** the null on ease of change was suspected to be a ceiling: a strong model finds every tree easy. A model several steps weaker finds them as easy, so the ceiling is in the probes, three real changes per checkpoint with their tests in view. A payoff, if there is one, needs harder probes, not a weaker agent.
+**Evidence:** `STUDY_MODEL=claude-haiku-5-5 study/replay/probe.py .study-work/clones-ts ~/cleat-study/replay/zod-accept {90,60} 2 4 visible`, 60 runs under `probes-claude-haiku-5-5/`, about $2.70 at API prices.
+**Status:** holds
+
+## [2026-11-18] The complexity gate leaves tests out, and a file named under `--only` obeys the exclude globs
+**Kind:** decision
+**What:** attach now writes the complexity section with the test directories it found (by name, wherever they sit) and files named as tests (`*.test.*`, `*.spec.*`, `test_*.py`, `*_test.go` and the like) excluded. `check-complexity.py --only` drops a named file an exclude glob matches unless `exclude_except` keeps it; before, lizard measured any file handed to it by name whatever `-x` said, so an excluded file changed by the agent was judged with no baseline. A project already attached keeps its section until it is edited.
+**Why:** the 2026-11-17 finding: a `describe` block or a table of cases is long and branchless by design, and judging it as production made the Stop hook refuse tests being added. Rerun on the 30 TypeScript tasks, twice: complexity refusals fell to 6 in 60 runs, all on production code (40 in 120 before, 25 of them on tests alone); runs the hook refused 17 of 60 (24 of 60); total cost 1.31 times `plain` (1.64), median $0.61 and $0.67 against $0.71 and $0.70 and `plain`'s $0.41 and $0.42; resolved 19 and 19 (20 and 21, `plain` 19 and 21).
+**Evidence:** `quality/bin/attach.py` `test_globs`, `quality/bin/check-complexity.py` `only_roots`, `quality/bin/extractors/complexity.py` `excluded`; tests "and it leaves the tests out…" and "an exclude glob drops a file named under --only…". One `honojs/hono` tree's baseline went from 171 entries to 86, none in a test file. Rerun in `~/cleat-study/ts-notests`, $35.22 at API prices; `plain` from the 2026-11-03 runs, another day. What still refuses in TypeScript is duplication, in 12 of 60 runs, and several of those name a checked-in generated mirror (`deno/lib/…` beside `src/…`), a clone the agent cannot remove; that is open.
+**Status:** holds
+
+## [2026-11-18] In Python, cleat's extra cost is the complexity and duplication gates; the rest is free
+**Kind:** finding
+**What:** an arm attached as usual with the complexity and duplication sections deleted, on the 30 Python tasks of 2026-11-02, twice: median $0.38 and $0.41 and 17 and 18.5 turns, `plain`'s figures ($0.40 and $0.35; 18 and 16), against `cleat`'s $0.52 and $0.50 and 22 and 24. No run ended failing escapes (`plain` 5 and 5 of 30); complexity and duplication, ungated, stayed at `plain`'s level (8 and 12, 7 and 8). The Stop hook never refused. Resolved 21 and 21.
+**Why:** it locates the cost. Escapes, hygiene and document size are met at no measurable price; the 1.3 times is what bringing functions under the ceiling and removing clones costs. With the 2026-11-17 effort arm, the same debt is not removed by effort alone, so it is a price paid for a specific result, whose worth is still the unanswered question.
+**Evidence:** `STUDY_ARMS=lean STUDY_DROP_GATES=lean=complexity+duplication study/paired/run.py` into `~/cleat-study/lean`, 60 runs, $25.92 at API prices. These Python trees carry no tests gate (attach did not find a test command), so the arm is escapes, exclusions, hygiene and document size. The agent block still described the complexity gate. `plain` and `cleat` from `.study-work/pairedfit`, another day.
+**Status:** holds
+
+## [2026-11-18] In Rust a second reviewer also leans to the run without cleat, and both name correctness
+**Kind:** finding
+**What:** the 52 Rust pairs of the 2026-11-17 rerun judged by claude-sonnet-5-5: `cleat` 19, `plain` 27, 6 ties (p 0.30), beside the agents' own model's 17, 30 and 5 (p 0.08). Both score cleat's correctness about 0.4 lower (3.48 against 3.88; 3.50 against 3.88). On the 30 pairs the first reviewer gave to `plain`, cleat's mean correctness is 3.05 against 4.10, and the reasons name a part of the task left out, an unhandled case or an unrequested rewrite more often than style or helpers.
+**Why:** in TypeScript the preference went away with another reviewer; in Rust it weakens and stays, so it is the standing evidence against cleat. The tests do not show it (resolved 18 and 17 against 18 and 18), and it is not the budget: every run ended on its own. Why a gated agent's Rust change reads as less complete is not explained.
+**Evidence:** `REVIEW_MODEL=claude-sonnet-5-5 study/paired/rust/rreview.py ~/cleat-study/rust-fixed`, 104 judgments, $6.70 at API prices; reasons read from `review/*.json` by keyword and by hand, not by a pre-registered coding.
+**Status:** holds
+
+## [2026-11-18] In Python, nesting depth flags no function that cyclomatic complexity does not
+**Kind:** finding
+**What:** over the functions the agents touched in the 2026-11-02 Python runs and the effort arm (229 to 274 per arm), every function nested deeper than 3 is also over cyclomatic 8: 6 or 7 per arm, none within the ceiling. More than 5 parameters with cyclomatic within 8: 8 to 11 per arm, alike with and without cleat.
+**Why:** nesting and parameter count were candidates for a shape gate beside complexity. Nesting would refuse nothing new here; parameters would, but mostly signatures the task did not write. Neither is worth attaching on this evidence. Python only; a brace language may differ.
+**Evidence:** depth counted from Python's `ast` over `if`, loops, `try`, `with` and `match`, `elif` not counted as deeper; parameters without `self`; cyclomatic from lizard; functions matched to the agent's diff by line. Report-only script, not in the repository.
+**Status:** holds
+
+## [2026-11-18] Past probe cost barely follows the complexity of the code touched
+**Kind:** finding
+**What:** Across the replay's 720 probe runs on arm trees, a run's cost rises only weakly with the highest cyclomatic complexity among the functions it changed, and not at all once the size of the change is held fixed.
+**Why:** The probes found no ease-of-change gain; this asks whether that is because complexity does not cost, or because the probes missed the complex code. Both hold in part: the link is weak, and most probes never touched a function over the ceiling.
+**Evidence:** Within a task, log cost against the highest complexity touched: r 0.44, 0.18 without the two widest `just` tasks, 0.12 holding lines added fixed (lines added alone 0.49). In the 17 tasks where some runs touched a function over 8 and others did not, the median cost ratio is 0.98. Probes on `plain` trees touched a function over 8 in 26% (starship), 31% (zod) and 89% (just) of runs. The bigger change causes the higher complexity touched as much as the reverse, so 0.44 is an upper bound.
+**Status:** holds
+
+## [2026-11-18] Changes aimed at the code the arms left different: no cost gain; a weaker agent misses a copy
+**Kind:** finding
+**What:** Six written changes on the `just` trees at change 90, four each aimed at a function over the ceiling in both `plain` trees and under it in both `cleat` trees, two at behaviour `plain` holds in more copies than `cleat` (`study/replay/target.py`, `study/replay/targets/just/`). Cost, turns and tests passed are the same on both arms for Opus and for the complexity tasks on Haiku. On one clone task Haiku changed one copy and left the other in 3 of 6 runs on `plain` trees and in 0 of 6 on `cleat` trees.
+**Why:** The probes before this were upstream's next changes and seldom met the code that differs. Aimed straight at it, lower complexity still buys nothing measurable; one copy in place of two is the first payoff seen, on a weaker agent and a small count.
+**Evidence:** 144 runs, 3 per task, tree and model, $19.54 on Opus and $0.93 on Haiku. Opus, complexity tasks: median $0.23 and 11 turns on `plain`, $0.24 and 12 on `cleat`, 66 of 66 tests on each; clone tasks: $0.30 and 15.5 turns against $0.27 and 14.5, 36 of 36 on each. Haiku, complexity tasks: 15.5 against 14.5 turns, 66 of 66 on each; clone tasks: 33 of 36 tests on `plain`, 36 of 36 on `cleat`, the three failures all the dependency copy of the argument-count message (3 of 6 against 0 of 6 is p 0.18, two-sided). No run broke a test its tree passed before. Few places qualify at all: 9 functions across three projects (6 in just, 2 in starship, 1 in zod) and about 5 clones, and three of the nine functions are a flat `match` turned into a lookup table.
+**Status:** holds
+
+## [2026-11-19] The default gates refuse 44% of real merged commits
+**Kind:** finding
+**What:** cleat attached at a commit's parent and run as the Stop hook runs it (`gate.py --changed`, the project's own tests left out) refuses 254 of 581 commits that maintainers merged, across ten open-source repositories in Python, TypeScript and Rust: 20% in the lowest, 67% in the highest. Complexity refuses 156, duplication 101, escapes 91.
+**Why:** A gate's precision can be read off history at no cost: a merged commit it refuses is either debt a person chose to take or a refusal nobody would agree with. Most complexity refusals are the second kind: 106 of 156 are only a function already over the ceiling growing, by a median of 0 branches and 3 lines, and 62 of those by at most one branch and five lines. Duplication and escapes still judge test files (46 of 101 and 43 of 91 refusals name one). At least 7 duplication refusals are an edit inside a clone that was there before, such as the sync and async clients of an HTTP library changed together.
+**Evidence:** `study/replay/history.py`, 45 to 60 newest first-parent commits that change a source file per repository; no agent, no tokens. Refused: flask 12 of 60, ripgrep 19 of 60, httpx 22 of 60, rich 23 of 60, zustand 22 of 56, click 24 of 60, hono 31 of 60, starship 25 of 45, just 36 of 60, zod 40 of 60. A fresh attach per commit, so each baseline is the parent's own debt.
+**Status:** holds
+
+## [2026-11-19] Agents seldom try to change the policy; the guard's refusals were mostly its own mistake
+**Kind:** finding
+**What:** In the event logs of 665 gated runs and chains, 52,735 tool calls passed the guard and 166 were refused. Nine of the refused touched a baseline; 157 were a formatter run with its own `--write` flag, read as a shortened `--write-baseline`. No run marked a file generated. The Stop hook refused a new escape 88 times, in 32 runs (first counted as 214, with entries copied from cleat's own event log).
+**Why:** The guard exists for an agent that edits the baseline in place of the code. That is rare here, and every case was stopped; the cost was false refusals of `prettier --write` and `biome format --write`, the usual formatter call in TypeScript, which is part of that language's extra turns.
+**Evidence:** `quality/.events.jsonl` of every run under the study's work directories. The nine: seven shell commands that copy a baseline aside and restore the committed one to compare gate output (five on the Rust runs made before the double-measurement fix), two edits to a duplication baseline in replay chains. Each log also opened with two entries from cleat's own checkout, which attach had copied in.
+**Status:** holds
+
+## [2026-11-19] The guard reads an abbreviated `--write-baseline` only where a check could be running
+**Kind:** decision
+**What:** A shortened flag (`--write`, `--wr`) is refused only when the same pipeline could be running one of cleat's checks: it names Python, a `.py` file, `check-`, `quality`, a shell, `eval`, `exec`, `xargs`, or a word the shell fills in. The flag in full is refused wherever a program runs with it, as before. Attach no longer copies `.events.jsonl` from cleat's checkout.
+**Why:** argparse expands any unambiguous prefix, so the guard matched one; every other program's `--write` matched too. The narrower rule keeps the indirect routes the tests pin (a variable in the path, a flag piped through `xargs`) and lets the formatter run.
+**Evidence:** `test-gate.py`: `npx prettier --write …; npx jest …` and `npx biome format --write …; python3 quality/bin/gate.py …` pass the guard; `c=crap; ./quality/bin/check-$c.py --write` and `echo --write | xargs quality/bin/check-crap.py` are refused.
+**Status:** holds
+
+## [2026-11-19] Under a complexity refusal the agent pays the metric, not the debt
+**Kind:** finding
+**What:** Six small changes to `just` whose plain solution a fresh attach refuses (all 18 ungated solutions were refused: a branch added to a function already over the ceiling, or an edit inside a clone). With cleat attached, 18 of 18 runs passed the task's tests and 17 ended with the gates passing, at about twice the cost. None touched a baseline or the config. In the 12 complexity runs no change was a plain simplification: 5 rewrote unrelated code beside the new line to win back a branch, 5 moved the arms of a `match` into a table, 2 compressed syntax. In the 6 clone runs every change folded the copies into one helper both sites call.
+**Why:** This is what the ratchet buys on a function that is already over. The count holds and the function is no easier to change; three runs replaced an exhaustive `match` arm with a wildcard, which gives up a compiler check, and three changed behaviour the task did not ask for. The duplication refusal produced the refactoring a reviewer would ask for.
+**Evidence:** `STUDY_ATTACH=1 STUDY_TREES=plain-2 study/replay/target.py`, 3 runs per task on Opus, $11.71: median $0.53 and 26.5 turns against $0.24 and 11 ungated; one task cost $1.92 and $2.30 in two runs. Production diffs 1.2 to 40 times the ungated size. The kinds were assigned by one model reviewer reading each diff against its ungated twin, not by a person. One Rust project.
+**Status:** holds
+
+## [2026-11-19] The missed copy did not repeat on three more clones
+**Kind:** disproven
+**What:** Three more changes to cloned behaviour in `just`, each asked of the tree as it is and of the same tree with that one clone folded into shared code (`study/replay/pairs.py`, `study/replay/pairs/just/`). Haiku reached the second copy in 18 of 18 runs with two copies and 17 of 18 with one; Opus in every run on both.
+**Why:** The 2026-11-18 lead was three Haiku misses on one task. With the two trees differing in nothing but the clone, there is no gap. Taken with that task, a weaker agent missed a copy in 3 of 30 runs with two copies and 1 of 30 with one: no evidence that removing a clone prevents a missed change here.
+**Evidence:** 36 Haiku runs ($0.53) and 18 Opus runs ($5.76). Each task's tests fail on both trees before the agent and pass on the base with a reference change. Of the eight largest clones in upstream `just`, four could not carry such a task: three are the same list of enum variants or parameters in two places, where the compiler forces both edits, and one has no behaviour reachable through both copies; a fifth did not apply to the base tree. One Rust project, where an exhaustive `match` protects much of what a clone finder reports.
+**Status:** holds
+
+## [2026-11-19] On real commits the escapes gate mostly names test idiom and platform guards
+**Kind:** finding
+**What:** Of the escape sites behind the 91 refusals of merged commits, 106 are in test files and 71 in production. In tests: non-null assertions on a result (43), `unwrap` (28), `any` (20), `@ts-expect-error` and `@ts-ignore` (11), platform `skipif` (3). In production: `any` (20), `# pragma: no cover` on a platform-only import or branch (13), `unwrap` (13), `# type: ignore[attr-defined]` on a Windows-only call (12).
+**Why:** The gate is cheap for an agent to meet, and the 2026-11-18 lean arm showed that. Whether a refused escape hides anything is a separate question, and on human commits it seldom does. `@ts-expect-error` is counted with `@ts-ignore` though it is a checked expectation: the compiler fails the line when the error goes away. Tests are judged though only the complexity gate was taught to leave them out.
+**Evidence:** the gate's own lines in `study/replay/history.py`'s output over ten repositories; kinds as the gate names them, test files told by path. One site in the sample is a crate-wide `#![allow(warnings)]`. No decision taken: leaving tests out of escapes and dropping `@ts-expect-error` are open.
+**Status:** holds
+
+## [2026-11-19] A baselined function may grow a tenth past its entry, once
+**Kind:** decision
+**What:** `complexity.growth` lets a function already in the baseline grow by a tenth of its recorded cyclomatic and length, and by at least one decision and five lines, before it fails. The allowance is measured from the baseline, which a tighten never raises.
+**Why:** Refusing three more lines on a function that was long before the change was the largest source of refusals on real commits, and under it agents traded the metric (offsetting rewrites, arms moved to tables) rather than simplifying.
+**Evidence:** Of 106 real commits refused only for a baselined function growing, this rule passes 81. `test-check-complexity.py` holds the allowance and that a tighten does not write it down.
+**Status:** holds
+
+## [2026-11-19] Duplication fails a clone only when a copy is mostly new lines; tests are left out
+**Kind:** decision
+**What:** A clone touching changed lines fails only if one of its copies is mostly lines the change wrote. Attach excludes test files from duplication.
+**Why:** Editing both copies of a standing clone the same way is how a clone is kept consistent, and refusing it punishes the careful change.
+**Evidence:** `test-check-duplication.py`; on the replayed commits duplication refusals fell from 101 to 30.
+**Status:** holds
+
+## [2026-11-19] In test files the escapes gate counts only a skipped test
+**Kind:** decision
+**What:** `escapes.tests` names the test files; there only the skipped-test pattern is a site. `@ts-expect-error` stays an escape in production code.
+**Why:** Type and unwrap escapes in tests are idiom, and were about half of what the gate named on real commits. A skipped test is the one test-file escape that turns a red suite green, so it stays.
+**Evidence:** `test-check-escapes.py`; escapes refusals on the replayed commits fell from 91 to 59.
+**Status:** holds
+
+## [2026-11-19] With the three changes the default gates refuse 22% of real merged commits, down from 44%
+**Kind:** finding
+**What:** The same 581 commits replayed through the changed gates: 125 refused, down from 254, and none newly refused. Complexity 72 (40 a new function over the ceiling), escapes 59, duplication 30.
+**Why:** It sizes what is left: new functions over the ceiling and production `any`, `unwrap` and `# type: ignore`, which are the cases the gates exist for, though one repository (zod) carries 49 of the 113 escape sites named.
+**Evidence:** `study/replay/history.py` over ten repositories; per repository 11% (zustand) to 45% (zod).
+**Status:** holds; supersedes the rate in [2026-11-19] The default gates refuse 44% of real merged commits
+
+## [2026-11-19] Under the changed gates the same gated tasks cost about what ungated ones do
+**Kind:** finding
+**What:** The 18 gated runs on `just` repeated under the changed gates: median $0.27 and 13 turns, against $0.53 and 26.5 under the old gates and $0.24 and 11 with no gates. All 18 pass their tests and end with the gates green; nothing touched a baseline.
+**Why:** The doubling of cost came from the ratchet on functions already over the ceiling, not from gating as such. Changes that add one branch now go through as the ungated agent wrote them; the two tasks that add six to eight branches to one function are still rewritten (a table for sixteen colour names, a smaller restructuring of `enabled`).
+**Evidence:** `study/replay/target.py` with `STUDY_ATTACH=1 STUDY_LABEL=v2`, three runs of six tasks, $6.90. `cc-get` diffs are the ungated five lines in all three runs; `cc-enabled` fell from $0.69–2.30 to $0.44–0.90. The six clone runs still folded the copies into one helper, though the changed duplication gate does not refuse the ungated edit; why they did was not established.
+**Status:** holds; one repository, one model, kinds of rewrite read by me from diff sizes and two diffs, not classified run by run
+
+## [2026-11-19] Bug-fix commits do not change escape-carrying lines more than other commits do
+**Kind:** finding
+**What:** Across ten open-source repositories, 1.67% of the production lines that bug-fix commits removed or rewrote carried an escape (`any`, `unwrap()`, `# type: ignore` and the rest), against 1.69% for all other commits and 1.36% of production lines in the tree.
+**Why:** If escapes hid defects, the lines fixes touch should carry them more often. They do not, so the escapes gate has no evidence here that it prevents bugs; what it has is that agents reach for escapes and stop when refused.
+**Evidence:** 1,476 fix commits by message (`fix`, `bug`, `regression`, `crash`, `panic`), 18,661 lines, against 3,796 other commits and 317,109 lines; five repositories higher for fixes, five lower. A fix is told by its message and the lines it removes stand in for the faulty ones, so a small effect could hide.
+**Status:** holds
+
+## [2026-11-19] The doc-size gate holds a file's size, and the files it holds include the README
+**Kind:** finding
+**What:** In the replay chains the gated agent kept zod's `AGENTS.md` at 1,344 words while upstream grew it to 3,472, and kept starship's `README.md` near 600 words while upstream's reached 1,409. Where the agent did not cut, the gate failed at every later stop: 303 hook failures in 8 chains.
+**Why:** The gate does what it says, but attach gives the README a ceiling as if an agent read it at every turn, so the project's own documentation is cut or the hook stays red. Whether a shorter instructions file made the agent's work better was not measured.
+**Evidence:** Word counts of the arms' snapshots against the oracle's at each checkpoint; `quality.json` of the gated chains (README ceiling 700 for starship, 800 for zod). On 581 real commits that change source the gate refused none.
+**Status:** holds
+
+## [2026-11-19] Test-hygiene and exclusions never fired, on agents or on real commits
+**Kind:** finding
+**What:** The fixed-sleeps count and the generated-file ratchet refused nothing in 2,564 Stop-hook runs across the gated agent runs, and nothing in 581 real merged commits.
+**Why:** They cost nothing, and on these projects nothing shows they are needed: across four replayed projects the ungated agents added at most two sleeps to the tests.
+**Evidence:** Event logs of the gated runs with copied entries removed; `study/replay/history.py` output; sleep counts in the arms' last snapshots.
+**Status:** holds
+
+## [2026-11-19] Attach gives no word ceiling to the README
+**Kind:** decision
+**What:** `attach.py` sets doc-size ceilings on agent instruction files only (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot instructions, `.cursorrules`). A project can still add its README by hand.
+**Why:** A README is not read at every turn, and a ceiling on it made the gated agent cut upstream's documentation or fail every stop.
+**Evidence:** [2026-11-19] The doc-size gate holds a file's size, and the files it holds include the README; `test-attach.py`.
+**Status:** holds
+
+## [2026-11-19] The dead-symbols check read live Rust methods and tests as dead; agents left almost no dead code
+**Kind:** finding
+**What:** Over Rust the check did not count `self.name()` as a reference and reported `#[test]` functions, so on upstream `just` it listed 236 symbols and on `starship` 42. Fixed, it lists 3 and 0, and the gated and ungated agents' trees list the same. Over TypeScript everything it lists is an export (191 in upstream zod); the agents' trees add 2 to 11 exports upstream does not have.
+**Why:** The gate's premise, that agents rewrite beside the old code and never delete, did not show in four replayed projects: no private symbol was left unreferenced in any arm. In Rust the compiler already refuses dead private code; in TypeScript the report is a list of the public API, which needs exempting before it says anything.
+**Evidence:** `check-dead-symbols.py` over the last snapshot of each arm (just, starship, zod, zustand) against the oracle's; `test-check-dead-symbols.py` holds the Rust fix.
+**Status:** holds
+
+## [2026-11-19] Low coverage of the changed lines marks a wrong solution; CRAP marks it more weakly
+**Kind:** finding
+**What:** In 376 paired Python agent runs judged by hidden tests, a run whose own tree's tests ran under 80% of its changed production lines was wrong 61% of the time (36 of 59), against 19% (59 of 317) for the rest. A run that touched a function with CRAP over 30 was wrong 44% of the time (16 of 36) against 23%.
+**Why:** This is the first gate signal in the study that tracks correctness rather than code shape. `changed_coverage` at its default minimum of 0.8 would have stopped three in eight of the wrong solutions and one in twelve of the right ones.
+**Evidence:** Coverage measured by running the task's test files and the tests the agent changed in each run's tree; 95 wrong and 281 right runs across five paired studies. In the 11 tasks with both outcomes, the right runs had higher changed-line coverage in 7 and lower in none (mean +0.12). Harder tasks may be both less covered and more often wrong, so the between-task gap overstates it; the gate was not run on agents, so whether refusing raises correctness is untested.
+**Status:** holds
+
+## [2026-11-19] Gates that read a coverage report run after the project's commands
+**Kind:** decision
+**What:** `gate.py` runs `changed-coverage` and `crap` last, after the `commands` list; every other gate keeps its place ahead of the commands.
+**Why:** A command is where a project runs its suite under coverage. With the readers ahead of it, a single pass judged the report the previous pass wrote, so changed-line coverage could not be enforced at a stop without folding the check into the command by hand.
+**Evidence:** `quality/tests/test-gate.py`: `--list --postflight` gives doc-size, the command, then the two readers. An end-to-end pass on a scratch project: an untested change fails `changed-coverage` in the same run that wrote the report.
+**Status:** holds
+
+## [2026-11-19] Enforcing changed-line coverage at every stop did not make agents more correct
+**Kind:** finding
+**What:** On 12 Python tasks earlier runs had got wrong at least once, run twice per arm, cleat as attach writes it resolved 6 of 24 and the same with changed-line coverage enforced at every stop (minimum 0.8, changes of 5 executable lines or more) resolved 6 of 24. The coverage check refused in 6 of the 24 runs, 10 times; 2 of those runs then passed it, 4 stopped with it still failing, and none of the 6 ended differently from the same task without it.
+**Why:** Low coverage of the changed lines marked wrong solutions in the runs on disk, which made it the one candidate for a gate that buys correctness. It marks them and does not fix them: an agent that misreads a task writes tests for its own reading.
+**Evidence:** `STUDY_ARMS=cleat,cov STUDY_COVERAGE=cov study/paired/run.py`, read with `study/paired/arms.py <work> cleat cov`: median $0.60 and 25.5 turns against $0.62 and 29, totals $16.30 and $16.66. Two further tasks were dropped: their suite never finished under coverage, so the arm could not start. The tasks were chosen for being hard, so 6 of 24 is not a rate for tasks in general.
+**Status:** holds
+
+## [2026-11-19] A command in `commands` has no time limit, so one that hangs holds the stop forever
+**Kind:** finding
+**What:** `gate.py` waits on each `commands` entry without a limit. A suite that never finishes under coverage held four study runs for over five hours before an agent had started.
+**Why:** The Stop hook runs these commands in an agent's session; a hang there is a session that never ends and reports nothing. A project that puts its suite in `commands` needs a limit on it, in the command or in the runner.
+**Evidence:** The coverage arm of the study above on one project: four `gate.py` processes waiting on `coverage run -m pytest`, each 5 h 25 min to 5 h 40 min old when stopped.
+**Status:** holds

@@ -1,0 +1,60 @@
+diff --git a/src/usage.rs b/src/usage.rs
+index 881d7d4..b214a4c 100644
+--- a/src/usage.rs
++++ b/src/usage.rs
+@@ -65,7 +65,7 @@ impl<D> ColorDisplay for Usage<'_, D> {
+           writeln!(f)?;
+         }
+ 
+-        write!(f, "  ")?;
++        write!(f, "    ")?;
+ 
+         write!(
+           f,
+@@ -97,7 +97,7 @@ impl<D> ColorDisplay for Usage<'_, D> {
+           writeln!(f)?;
+         }
+ 
+-        write!(f, "  ")?;
++        write!(f, "    ")?;
+ 
+         write!(
+           f,
+diff --git a/tests/usage.rs b/tests/usage.rs
+index ac7289d..f277475 100644
+--- a/tests/usage.rs
++++ b/tests/usage.rs
+@@ -12,7 +12,7 @@ fn usage_recipe_in_search_directory() {
+         Usage: just foo bar
+ 
+         Arguments:
+-          bar
++            bar
+       ",
+     )
+     .success();
+@@ -40,16 +40,16 @@ foo a b c='abc' d e f='xyz' g='bar' *h:
+         Usage: just bar foo [OPTIONS] b [c] [h...]
+ 
+         Arguments:
+-          b hello [pattern: '123|789']
+-          [c] [default: 'abc']
+-          [h...]
++            b hello [pattern: '123|789']
++            [c] [default: 'abc']
++            [h...]
+ 
+         Options:
+-          -a a
+-          -d, --delightful d
+-          -e e [pattern: 'abc|xyz']
+-              --f f [default: 'xyz'] [pattern: 'lucky']
+-          -g
++            -a a
++            -d, --delightful d
++            -e e [pattern: 'abc|xyz']
++                --f f [default: 'xyz'] [pattern: 'lucky']
++            -g
+       ",
+     )
+     .success();

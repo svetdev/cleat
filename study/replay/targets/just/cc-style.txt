@@ -1,0 +1,1 @@
+Let `style()` take the bright colors `bright-black`, `bright-red`, `bright-green`, `bright-yellow`, `bright-blue`, `bright-magenta`, `bright-cyan` and `bright-white`: as the foreground (ANSI codes 90 to 97), also after `fg:`, and after `bg:` as the background (ANSI codes 100 to 107).

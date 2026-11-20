@@ -90,6 +90,22 @@ try:
           str(mirrored))
     check("the mirrored file has the same line count", open(copy).read().count("\n") == open(knot).read().count("\n"))
 
+    # --- a file named outright is read once: lizard reads a named file whatever -l says, so
+    # with a second language configured the unmasked pass used to read the .rs file too.
+    if shutil.which("lizard"):
+        named = complexity.run_lizard([knot], ["rust", "javascript"], [])
+        once, _ = complexity.functions_from_csv(named, skip_rust_tests=False)
+        keys = [(f.path, f.line) for f in once]
+        check("a Rust file named outright, beside a second language, has each function measured once",
+              keys and len(keys) == len(set(keys)), str(keys))
+
+    # --- lizard reads a file it is handed by name whatever `-x` says, so under `--only` an
+    # excluded file (a test, a fixture) was measured and its standing debt failed as new.
+    globs = ["*.test.*", "*/tests/*"]
+    dropped = [name for name in ("src/a.test.ts", "tests/b.ts", "pkg/tests/c.ts", "src/a.ts", "src/contests/d.ts") if complexity.excluded(name, globs)]
+    check("an exclude glob drops a file named under --only as it would on a walk from the root",
+          dropped == ["src/a.test.ts", "tests/b.ts", "pkg/tests/c.ts"], str(dropped))
+
     # --- a Rust raw string must not hide the functions after it.
     # lizard tokenises `r#"…"#` as ordinary code. In the body below the quotes and the
     # apostrophes interleave — `["']` twice — so lizard pairs the opening quote with the
@@ -301,6 +317,26 @@ try:
     longer_csv = os.path.join(tmp, "longer.csv"); write_csv(longer_csv, longer)
     code, out = run(config, "--csv", longer_csv)
     check("a baselined function whose length grew fails too", code == 1 and "cc 1, 70 lines, was cc 1, 61 lines" in out, out)
+
+    # --- growth: a baselined function may grow a little past its entry, once
+    roomy = os.path.join(tmp, "roomy.json")
+    write(roomy, json.dumps({"complexity": dict(json.load(open(config))["complexity"], growth={"share": 0.1, "cc": 1, "lines": 5})}))
+    def grown(cc, lines):
+        path = os.path.join(tmp, "grown-%d-%d.csv" % (cc, lines))
+        write_csv(path, [(1, cc) + r[2:] if r[7] == "branchy" else r[:4] + (lines,) + r[5:] if r[7] == "long_one" else r for r in rows])
+        return path
+    code, out = run(roomy, "--csv", grown(10, 66))
+    check("with growth allowed, a baselined function one decision and five lines over its entry passes", code == 0, out)
+    code, out = run(roomy, "--csv", grown(11, 61))
+    check("two decisions over still fails", code == 1 and "cc 11, 1 lines, was cc 9, 1 lines" in out, out)
+    code, out = run(roomy, "--csv", grown(9, 68))
+    check("and so do seven lines over a 61-line entry: a tenth of it is six", code == 1 and "cc 1, 68 lines, was cc 1, 61 lines" in out, out)
+    kept = open(baseline).read()
+    run(roomy, "--csv", grown(10, 66), "--tighten")
+    held = {e["text"].split("(")[0]: (e["cc"], e["lines"]) for e in ratchet.read(baseline)[0]}
+    check("a tighten never writes the growth down, so the allowance is spent once",
+          held.get("fn branchy") == (9, 1) and held.get("fn long_one") == (1, 61), str(held))
+    write(baseline, kept)
 
     # --- improved: the baseline records more than the code has — a NOTE, and a --strict failure
     run(config, "--csv", worse_csv, "--write-baseline")

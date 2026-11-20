@@ -1,0 +1,7 @@
+The detailed help printed by `just --usage RECIPE` is hard to scan because the
+entries sit almost flush with the section headings above them.
+Every entry line listed under a section heading in `just --usage` output should
+be indented by four spaces instead of the current two.
+For example, with the justfile `foo bar:`, `just --usage foo` should print the
+line `    bar` (four leading spaces) under `Arguments:`. The one-line usage
+summary and the usage shown after an argument-count error should not change.

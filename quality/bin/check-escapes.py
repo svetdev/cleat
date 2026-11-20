@@ -12,6 +12,12 @@ every line that carries one on adoption day, and a line not in it fails. A
 count of 41 would let an old escape vanish as a new one appears, forever; a
 site cannot.
 
+A test is not production code: `unwrap()` on a fixture, `as any` on a
+deliberately malformed input and a non-null assertion on a value the test just
+built are how tests are written, and a gate that refuses them refuses most new
+tests. In a file matching a `tests` glob the one escape that counts is the
+skipped test, the one that turns a red suite green.
+
 The site's identity is its file and the text of its line, so editing the file
 above it does not unbaseline it; a line whose only change is a renamed
 identifier — the same escape, the same shape — is the same site too, so a
@@ -25,6 +31,7 @@ Everything that names the project is the `escapes` section of quality.json:
     "languages": ["python", "typescript"],          # which built-in pattern sets apply
     "skip_dirs": ["node_modules", "vendor"],        # directory names pruned (defaults below apply too)
     "exclude":   ["*.test.ts"],                     # file globs left unread (a test tree that shares a root)
+    "tests":     ["*/tests/*", "*.test.*"],         # test files: only a skipped test is a site there
     "skip_rust_tests": true,                        # sites inside `#[cfg(test)]` modules are not production (default)
     "patterns":  {"todo bang": "TODO!"},            # extra patterns of the project's own, name → regex
     "baseline":  "quality/escapes-baseline.json"    # the ratchet
@@ -57,19 +64,33 @@ DEFAULT_SKIP_DIRS = patterns.DEFAULT_SKIP_DIRS   # the walker prunes these; the 
 language = languages.language
 
 
-def _collect(seen, roots, suffixes, regexes, skip, exclude, repo_root, skip_rust_tests, skipped):
-    """Record every site; a site inside an inline Rust test module is counted in
-    `skipped` instead when `skip_rust_tests` is on."""
+TEST_ESCAPE = "skipped test"   # the one built-in kind that counts in a test file
+
+
+def _test_code(repo_root, skip_rust_tests, tests):
+    """is(rel, line, kind): whether a site is test code the gate does not judge — inside an
+    inline Rust test module when `skip_rust_tests` is on, or in a file matching a `tests`
+    glob unless it skips a test."""
     ranges = {}
-    for site in patterns.sites(patterns.files(roots, suffixes, skip, exclude), regexes, repo_root):
-        rel, line = site[0], site[1]
-        if skip_rust_tests and rel.endswith(".rs"):
-            if rel not in ranges:
-                ranges[rel] = patterns.rust_test_ranges(os.path.join(repo_root, rel))
-            if patterns.in_ranges(ranges[rel], line):
-                skipped[0] += 1
-                continue
-        _record(seen, *site)
+
+    def inline(rel, line):
+        if rel not in ranges:
+            ranges[rel] = patterns.rust_test_ranges(os.path.join(repo_root, rel)) if skip_rust_tests else []
+        return patterns.in_ranges(ranges[rel], line)
+
+    def named(rel, kind):
+        return kind != TEST_ESCAPE and bool(tests) and patterns.excluded(os.path.join(repo_root, rel), tests)
+
+    return lambda rel, line, kind: named(rel, kind) or inline(rel, line)
+
+
+def _collect(seen, paths, regexes, repo_root, in_tests, skipped):
+    """Record every site; one in test code is counted in `skipped` instead."""
+    for site in patterns.sites(paths, regexes, repo_root):
+        if in_tests(site[0], site[1], site[3]):
+            skipped[0] += 1
+        else:
+            _record(seen, *site)
 
 
 def findings(section, config):
@@ -78,14 +99,14 @@ def findings(section, config):
     roots = config.paths(section.get("roots", ["."]))
     skip = set(section.get("skip_dirs", []))
     exclude = section.get("exclude", [])
-    skip_tests = section.get("skip_rust_tests", True)
+    in_tests = _test_code(config.root, section.get("skip_rust_tests", True), section.get("tests", []))
     languages = [language(name) for name in section.get("languages", [])]
     seen, skipped = {}, [0]
     for spec in languages:
-        _collect(seen, roots, spec["suffixes"], spec["patterns"], skip, exclude, config.root, skip_tests, skipped)
+        _collect(seen, patterns.files(roots, spec["suffixes"], skip, exclude), spec["patterns"], config.root, in_tests, skipped)
     if section.get("patterns"):
         suffixes = sorted({s for spec in languages for s in spec["suffixes"]}) or [""]
-        _collect(seen, roots, suffixes, section["patterns"], skip, exclude, config.root, skip_tests, skipped)
+        _collect(seen, patterns.files(roots, suffixes, skip, exclude), section["patterns"], config.root, in_tests, skipped)
     out = [ratchet.Finding(rel, line, text, {"escape": kind, "count": count})
            for (rel, text), (line, kind, count) in seen.items()]
     out.sort(key=lambda f: (f.file, f.line))
@@ -113,7 +134,7 @@ def list_languages():
 
 
 def load(args):
-    """(section, baseline path, findings, provenance, sites skipped as inline Rust tests)
+    """(section, baseline path, findings, provenance, sites skipped as test code)
     from the config — KeyError naming what is missing."""
     config = quality_config.load(args.config)
     section = config.section(SECTION)
@@ -162,7 +183,7 @@ def main():
         remedy="quality/bin/check-escapes.py --tighten",
         show=with_count, site="line")
     ok_line = "OK: %d escape site(s) in the tree, all %d in the baseline%s" % (
-        len(found), len(found), " (%d in inline Rust tests skipped)" % skipped if skipped else "")
+        len(found), len(found), " (%d in tests skipped)" % skipped if skipped else "")
     return ratchet.report(verdict, gate, len(entries), ok_line, quiet=args.quiet, strict=args.strict,
                           tighten=args.tighten, baseline=(baseline_path, measured, untouched))
 

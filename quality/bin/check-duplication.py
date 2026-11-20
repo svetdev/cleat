@@ -17,8 +17,10 @@ edited, so such a baseline would churn stale entries forever. The density is
 one number; the changed-lines scope needs no baseline at all — the base is
 its baseline. A clone touching a changed line fails when its block, with
 identifiers blanked, now appears more often across the clone's files and the
-changed files than it did at the base: a copy made fails, while a rename or a
-reorder inside a clone that already existed does not.
+changed files than it did at the base, and one of its copies is mostly lines
+this change wrote: a copy made fails, while a rename or a reorder inside a
+clone that already existed does not, and neither does the same edit made to
+both copies of one — which is how a clone is kept consistent, not how one is made.
 
 Clones come from the built-in finder (exact after whitespace normalisation,
 nothing to install) or from a jscpd report when `report.jscpd` names one.
@@ -91,7 +93,7 @@ def judge_changed(clones, config, base):
     except changed.ChangedError:
         return [], 0
     shapes = Shapes(config.root, base)
-    touching = [c for c in clones if c.touches(lines) and shapes.copied(c, set(lines))]
+    touching = [c for c in clones if c.touches(lines) and shapes.written(c, lines) and shapes.copied(c, set(lines))]
     return touching, sum(len(v) for v in lines.values())
 
 
@@ -121,6 +123,15 @@ class Shapes:
             shaped = [s for _, s in self.lines(rel, at_base)]
             self.windows[key] = collections.Counter(tuple(shaped[i:i + len(block)]) for i in range(len(shaped) - len(block) + 1))
         return self.windows[key][block]
+
+    def written(self, clone, changed):
+        """Whether some copy is mostly lines the change wrote. The same edit made in both
+        copies of a clone the base already had leaves each copy mostly as it was."""
+        for rel, start, end in clone.locations:
+            numbers = [n for n, _ in self.lines(rel, False) if start <= n <= end]
+            if 2 * sum(n in changed.get(rel, ()) for n in numbers) > len(numbers):
+                return True
+        return False
 
     def copied(self, clone, changed_files):
         """Whether the clone's block appears more often now than at the base."""

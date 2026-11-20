@@ -106,7 +106,9 @@ SLEEP_PATTERNS = {
     "shell": r"\bsleep\s+[0-9]",
 }
 TEST_DIR_RE = re.compile(r"^(?:tests?|specs?|__tests__|[A-Za-z]+Tests|testing|e2e)$")
-AGENT_DOCS = ["CLAUDE.md", "AGENTS.md", "GEMINI.md", ".github/copilot-instructions.md", ".cursorrules", "README.md"]
+# The files an agent is handed at every turn. A README is not one: it is the project's own
+# documentation, and a ceiling on it has the agent cutting what the maintainers wrote.
+AGENT_DOCS = ["CLAUDE.md", "AGENTS.md", "GEMINI.md", ".github/copilot-instructions.md", ".cursorrules"]
 
 AGENT_BLOCK_MARKER = "## Quality gates (cleat)"
 AGENT_BLOCK = """
@@ -119,6 +121,12 @@ it would: follow the project's existing patterns and idioms, and keep the
 change as small as the task allows — simpler or shared logic, the value's real
 type, a passing test, a handled error. The task still comes first: keep every
 behaviour it asks for.
+
+Write each function simple from the start: one job, shallow nesting, few
+branches. The complexity gate refuses a function past the ceilings in
+`quality.json` (as attached: cyclomatic 8, or 60 lines), and a helper only one
+function calls is counted with its caller, so cutting a function up afterwards
+does not pass. Shape it simply before writing it.
 
 Do not edit `quality.json`, anything under `quality/`, or the hooks to make a
 gate pass, and do not run `--write-baseline`: the baselines record debt a
@@ -249,6 +257,20 @@ def hygiene_section(plan, languages):
                                         "use": "wait for the condition, not the clock"}}}
 
 
+# A test beside its source, by name. A `describe` block or a table of cases is long and
+# branchless by design: judged as production it fails the line ceiling on every test added.
+TEST_FILE_GLOBS = ["*.test.*", "*.spec.*", "*_test.py", "*/test_*.py", "*/conftest.py", "*_test.go", "*_test.rs",
+                   "*_spec.rb", "*_test.rb", "*Tests.swift", "*Test.kt", "*Test.java"]
+
+
+def test_globs(plan):
+    """Globs that name the project's tests, for the gates that judge production code only
+    (complexity, duplication) or judge tests by another rule (escapes): every test directory
+    the survey found, by its name wherever it sits, and the test files named as such."""
+    names = sorted({os.path.basename(root) for root in plan.test_roots})
+    return ["*/%s/*" % name for name in names] + TEST_FILE_GLOBS
+
+
 def complexity_section(plan, languages):
     """The lizard ratchet when lizard is installed; a note on how to reach it when not."""
     lizard_languages = [LIZARD_NAMES[n] for n in languages if n in LIZARD_NAMES]
@@ -259,8 +281,9 @@ def complexity_section(plan, languages):
                           "`pip install lizard`, then run attach again (tier 1).")
         return None
     return {"tool": "lizard", "sources": ["."], "languages": lizard_languages,
-            "exclude": ["*/%s/*" % d for d in sorted(SKIP_DIRS)],
-            "ceilings": {"cc": 8, "lines": 60}, "helpers": "inline", "baseline": "quality/complexity-baseline.json"}
+            "exclude": ["*/%s/*" % d for d in sorted(SKIP_DIRS)] + test_globs(plan),
+            "ceilings": {"cc": 8, "lines": 60}, "helpers": "inline",
+            "growth": {"share": 0.1, "cc": 1, "lines": 5}, "baseline": "quality/complexity-baseline.json"}
 
 
 COVERAGE_REPORT_NAMES = ("lcov.info", "coverage.xml", "cobertura.xml", "cobertura-coverage.xml")
@@ -414,9 +437,9 @@ def config_for(plan, have=()):
         config["doc_size"] = [{"file": d, "ceiling": doc_ceiling(plan, d)} for d in plan.docs]
     if languages:
         config["escapes"] = {"roots": ["."], "languages": languages, "skip_dirs": ["quality"],
-                             "baseline": "quality/escapes-baseline.json"}
+                             "tests": test_globs(plan), "baseline": "quality/escapes-baseline.json"}
         config["duplication"] = {"roots": ["."], "languages": languages, "skip_dirs": ["quality"],
-                                 "min_lines": 6, "baseline": "quality/duplication-baseline.json"}
+                                 "exclude": test_globs(plan), "min_lines": 6, "baseline": "quality/duplication-baseline.json"}
         config["exclusions"] = {"skip_dirs": ["quality"], "baseline": "quality/exclusions-baseline.json"}
     sections = (("hygiene", lambda: hygiene_section(plan, languages)), ("complexity", lambda: complexity_section(plan, languages)),
                 ("changed_coverage", lambda: changed_coverage_section(plan)), ("manifests", lambda: manifests_section(plan)),
@@ -448,7 +471,7 @@ def write_text(plan, rel, text, dry_run, force=False):
     return True
 
 
-TEMPLATE_IGNORE = shutil.ignore_patterns("__pycache__", ".DS_Store", "*-baseline.json", "REFACTOR.md", ".running")
+TEMPLATE_IGNORE = shutil.ignore_patterns("__pycache__", ".DS_Store", "*-baseline.json", "REFACTOR.md", ".running", ".events.jsonl")
 # What --refresh replaces: the template's own files. Everything else under quality/ is the project's.
 TEMPLATE_PARTS = ("bin", "tests", "README.md", "STRATEGY.md", "quality.example.json")
 

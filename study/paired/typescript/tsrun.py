@@ -71,6 +71,8 @@ def prepare(clones, task, arm, root):
         out = subprocess.run(["python3", os.path.join(checkout, "quality", "bin", "attach.py"), "--into", root],
                              capture_output=True, text=True, env=run.clean_env())
         info["attach"] = out.stdout[-3000:] + out.stderr[-1000:]
+        if arm.split("-")[0] in run.CEILINGS:
+            info["ceiling"] = run.set_ceiling(root, run.CEILINGS[arm.split("-")[0]])
         run.git(root, "add", "-A")
         run.git(root, "commit", "-q", "-m", "attach cleat")
         gate = subprocess.run(["python3", "quality/bin/gate.py"], cwd=root, capture_output=True, text=True, env=run.clean_env())

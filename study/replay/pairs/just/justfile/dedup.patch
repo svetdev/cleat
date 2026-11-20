@@ -1,0 +1,64 @@
+diff --git a/src/justfile.rs b/src/justfile.rs
+index 805d020..b901077 100644
+--- a/src/justfile.rs
++++ b/src/justfile.rs
+@@ -173,6 +173,31 @@ impl<'src> Justfile<'src> {
+     Ok(())
+   }
+ 
++  fn evaluate_scopes_for_subcommand<'run>(
++    &'run self,
++    config: &'run Config,
++    dotenv_arena: &'run Arena<BTreeMap<String, String>>,
++    overrides: &'run HashMap<Number, String>,
++    root: &'run Scope<'src, 'run>,
++    scope_arena: &'run Arena<Scope<'src, 'run>>,
++    scopes: &mut Scopes<'src, 'run>,
++    search: &'run Search,
++    variable_references: &HashSet<Number>,
++  ) -> RunResult<'src> {
++    self.evaluate_scopes(
++      config,
++      dotenv_arena,
++      overrides,
++      None,
++      true,
++      root,
++      scope_arena,
++      scopes,
++      search,
++      variable_references,
++    )
++  }
++
+   pub(crate) fn run(
+     &self,
+     config: &Config,
+@@ -265,12 +290,10 @@ impl<'src> Justfile<'src> {
+           .args(arguments)
+           .current_dir(&search.working_directory);
+ 
+-        self.evaluate_scopes(
++        self.evaluate_scopes_for_subcommand(
+           config,
+           &dotenv_arena,
+           overrides,
+-          None,
+-          true,
+           &root,
+           &scope_arena,
+           &mut scopes,
+@@ -310,12 +333,10 @@ impl<'src> Justfile<'src> {
+       Subcommand::Evaluate { format, path } => {
+         let (module, variable, variable_references) = self.evaluation_target(path)?;
+ 
+-        self.evaluate_scopes(
++        self.evaluate_scopes_for_subcommand(
+           config,
+           &dotenv_arena,
+           overrides,
+-          None,
+-          true,
+           &root,
+           &scope_arena,
+           &mut scopes,

@@ -258,7 +258,8 @@ ASTGREP = {
     "java": (("class_declaration", "interface_declaration", "enum_declaration", "record_declaration", "method_declaration"),
              ("identifier", "type_identifier")),
     "go": (("type_spec", "function_declaration", "method_declaration"), ("identifier", "type_identifier", "field_identifier")),
-    "rust": (("struct_item", "enum_item", "trait_item", "function_item", "type_item"), ("identifier", "type_identifier")),
+    "rust": (("struct_item", "enum_item", "trait_item", "function_item", "type_item"),
+             ("identifier", "type_identifier", "field_identifier")),   # `self.name()` names a method by a field identifier
     "swift": (("class_declaration", "protocol_declaration", "function_declaration", "typealias_declaration"),
               ("simple_identifier", "type_identifier")),
     "ruby": (("class", "module", "method"), ("constant", "identifier")),

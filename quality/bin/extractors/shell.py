@@ -206,8 +206,15 @@ def _prose(seg):
     return seg["literal"] or command_word("".join(seg["chars"])) in PROSE_COMMANDS | {""}
 
 
-def _carries(seg, flag, shortest):
-    return mentions_prefix("".join(seg["chars"]), flag, shortest)
+# What could be running one of the checks: Python, a check by name, or a word the shell fills in.
+CHECK_RUNNER_RE = re.compile(r"python|\.py\b|check-|quality|[$`]|\b(?:sh|bash|zsh|eval|exec|xargs)\b")
+
+
+def _carries(seg, flag, shortest, piped):
+    """The flag in full, or an abbreviation where the pipeline could be running a check:
+    `prettier --write` is another program's own flag, not a shortened `--write-baseline`."""
+    text = "".join(seg["chars"])
+    return mentions_prefix(text, flag, shortest) and (flag in text or bool(CHECK_RUNNER_RE.search(piped[seg["pipeline"]])))
 
 
 def runs_with_flag(command, flag, shortest):
@@ -226,7 +233,10 @@ def _runs(scan, flag, shortest):
 def _carried(scan, flag, shortest):
     """The ids of the segments that carry the flag — in their own text, or through a
     subshell whose output they consume."""
-    carried = {id(seg) for seg in scan.segments if _carries(seg, flag, shortest)}
+    piped = {}
+    for seg in scan.segments:
+        piped[seg["pipeline"]] = piped.get(seg["pipeline"], "") + " " + "".join(seg["chars"])
+    carried = {id(seg) for seg in scan.segments if _carries(seg, flag, shortest, piped)}
     for seg in sorted(scan.segments, key=lambda s: -s["depth"]):
         if id(seg) in carried and seg["parent"] is not None:
             carried.add(id(seg["parent"]))

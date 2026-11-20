@@ -7,7 +7,8 @@ a file that is still imported. This reads every declaration and every
 identifier through ast-grep's grammar (nine languages; see
 extractors/references.py) and lists each declared name that appears nowhere
 but at its own declaration, across every swept file — tests included, unless
-`exclude` leaves them out.
+`exclude` leaves them out. A Rust `#[test]` function, or anything inside a
+`#[cfg(test)]` module, is not reported: the test harness calls it.
 
 It reports by default. "Nothing references this" is cheap to check and
 expensive to be sure of: an exported API is unreferenced by design, a
@@ -37,7 +38,7 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_config
-from extractors import references
+from extractors import patterns, references
 
 SECTION = "dead_symbols"
 DEFAULT_IGNORE = [r"^main$", r"^_?_init_?_?$", r"^setUp$", r"^tearDown$", r"^test", r"^Test", r"^[a-z]+$"]
@@ -74,7 +75,28 @@ def occurrences(rules):
         for _path, _line, _s, _e, text in idents:
             counts[text] = counts.get(text, 0) + 1
         declared += references.declared_symbols(_swept(rules, root, decl_kinds), idents)
-    return counts, declared
+    return counts, [d for d in declared if not in_rust_tests(d[0], d[1])]
+
+
+TEST_ATTRIBUTE_RE = re.compile(r"^\s*#\[(?:[\w:]+::)?test\b")
+_RUST = {}
+
+
+def in_rust_tests(path, line):
+    """Whether a Rust declaration is a test: inside a `#[cfg(test)]` item, or under a `#[test]`
+    attribute. The harness calls a test by attribute, so nothing in the code names it."""
+    if not path.endswith(".rs"):
+        return False
+    if path not in _RUST:
+        with open(path, errors="replace") as handle:
+            _RUST[path] = (patterns.rust_test_ranges(path), handle.read().split("\n"))
+    ranges, lines = _RUST[path]
+    above = line - 2
+    while above >= 0 and lines[above].lstrip().startswith(("#[", "//")):
+        if TEST_ATTRIBUTE_RE.match(lines[above]):
+            return True
+        above -= 1
+    return patterns.in_ranges(ranges, line)
 
 
 def dead_among(rules, config):

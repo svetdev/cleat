@@ -1,0 +1,4 @@
+Variables that happen to be unused are silently skipped in places where they shouldn't be.
+Unless the justfile contains `set lazy`, every invocation that evaluates the justfile's variables must evaluate all of them, not only the ones it needs, so that a failing assignment is always reported.
+For example, with a justfile whose only variable is defined as x := `exit 1`, running `just --command echo hello` currently prints "hello" and succeeds; it should instead fail with the usual "backtick failed with exit code 1" error pointing at x.
+Existing tests that pin down the old skipping behaviour should be adjusted to opt in with `set lazy`.

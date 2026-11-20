@@ -1,0 +1,52 @@
+diff --git a/src/search.rs b/src/search.rs
+index bb654f7..6d0c62d 100644
+--- a/src/search.rs
++++ b/src/search.rs
+@@ -245,12 +245,18 @@ impl Search {
+     for directory in directory.ancestors() {
+       let mut candidates = BTreeSet::new();
+ 
+-      let entries = fs::read_dir(directory).map_err(|io_error| SearchError::FilesystemIo {
+-        io_error,
+-        path: directory.to_owned(),
+-      })?;
++      let entries = match fs::read_dir(directory) {
++        Ok(entries) => Some(entries),
++        Err(io_error) if io_error.kind() == io::ErrorKind::PermissionDenied => None,
++        Err(io_error) => {
++          return Err(SearchError::FilesystemIo {
++            io_error,
++            path: directory.to_owned(),
++          });
++        }
++      };
+ 
+-      for entry in entries {
++      for entry in entries.into_iter().flatten() {
+         let entry = entry.map_err(|io_error| SearchError::FilesystemIo {
+           io_error,
+           path: directory.to_owned(),
+@@ -296,12 +302,18 @@ impl Search {
+   /// system directories given in `PROJECT_ROOT_CHILDREN`
+   fn project_root(config: &Config, directory: &Path) -> SearchResult<PathBuf> {
+     for directory in directory.ancestors() {
+-      let entries = fs::read_dir(directory).map_err(|io_error| SearchError::FilesystemIo {
+-        io_error,
+-        path: directory.to_owned(),
+-      })?;
++      let entries = match fs::read_dir(directory) {
++        Ok(entries) => Some(entries),
++        Err(io_error) if io_error.kind() == io::ErrorKind::PermissionDenied => None,
++        Err(io_error) => {
++          return Err(SearchError::FilesystemIo {
++            io_error,
++            path: directory.to_owned(),
++          });
++        }
++      };
+ 
+-      for entry in entries {
++      for entry in entries.into_iter().flatten() {
+         let entry = entry.map_err(|io_error| SearchError::FilesystemIo {
+           io_error,
+           path: directory.to_owned(),

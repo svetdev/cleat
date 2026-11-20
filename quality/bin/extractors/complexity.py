@@ -33,6 +33,7 @@ that closes its body (typescript.py, swift.py), never lengthened.
 """
 
 import csv
+import fnmatch
 import io
 import json
 import os
@@ -67,6 +68,7 @@ def masked_raw_strings(text):
 
 # The languages lizard reads from a masked copy: {language: (suffix, the mask)}.
 MASKED = {"rust": (".rs", masked_raw_strings), "swift": (".swift", swift.masked)}
+MASKED_SUFFIXES = tuple(suffix for suffix, _ in MASKED.values())
 
 
 def _mirror(paths, mirror, suffix, mask):
@@ -96,15 +98,28 @@ def _lizard_csv(paths, languages, excludes, root=None):
     """One lizard --csv run per reader over `paths`, or a ToolError: the other
     languages over the tree as it is, Rust and Swift each over a masked mirror of it."""
     others = [language for language in languages if language not in MASKED]
-    output = _lizard(paths, others, excludes, root) if others else ""
+    plain = _named_files_where(paths, lambda file: not file.endswith(MASKED_SUFFIXES))
+    output = _lizard(plain, others, excludes, root) if others and plain else ""
     for language in (l for l in languages if l in MASKED):
         output += _lizard_masked(paths, language, excludes, root)
     return output
 
 
+def _named_files_where(paths, keep):
+    """`paths` with a file named outright kept only where `keep(file)`; directories stay.
+    lizard reads a file it is handed by name whatever `-l` says, so under `--only` each
+    pass must be handed its own languages' files and no others — a Rust or Swift file
+    read unmasked as well as from its masked copy is every function twice, and the
+    second of each pair new to the baseline."""
+    return [p for p in paths if not os.path.isfile(p) or keep(p)]
+
+
 def _lizard_masked(paths, language, excludes, root):
     """lizard over a masked mirror of `paths` for one language, its paths put back."""
     suffix, mask = MASKED[language]
+    paths = _named_files_where(paths, lambda file: file.endswith(suffix))
+    if not paths:
+        return ""
     with tempfile.TemporaryDirectory(prefix="lizard-%s-" % language) as tmp:
         mirror = os.path.realpath(tmp)
         mirror_root = mirror + os.path.abspath(root) if root else None
@@ -161,6 +176,13 @@ def run_lizard(sources, languages, excludes, exclude_except=None, root=None):
     if exclude_except:
         output += _lizard_csv(exclude_except, languages, [], root)
     return output
+
+
+def excluded(relative, excludes):
+    """Whether an exclude glob drops the repo-relative path, as lizard would on a walk
+    from the root, where it sees `./tests/a.py`. lizard reads a file it is handed by name
+    whatever `-x` says, so under `--only` the globs are applied with this."""
+    return any(fnmatch.fnmatch(spelling, glob) for glob in excludes for spelling in (relative, "./" + relative))
 
 
 def only_files(only, sources, suffixes, path_of):

@@ -1,0 +1,7 @@
+An argument-count error should say `takes no arguments` where it now says `takes 0 arguments`. For example, `[private('foo')]` reports
+
+    error: attribute `private` got 1 argument but takes 0 arguments
+
+and should report
+
+    error: attribute `private` got 1 argument but takes no arguments

@@ -11,7 +11,7 @@ The reader is `extractors/complexity.py`: lizard for Python, TypeScript, Rust,
 Go, Kotlin, Java, Ruby, Swift and more, or SwiftLint for Swift natively. The
 ratchet is `ratchet.py`: functions over the gate on adoption day are in the
 baseline, keyed by file and declaration text so a shifted line still matches,
-with the numbers they had; a new one fails, a baselined one that grew fails,
+with the numbers they had; a new one fails, a baselined one that grew past its allowance fails,
 one that improved or vanished is a NOTE — and a --strict failure, which is how
 CI keeps the baseline exactly as loose as the code. A function renamed, its
 body the same in shape, is the same function: a rename is not new debt.
@@ -22,6 +22,15 @@ its declaration across the sources, inside this one — so moving branches into 
 single-use helper does not lower the number; making the logic shared, or
 simpler, does. attach.py sets it for a new project; a config without the key
 counts each function alone, as before.
+
+With `"growth"`, a baselined function may grow a little past the numbers the
+baseline recorded before it fails: by `share` of each, and by at least `cc`
+decisions and `lines` lines. A bug fix adds three lines to a function that was
+long before the fix, and refusing it sends the agent to trim lines elsewhere in
+the function rather than to make it simpler. The allowance is measured from the
+baseline, which a `--tighten` never raises, so it is spent once and not per
+change. attach.py sets it for a new project; a config without the key allows
+no growth, as before.
 
 Everything that names the project is the `complexity` section of quality.json
 (`complexity_lizard` is read as the same thing, for configs written before the
@@ -36,6 +45,7 @@ two gates were one):
     "skip_rust_tests": true,                      # drop `#[cfg(test)]` modules
     "ceilings":  {"cc": 8, "lines": 60},
     "helpers":   "inline",                        # count single-use helpers with their caller
+    "growth":    {"share": 0.1, "cc": 1, "lines": 5},   # how far a baselined function may grow past its entry
     "baseline":  "quality/complexity-baseline.json"
   }
 
@@ -223,8 +233,11 @@ def only_roots(only, sources, section, config):
     a configured language. A changed file outside every source — a test tree,
     tooling the config never named — or a shell script under a source the
     config reads for Python has no baseline entries because it was never
-    measured, and judging it here would read all of its standing debt as new."""
-    return complexity.only_files(only, sources, language_suffixes(section), config.path)
+    measured, and judging it here would read all of its standing debt as new. The same
+    holds for a file an exclude glob drops, unless `exclude_except` keeps it."""
+    kept = {os.path.realpath(p) for p in config.paths(section.get("exclude_except", []))}
+    named = [p for p in only if os.path.realpath(config.path(p)) in kept or not complexity.excluded(p, section.get("exclude", []))]
+    return complexity.only_files(named, sources, language_suffixes(section), config.path)
 
 
 def language_suffixes(section):
@@ -235,6 +248,16 @@ def language_suffixes(section):
         return (".swift",)
     return languages.suffixes(names)
 
+
+
+def growth_allowed(section):
+    """`ratchet.compare`'s `allowed` from the section's `growth`: the recorded value plus the
+    larger of its `share` and the metric's own floor. None when the section allows none."""
+    growth = section.get("growth")
+    if not growth:
+        return None
+    share = float(growth.get("share", 0))
+    return lambda metric, recorded: recorded + max(int(recorded * share), int(growth.get(metric, 0)))
 
 
 def show_values(values):
@@ -282,7 +305,8 @@ def main():
     entries, stored = ratchet.read(baseline_path)
     untouched = ratchet.outside(entries, args.only)
     over, entries = ratchet.restrict(over, entries, args.only)
-    verdict = ratchet.judge(over, entries, ["cc", "lines"], stored, measured, renames=True, same=same_function)
+    verdict = ratchet.judge(over, entries, ["cc", "lines"], stored, measured, renames=True, same=same_function,
+                            allowed=growth_allowed(section))
     gate = ratchet.Gate(
         noun="production function(s)",
         over="over the complexity gate (cyclomatic > %d or body > %d lines)" % (cc_ceiling, line_ceiling),

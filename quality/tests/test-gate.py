@@ -203,6 +203,15 @@ try:
           code == 0 and "ok    own-check" in out and "own check ran" in out and "skip  needs-a-tool (no-such-tool-xyz not installed)" in out, out + err)
     proc = subprocess.run([sys.executable, SCRIPT, "--config", config, "--gate", "own-check"], capture_output=True, text=True, env=dict(os.environ, OWN_EXIT="3"))
     check("a non-zero exit fails it", proc.returncode == 1 and "FAIL  own-check" in proc.stdout, proc.stdout)
+    write(config, json.dumps({"doc_size": [{"file": "README.md", "ceiling": 10}],
+                              "changed_coverage": {"report": "coverage.xml"},
+                              "gates": [{"name": "covered-now", "check": "changed_coverage", "postflight": False, "with": {"report": "coverage.xml"}}],
+                              "commands": [{"name": "suite", "run": "echo ran"}]}))
+    code, out, err = run("--config", config, "--list", "--postflight")
+    check("the gates that read a coverage report run after the commands that may write it",
+          out.split() == ["doc-size", "suite", "changed-coverage", "covered-now"], out + err)
+    code, out, err = run("--config", config, "--list")
+    check("and one named in `gates` with postflight off is judged at every stop, after the suite", out.split() == ["doc-size", "suite", "covered-now"], out + err)
     write(config, json.dumps({"commands": [{"name": "nameless"}]}))
     code, out, err = run("--config", config)
     check("an entry without run is refused", code == 2 and '"run"' in err, err)
@@ -254,6 +263,8 @@ try:
     refused = [
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py --write-baseline"}},
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py --write-base"}},
+        {"tool_name": "Bash", "tool_input": {"command": "c=crap; ./quality/bin/check-$c.py --write"}},
+        {"tool_name": "Bash", "tool_input": {"command": "echo --write | xargs quality/bin/check-crap.py"}},
         {"tool_name": "Bash", "tool_input": {"command": "cd quality/bin && python3 check-complexity.py --write-baseline"}},
         {"tool_name": "Bash", "tool_input": {"command": "echo 'python3 quality/bin/check-crap.py --write-baseline' | sh"}},
         {"tool_name": "Bash", "tool_input": {"command": "bash -c \"$(echo python3 quality/bin/check-crap.py --write-baseline)\""}},
@@ -285,6 +296,9 @@ try:
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-escapes.py --tighten"}},
         {"tool_name": "Bash", "tool_input": {"command": "python3 quality/bin/check-crap.py --tighten --gate web"}},
         {"tool_name": "Bash", "tool_input": {"command": "cat quality.json"}},
+        # another program's own --write is not a shortened --write-baseline
+        {"tool_name": "Bash", "tool_input": {"command": "npx prettier --write src/helpers/util.ts; npx jest src 2>&1 | tail -5"}},
+        {"tool_name": "Bash", "tool_input": {"command": "npx biome format --write packages/zod/src >/dev/null 2>&1; python3 quality/bin/gate.py 2>&1 | tail -15"}},
         {"tool_name": "Bash", "tool_input": {"command": "git diff quality/"}},
         # the flag mentioned, not run: a document through a heredoc, a commit message, a search
         {"tool_name": "Bash", "tool_input": {"command": "cat > docs/decisions/0007.md <<'EOF'\nOnly a person runs `--write-baseline`.\nEOF"}},

@@ -24,7 +24,8 @@ Gates come from three places in quality.json. Each configured section is a gate
 (the sugar every existing config uses); a `gates` list adds named ones — the
 same check over different facts; and a `commands` list runs the project's own
 checks beside them, so this one command is the whole preflight and no wrapper
-script has to list gates:
+script has to list gates. Commands run after cleat's gates and before the two that
+read a coverage report (changed-coverage, crap), so a command can write that report:
 
   "commands": [
     {"name": "migrations", "run": "scripts/check-migrations.py"},
@@ -109,6 +110,8 @@ BY_SECTION = {section: (name, script, strict, postflight) for section, name, scr
 # Gates that take --only FILES (the changed files, under --changed), and the one that takes --changed-only.
 SCOPED = {"complexity", "escapes", "conventions", "crap"}
 CHANGED_ONLY = {"duplication"}
+# Gates that judge a coverage report, and so run after the `commands` that may write it.
+READS_REPORT = {"changed-coverage", "crap"}
 # Gates that take --tighten, which the Stop hook passes: a baseline entry the agent's change
 # fixed is dropped and an improved one lowered as it goes, so --strict never fails on a fix.
 TIGHTENS = {"escapes", "exclusions", "conventions", "duplication", "sarif", "complexity", "crap"}
@@ -226,8 +229,10 @@ def from_commands(config):
 
 def configured(config):
     """Every gate this quality.json configures: the sections as sugar, the `gates` list,
-    then the project's own `commands`."""
-    return from_sections(config) + from_list(config) + from_commands(config)
+    then the project's own `commands` — with the gates that read a coverage report last,
+    so a command that runs the suite under coverage has written the report they judge."""
+    gates, commands = from_sections(config) + from_list(config), from_commands(config)
+    return only(gates, lambda g: g.check not in READS_REPORT) + commands + only(gates, lambda g: g.check in READS_REPORT)
 
 
 def gate_config_path(root, name):

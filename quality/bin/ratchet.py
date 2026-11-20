@@ -104,6 +104,7 @@ class Verdict:
         self.changed = []    # [(Finding, entry)] — the declaration line changed, no value went up
         self.stale = []      # [entry]
         self.drift = None    # a sentence, when the baseline was written under another tool or config
+        self.metrics = ()    # the ratcheted values, which a tighten never raises
 
     @property
     def failed(self):
@@ -145,10 +146,25 @@ def write_entries(path, entries, provenance):
         handle.write("\n")
 
 
+def _recorded(metrics, entry, values):
+    """The ratcheted metrics both a baseline entry and today's values carry."""
+    return [m for m in metrics if m in entry and m in values]
+
+
+def _never_raised(finding, entry, metrics):
+    """The finding's entry with no ratcheted value above the one recorded: growth inside a
+    gate's allowance passes today and is not written down as the new floor."""
+    out = finding.entry()
+    out.update({m: entry[m] for m in _recorded(metrics, entry, out) if out[m] > entry[m]})
+    return out
+
+
 def tightened(verdict):
-    """The entries a tighten writes: every held or improved finding at today's values, a
-    worsened entry as it was (never raised), a stale entry dropped, a new finding left out."""
-    kept = [f.entry() for f, _ in verdict.held + verdict.improved + verdict.changed] + [e for _, e in verdict.worsened]
+    """The entries a tighten writes: every held or improved finding at today's values (a
+    ratcheted value never above the one recorded), a worsened entry as it was, a stale
+    entry dropped, a new finding left out."""
+    kept = [_never_raised(f, e, verdict.metrics) for f, e in verdict.held + verdict.improved + verdict.changed]
+    kept += [e for _, e in verdict.worsened]
     return sorted(kept, key=lambda e: (e.get("file", ""), e.get("line", 0), e.get("text", "")))
 
 
@@ -228,16 +244,16 @@ def add_only_argument(parser):
 
 # ---------------------------------------------------------------- the judgment
 
-def compare(finding, entry, metrics):
+def compare(finding, entry, metrics, allowed=None):
     """"worsened", "improved" or "held": how `finding` reads against its baseline `entry`
     on the ratcheted `metrics` — higher is worse; a value the entry did not record is not
-    compared."""
-    comparable = [m for m in metrics if m in entry and m in finding.values]
-    if any(finding.values[m] > entry[m] for m in comparable):
+    compared. `allowed(metric, recorded)` is the most a value may reach before it counts
+    as worse, for a gate that lets a baselined site grow a little; the recorded value when absent."""
+    limit = allowed or (lambda metric, recorded: recorded)
+    shared = _recorded(metrics, entry, finding.values)
+    if any(finding.values[m] > limit(m, entry[m]) for m in shared):
         return "worsened"
-    if any(finding.values[m] < entry[m] for m in comparable):
-        return "improved"
-    return "held"
+    return "improved" if any(finding.values[m] < entry[m] for m in shared) else "held"
 
 
 def _affinity(finding, entry, metrics, f_index, e_index):
@@ -302,7 +318,7 @@ def resemblance(a, b):
     return sum(x == y for x, y in parts) / float(len(parts))
 
 
-def _pair_leftovers(verdict, metrics, same):
+def _pair_leftovers(verdict, metrics, same, allowed=None):
     """Pair each new finding with a stale entry in the same file that `same(finding, entry)`
     accepts, nearest recorded line first: one site under another spelling, `changed` when
     it is no worse and `worsened` against its old entry when it is."""
@@ -314,7 +330,7 @@ def _pair_leftovers(verdict, metrics, same):
         entry = min(candidates, key=lambda e: abs(e.get("line", finding.line) - finding.line))
         stale.remove(entry)
         verdict.new.remove(finding)
-        worse = compare(finding, entry, metrics) == "worsened"
+        worse = compare(finding, entry, metrics, allowed) == "worsened"
         (verdict.worsened if worse else verdict.changed).append((finding, entry))
     verdict.stale = stale
 
@@ -330,12 +346,14 @@ def _pairings(renames, same):
     return [p for p in (same_name if renames else None, same) if p]
 
 
-def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None, renames=False, same=None):
+def judge(findings, entries, metrics, stored_provenance=None, current_provenance=None, renames=False, same=None, allowed=None):
     """Sort `findings` against the baseline `entries` into the six outcomes. Identical
     `(file, text)` can repeat within a run; `_match_group` tells them apart. With
     `renames` — a gate over functions — what is left is paired by declared name; with
-    `same`, a gate's own test of one site under another spelling, last of all by that."""
+    `same`, a gate's own test of one site under another spelling, last of all by that.
+    `allowed` is `compare`'s: how far past its entry a finding may read before it is worse."""
     verdict = Verdict()
+    verdict.metrics = tuple(metrics)
     groups = {}
     for e in entries:
         groups.setdefault((e["file"], e["text"]), ([], []))[1].append(e)
@@ -345,11 +363,11 @@ def judge(findings, entries, metrics, stored_provenance=None, current_provenance
         group_findings, group_entries = groups[key]
         pairs, unmatched, stale = _match_group(group_findings, group_entries, metrics)
         for finding, entry in sorted(pairs, key=lambda fe: fe[0].line):
-            getattr(verdict, compare(finding, entry, metrics)).append((finding, entry))
+            getattr(verdict, compare(finding, entry, metrics, allowed)).append((finding, entry))
         verdict.new += unmatched
         verdict.stale += stale
     for pairing in _pairings(renames, same):
-        _pair_leftovers(verdict, metrics, pairing)
+        _pair_leftovers(verdict, metrics, pairing, allowed)
     verdict.new.sort(key=lambda f: (f.file, f.line))
     verdict.drift = drift_between(stored_provenance, current_provenance)
     return verdict

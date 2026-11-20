@@ -1,0 +1,8 @@
+Whenever just walks up through parent directories looking for something and
+reaches a directory it is not permitted to list (permission denied), it should
+treat that directory as containing nothing of interest and carry on with the
+parent instead of stopping with an I/O error; other I/O errors stay fatal.
+Example: with a `justfile` in `project/` and a subdirectory `project/sub` of
+mode 0300 (enterable but not listable), running `just` from `project/sub`
+should run the default recipe of `project/justfile`. Today it fails with
+"error: I/O error at `.../project/sub`: Permission denied".

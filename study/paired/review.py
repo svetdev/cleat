@@ -4,7 +4,8 @@
   review.py <work dir> [jobs] [pair id …]
 
 REVIEW_ARMS names the two arms compared, the second the one whose share is reported
-(default "plain,cleat"; any other pair writes to review-<x>-<y>/).
+(default "plain,cleat"; any other pair writes to review-<x>-<y>/). REVIEW_MODEL names
+a reviewer other than the agents' model; its judgments go to review…-<model>/.
 
 Each pair is a task and a repeat: its run without cleat against its run with it.
 The reviewer sees the task text and the two production diffs as A and B, cleat's
@@ -31,7 +32,8 @@ import score   # noqa: E402
 
 SEED = 20261102
 X, Y = os.environ.get("REVIEW_ARMS", "plain,cleat").split(",")
-TAG = "" if (X, Y) == ("plain", "cleat") else "-%s-%s" % (X, Y)
+MODEL = os.environ.get("REVIEW_MODEL", run.MODEL)   # another reviewer than the agents' own model, kept in its own directory
+TAG = ("" if (X, Y) == ("plain", "cleat") else "-%s-%s" % (X, Y)) + ("" if MODEL == run.MODEL else "-" + MODEL)
 BUDGET = "1"
 LEAK_RE = re.compile(r"\bcleat\b|quality gate|ratchet|baseline|cyclomatic|lizard", re.I)
 SCORES = ("correctness", "readability", "maintainability")
@@ -96,7 +98,7 @@ def judge(work, pair, first_a, order):
     prompt = PROMPT.format(repo=pair["task"]["repo"].replace("__", "/"), text=pair["task"]["text"],
                            a=pair["diffs"][a_arm], b=pair["diffs"][b_arm])
     with tempfile.TemporaryDirectory() as empty:
-        p = subprocess.run(["claude", "-p", prompt, "--model", run.MODEL, "--tools", "", "--setting-sources", "project",
+        p = subprocess.run(["claude", "-p", prompt, "--model", MODEL, "--tools", "", "--setting-sources", "project",
                             "--strict-mcp-config", "--json-schema", json.dumps(SCHEMA), "--output-format", "json",
                             "--max-budget-usd", BUDGET, "--no-session-persistence"],
                            cwd=empty, capture_output=True, text=True, timeout=900, env=run.clean_env())

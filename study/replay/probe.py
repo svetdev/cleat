@@ -113,7 +113,7 @@ VISIBLE = ("\n\nUpstream's tests for this change are already in the tree: {files
 
 def run_dir(work, point, tree, probe, repeat, mode):
     name = "%03d-%d" % (probe["index"], repeat) + ("-visible" if mode == "visible" else "")
-    return os.path.join(work, "probes", str(point), tree, name)
+    return os.path.join(work, "probes" + ("-" + run.MODEL if "STUDY_MODEL" in os.environ else ""), str(point), tree, name)
 
 
 def tests_of(lang, probe):

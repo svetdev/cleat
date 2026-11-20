@@ -25,13 +25,55 @@ sys.path.insert(0, HERE)
 import draw    # noqa: E402
 import score   # noqa: E402
 
-MODEL = "claude-opus-5-5"
+MODEL = os.environ.get("STUDY_MODEL", "claude-opus-5-5")   # another agent model, for probes with a weaker one
 BUDGET = "5"
 TIMEOUT = 2700
 # The arms, and the cleat checkout each attaches: STUDY_ARMS names them (default plain and
 # cleat), CLEAT_<ARM> overrides an arm's checkout — a variant of cleat runs as its own arm.
 ARMS = os.environ.get("STUDY_ARMS", "plain,cleat").split(",")
 CHECKOUTS = {arm: os.environ.get("CLEAT_" + arm.upper(), CLEAT) for arm in ARMS if arm != "plain"}
+# Arms that keep what attach wrote but run with no hooks: the instructions alone, nothing enforced.
+NO_HOOKS = set(filter(None, os.environ.get("STUDY_NO_HOOKS", "").split(",")))
+# Arms whose complexity ceiling differs from attach's: STUDY_CEILINGS="loose=12" sets cyclomatic 12
+# after attach, rewrites the complexity baseline at it, and has the agent's block name it.
+CEILINGS = dict((a, int(n)) for a, n in (x.split("=") for x in filter(None, os.environ.get("STUDY_CEILINGS", "").split(","))))
+# Arms attached with some gates taken out: STUDY_DROP_GATES="lean=complexity+duplication" deletes
+# those sections from quality.json after attach, so the gate and the Stop hook never run them.
+DROP_GATES = dict((a, g.split("+")) for a, g in (x.split("=") for x in filter(None, os.environ.get("STUDY_DROP_GATES", "").split(","))))
+# Arms that get words and nothing else: no attach, no gates in the tree, no hooks.
+WORDS_ONLY = set(filter(None, os.environ.get("STUDY_WORDS_ONLY", "").split(",")))
+WORDS = """
+## Functions
+
+Write each function simple from the start: one job, shallow nesting, few
+branches. Keep a function to a cyclomatic complexity of at most 8 and at most
+60 lines; a helper only one function calls counts with its caller, so cutting
+a function up afterwards does not make it simpler. Shape it simply before
+writing it.
+"""
+# Arms that get no gates and are asked for more work instead: the control for cleat's extra turns.
+EFFORT_ARMS = set(filter(None, os.environ.get("STUDY_EFFORT", "").split(",")))
+EFFORT = """
+## Before you stop
+
+Do not stop at the first version that passes. Reread your whole change against
+the task, run the full test suite, add tests for the behaviour you changed and
+its edge cases, and rework anything you would not want to maintain. Then go
+through the change once more before you stop.
+"""
+# Arms with changed-line coverage as a gate at every stop: STUDY_COVERAGE="cov". After attach,
+# coverage goes into .venv and one `commands` entry runs the suite under it, writes the report and
+# judges the changed lines. It is one entry because a section's gates run before `commands`, so a
+# separate changed_coverage gate would read the report of the stop before. Tests are left out of the
+# report: counted, the test lines an agent adds would all have run and carry any change over the minimum.
+COVERAGE_ARMS = set(filter(None, os.environ.get("STUDY_COVERAGE", "").split(",")))
+COVERAGE_OMIT = "*/tests/*,*/test/*,*/t/*,*/testing/*,*/test_*.py,*_test.py,*/conftest.py,tests/*,test/*,t/*,testing/*"
+COVERAGE_RUN = ("rm -f .coverage quality/.coverage.xml; "
+                ".venv/bin/python -m coverage run --omit='%s' -m pytest -q -p no:cacheprovider >/dev/null 2>&1; "
+                ".venv/bin/python -m coverage xml -q -o quality/.coverage.xml >/dev/null 2>&1; "
+                "python3 quality/bin/check-changed-coverage.py" % COVERAGE_OMIT)
+COVERAGE_MIN_LINES = 5   # most of these tasks change fewer executable lines than the check's default of 20
+
 PROMPT = """You are working in a Python repository. Implement the change described below.
 
 A virtualenv with the project and its test dependencies installed is at .venv; run the tests with `.venv/bin/python -m pytest`. Do not use the network. When the change is done, stop.
@@ -52,6 +94,61 @@ def git(root, *args):
                    check=True, capture_output=True)
 
 
+def drop_hooks(root):
+    path = os.path.join(root, ".claude", "settings.json")
+    with open(path) as handle:
+        settings = json.load(handle)
+    settings.pop("hooks", None)
+    with open(path, "w") as handle:
+        json.dump(settings, handle, indent=2)
+
+
+def drop_gates(root, gates):
+    path = os.path.join(root, "quality.json")
+    with open(path) as handle:
+        config = json.load(handle)
+    gone = [g for g in gates if config.pop(g, None) is not None]
+    with open(path, "w") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+    return gone
+
+
+def set_ceiling(root, cc):
+    path = os.path.join(root, "quality.json")
+    with open(path) as handle:
+        config = json.load(handle)
+    config["complexity"]["ceilings"]["cc"] = cc
+    with open(path, "w") as handle:
+        json.dump(config, handle, indent=2)
+    for doc in ("CLAUDE.md", "AGENTS.md"):
+        doc = os.path.join(root, doc)
+        if os.path.isfile(doc):
+            with open(doc) as handle:
+                text = handle.read()
+            with open(doc, "w") as handle:
+                handle.write(text.replace("cyclomatic 8,", "cyclomatic %d," % cc))
+    out = subprocess.run(["python3", "quality/bin/check-complexity.py", "--write-baseline"], cwd=root,
+                         capture_output=True, text=True, env=clean_env())
+    return dict(cc=cc, baseline=out.returncode, tail=(out.stdout + out.stderr)[-300:])
+
+
+def add_coverage(root):
+    venv_python = os.path.join(root, ".venv", "bin", "python")
+    subprocess.run([venv_python, "-m", "pip", "install", "-q", "--disable-pip-version-check", "coverage"], check=True, capture_output=True)
+    path = os.path.join(root, "quality.json")
+    with open(path) as handle:
+        config = json.load(handle)
+    config["changed_coverage"] = {"report": "quality/.coverage.xml", "minimum": 0.8, "min_lines": COVERAGE_MIN_LINES}
+    config.setdefault("commands", []).append({"name": "changed-coverage", "run": COVERAGE_RUN})
+    with open(path, "w") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+    with open(os.path.join(root, ".gitignore"), "a") as handle:
+        handle.write("\n.coverage\n.coverage.*\nquality/.coverage.xml\n")
+    return config["changed_coverage"]
+
+
 def prepare(clones, task, arm, root):
     draw.tree(os.path.join(clones, task["repo"]), task["parent"], root)
     with open(os.path.join(root, ".gitignore"), "a") as handle:
@@ -61,11 +158,26 @@ def prepare(clones, task, arm, root):
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "base")
     info = {}
-    if arm.split("-")[0] != "plain":
+    if arm.split("-")[0] in WORDS_ONLY | EFFORT_ARMS:
+        doc = next((d for d in ("CLAUDE.md", "AGENTS.md") if os.path.isfile(os.path.join(root, d))), "CLAUDE.md")
+        with open(os.path.join(root, doc), "a") as handle:
+            handle.write(EFFORT if arm.split("-")[0] in EFFORT_ARMS else WORDS)
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "attach cleat")
+        info["words"] = doc
+    elif arm.split("-")[0] != "plain":
         checkout = CHECKOUTS[arm.split("-")[0]]
         out = subprocess.run(["python3", os.path.join(checkout, "quality", "bin", "attach.py"), "--into", root],
                              capture_output=True, text=True, env=clean_env())
         info["attach"] = out.stdout[-3000:] + out.stderr[-1000:]
+        if arm.split("-")[0] in NO_HOOKS:
+            drop_hooks(root)
+        if arm.split("-")[0] in DROP_GATES:
+            info["dropped"] = drop_gates(root, DROP_GATES[arm.split("-")[0]])
+        if arm.split("-")[0] in COVERAGE_ARMS:
+            info["coverage"] = add_coverage(root)
+        if arm.split("-")[0] in CEILINGS:
+            info["ceiling"] = set_ceiling(root, CEILINGS[arm.split("-")[0]])
         git(root, "add", "-A")
         git(root, "commit", "-q", "-m", "attach cleat")
         gate = subprocess.run(["python3", "quality/bin/gate.py"], cwd=root, capture_output=True, text=True, env=clean_env())

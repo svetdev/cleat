@@ -70,12 +70,17 @@ try:
           and "quality/bin" not in read(os.path.join(root, "quality", "escapes-baseline.json")), out)
     config = json.load(open(os.path.join(root, "quality.json")))
     check("the languages are detected by file count, node_modules ignored", config["escapes"]["languages"] == ["python", "javascript", "typescript"], str(config.get("escapes")))
-    check("the documents get ceilings with a little room", {d["file"]: d["ceiling"] for d in config["doc_size"]} == {"CLAUDE.md": 200, "README.md": 200}, str(config.get("doc_size")))
+    check("the agent's documents get ceilings with a little room, and the README none", {d["file"]: d["ceiling"] for d in config["doc_size"]} == {"CLAUDE.md": 250}, str(config.get("doc_size")))
     check("the test tree is found and today's sleep count is the ceiling", config["hygiene"]["roots"] == ["tests"] and config["hygiene"]["habits"]["fixed sleeps"]["ceiling"] == 1, str(config.get("hygiene")))
     check("the escapes baseline is written", os.path.isfile(os.path.join(root, "quality", "escapes-baseline.json")), out)
     check("duplication is attached with its density baseline", "duplication" in config and os.path.isfile(os.path.join(root, "quality", "duplication-baseline.json")), out)
     check("without a coverage report, changed-line coverage is a note, not a gate", "changed_coverage" not in config and "tier 2" in out, out)
+    check("tests are left out of duplication, and in escapes only a skipped test counts there",
+          "*/tests/*" in config["duplication"].get("exclude", []) and "*.test.*" in config["escapes"].get("tests", []), str(config))
     if shutil.which("lizard"):
+        check("a baselined function is allowed a little growth", config.get("complexity", {}).get("growth") == {"share": 0.1, "cc": 1, "lines": 5}, str(config.get("complexity")))
+        check("and it leaves the tests out: the test tree by name and the files named as tests",
+              "*/tests/*" in config.get("complexity", {}).get("exclude", []) and "*.test.*" in config.get("complexity", {}).get("exclude", []), str(config.get("complexity")))
         check("with lizard installed the complexity ratchet is attached", "complexity" in config and os.path.isfile(os.path.join(root, "quality", "complexity-baseline.json")), out)
     else:
         check("without lizard the note says how to reach tier 1", "pip install lizard" in out, out)

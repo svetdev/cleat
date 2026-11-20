@@ -1,0 +1,48 @@
+diff --git a/src/justfile.rs b/src/justfile.rs
+index 805d020..d2537cc 100644
+--- a/src/justfile.rs
++++ b/src/justfile.rs
+@@ -270,7 +270,7 @@ impl<'src> Justfile<'src> {
+           &dotenv_arena,
+           overrides,
+           None,
+-          true,
++          false,
+           &root,
+           &scope_arena,
+           &mut scopes,
+@@ -315,7 +315,7 @@ impl<'src> Justfile<'src> {
+           &dotenv_arena,
+           overrides,
+           None,
+-          true,
++          false,
+           &root,
+           &scope_arena,
+           &mut scopes,
+diff --git a/tests/command.rs b/tests/command.rs
+index a8d2779..f2c7af6 100644
+--- a/tests/command.rs
++++ b/tests/command.rs
+@@ -194,6 +194,8 @@ fn dont_evaluate_unnecessary_variables() {
+   Test::new()
+     .justfile(
+       "
++        set lazy
++
+         export x := 'FOO'
+ 
+         y := `exit 1`
+diff --git a/tests/evaluate.rs b/tests/evaluate.rs
+index ff495aa..64c0706 100644
+--- a/tests/evaluate.rs
++++ b/tests/evaluate.rs
+@@ -264,6 +264,8 @@ fn dont_evaluate_unnecessary_variables() {
+   Test::new()
+     .justfile(
+       "
++        set lazy
++
+         x := 'FOO'
+ 
+         y := `exit 1`

@@ -137,6 +137,26 @@ try:
     check("but count when skip_rust_tests is off", len(duplication.find([rs_a, rs_b], repo, skip_rust_tests=False)) == 1)
     check("and density counts production lines only", duplication.density([], [rs_a, rs_b], repo) == (0, 2), str(duplication.density([], [rs_a, rs_b], repo)))
 
+    # the same edit made in both copies of a clone the base had keeps it consistent; it does not make one
+    two = os.path.join(tmp, "two")
+    one, other = os.path.join(two, "src", "sync.py"), os.path.join(two, "src", "aio.py")
+    for path, name in ((one, "send"), (other, "asend")):
+        write(path, "def %s(items):\n    total = 0\n" % name + BLOCK + "    return total\n")
+    git(two, "init", "-q", "-b", "main"); git(two, "config", "user.email", "t@example.com"); git(two, "config", "user.name", "T")
+    pair = os.path.join(two, "quality.json")
+    write(pair, json.dumps({"duplication": {"roots": ["src"], "languages": ["python"], "baseline": "b.json"}}))
+    git(two, "add", "-A"); git(two, "commit", "-q", "-m", "base")
+    edited = BLOCK.replace("item.count  # step 3", "item.count * item.rate  # step 3")
+    for path, name in ((one, "send"), (other, "asend")):
+        write(path, "def %s(items):\n    total = 0\n" % name + edited + "    return total\n")
+    code, out = run(pair, "--changed-only")
+    check("one line edited the same way in both copies of a standing clone is not a new copy", code == 0 and "the block has a twin" not in out, out)
+    grown = edited + "".join("    total = round(total * item.tax, %d)\n" % i for i in range(12))
+    for path, name in ((one, "send"), (other, "asend")):
+        write(path, "def %s(items):\n    total = 0\n" % name + grown + "    return total\n")
+    code, out = run(pair, "--changed-only")
+    check("but both copies grown by more than they held is new duplication", code == 1 and "the block has a twin" in out, out)
+
     write(config, json.dumps({"duplication": {"roots": ["src"], "baseline": "b.json"}}))
     code, out = run(config)
     check("a section naming no languages or suffixes is refused", code == 2 and "nothing to read" in out, out)

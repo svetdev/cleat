@@ -1,0 +1,4 @@
+When a module path names a submodule that does not exist, suggest the closest submodule name, as `--evaluate` already does. For example, in a justfile with `mod foo`, `just --list fob` should print
+
+    error: justfile does not contain submodule `fob`
+    Did you mean `foo`?

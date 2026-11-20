@@ -1,0 +1,93 @@
+diff --git a/src/usage.rs b/src/usage.rs
+index 881d7d4..e5da540 100644
+--- a/src/usage.rs
++++ b/src/usage.rs
+@@ -54,29 +54,7 @@ impl<D> ColorDisplay for Usage<'_, D> {
+       writeln!(f)?;
+       writeln!(f, "{}", color.heading().paint("Arguments:"))?;
+ 
+-      for (i, parameter) in self
+-        .recipe
+-        .parameters
+-        .iter()
+-        .filter(|p| !p.is_option())
+-        .enumerate()
+-      {
+-        if i > 0 {
+-          writeln!(f)?;
+-        }
+-
+-        write!(f, "  ")?;
+-
+-        write!(
+-          f,
+-          "{}",
+-          UsageParameter {
+-            parameter,
+-            long: true,
+-          }
+-          .color_display(color),
+-        )?;
+-      }
++      self.parameters(f, color, false)?;
+     }
+ 
+     if options {
+@@ -86,29 +64,37 @@ impl<D> ColorDisplay for Usage<'_, D> {
+ 
+       writeln!(f)?;
+       writeln!(f, "{}", color.heading().paint("Options:"))?;
+-      for (i, parameter) in self
+-        .recipe
+-        .parameters
+-        .iter()
+-        .filter(|p| p.is_option())
+-        .enumerate()
+-      {
+-        if i > 0 {
+-          writeln!(f)?;
+-        }
++      self.parameters(f, color, true)?;
++    }
+ 
+-        write!(f, "  ")?;
++    Ok(())
++  }
++}
+ 
+-        write!(
+-          f,
+-          "{}",
+-          UsageParameter {
+-            parameter,
+-            long: true,
+-          }
+-          .color_display(color),
+-        )?;
++impl<D> Usage<'_, D> {
++  fn parameters(&self, f: &mut Formatter, color: Color, options: bool) -> fmt::Result {
++    for (i, parameter) in self
++      .recipe
++      .parameters
++      .iter()
++      .filter(|p| p.is_option() == options)
++      .enumerate()
++    {
++      if i > 0 {
++        writeln!(f)?;
+       }
++
++      write!(f, "  ")?;
++
++      write!(
++        f,
++        "{}",
++        UsageParameter {
++          parameter,
++          long: true,
++        }
++        .color_display(color),
++      )?;
+     }
+ 
+     Ok(())

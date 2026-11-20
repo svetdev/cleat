@@ -58,6 +58,17 @@ try:
     write(config, json.dumps({"dead_symbols": section}))
     code, out = run(config, "--quiet")
     check("with everything exempt or ignored the report is empty and --quiet prints only the note", code == 0 and "REPORT" not in out, out)
+
+    rust = os.path.join(tmp, "rs")
+    write(os.path.join(rust, "src", "lib.rs"),
+          "struct Shop;\nimpl Shop {\n  fn total_price(&self) -> u32 { self.unit_price() }\n  fn unit_price(&self) -> u32 { 1 }\n"
+          "  fn old_price(&self) -> u32 { 2 }\n}\n#[test]\nfn total_is_one() { assert_eq!(Shop.total_price(), 1); }\n"
+          "#[cfg(test)]\nmod tests {\n  fn make_shop() {}\n}\n")
+    rust_config = os.path.join(rust, "quality.json")
+    write(rust_config, json.dumps({"dead_symbols": {"roots": ["src"], "language": "rust"}}))
+    code, out = run(rust_config)
+    check("Rust: a method called as `self.name()` is referenced, one called nowhere is reported", "old_price" in out and "unit_price" not in out and "total_price" not in out, out)
+    check("Rust: a #[test] function and what sits in a #[cfg(test)] module are not reported", "total_is_one" not in out and "make_shop" not in out, out)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

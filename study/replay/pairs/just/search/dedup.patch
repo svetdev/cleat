@@ -1,0 +1,63 @@
+diff --git a/src/search.rs b/src/search.rs
+index bb654f7..2943334 100644
+--- a/src/search.rs
++++ b/src/search.rs
+@@ -239,22 +239,29 @@ impl Search {
+     }
+   }
+ 
++  /// Read the entries of `directory`, attaching its path to any I/O error
++  fn entries(directory: &Path) -> SearchResult<impl Iterator<Item = SearchResult<fs::DirEntry>>> {
++    let entries = fs::read_dir(directory).map_err(|io_error| SearchError::FilesystemIo {
++      io_error,
++      path: directory.to_owned(),
++    })?;
++
++    Ok(entries.map(move |entry| {
++      entry.map_err(|io_error| SearchError::FilesystemIo {
++        io_error,
++        path: directory.to_owned(),
++      })
++    }))
++  }
++
+   /// Search upwards from `directory` for a file whose name matches one of
+   /// `JUSTFILE_NAMES`
+   fn justfile(config: &Config, directory: &Path) -> SearchResult<PathBuf> {
+     for directory in directory.ancestors() {
+       let mut candidates = BTreeSet::new();
+ 
+-      let entries = fs::read_dir(directory).map_err(|io_error| SearchError::FilesystemIo {
+-        io_error,
+-        path: directory.to_owned(),
+-      })?;
+-
+-      for entry in entries {
+-        let entry = entry.map_err(|io_error| SearchError::FilesystemIo {
+-          io_error,
+-          path: directory.to_owned(),
+-        })?;
++      for entry in Self::entries(directory)? {
++        let entry = entry?;
+         if let Some(name) = entry.file_name().to_str() {
+           let justfile_names: Box<dyn Iterator<Item = &str>> =
+             if let Some(justfile_names) = &config.justfile_names {
+@@ -296,16 +303,8 @@ impl Search {
+   /// system directories given in `PROJECT_ROOT_CHILDREN`
+   fn project_root(config: &Config, directory: &Path) -> SearchResult<PathBuf> {
+     for directory in directory.ancestors() {
+-      let entries = fs::read_dir(directory).map_err(|io_error| SearchError::FilesystemIo {
+-        io_error,
+-        path: directory.to_owned(),
+-      })?;
+-
+-      for entry in entries {
+-        let entry = entry.map_err(|io_error| SearchError::FilesystemIo {
+-          io_error,
+-          path: directory.to_owned(),
+-        })?;
++      for entry in Self::entries(directory)? {
++        let entry = entry?;
+         for project_root_child in PROJECT_ROOT_CHILDREN.iter().copied() {
+           if entry.file_name() == project_root_child {
+             return Ok(directory.to_owned());
