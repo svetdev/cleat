@@ -2,6 +2,10 @@
 """share — a replay's results as a card anyone can contribute without naming their code.
 
   share.py card <work dir> [up to change] [--note TEXT]    write study/contributed/<random id>.json
+  share.py state <attached tree> [history.json] [--note TEXT] [--feels easy|mixed|breaks] [--ai most|some|none]
+                                                           the same, with no replay and no agent
+  share.py take [file]                                     a card pasted in an issue or a comment, checked
+                                                           and written to study/contributed/ (stdin without a file)
   share.py check <card …>                                  what CI runs on every contributed card
 
 A card holds only the fields in SCHEMA: the language and the runner by kind, the size at the
@@ -13,6 +17,15 @@ as it stands (`status` says so): a run that found nothing counts as much as one 
 over NOTE_MAX characters, or an oracle that resolved less than 90% of its scored changes.
 Cards are pooled with each other only, never with the study's own runs (DECISIONS.md,
 2026-11-07).
+
+A state card (`"kind": "state"`) is where a codebase stands, for someone who runs no replay: per
+part of the tree its language, its size in a bucket and what `gate.py --summary` measured per
+1,000 lines, the duplicated share, and, when `replay/history.py`'s file for the repository is
+given, how many of its merged commits the gates would have refused and by which gate. A part
+goes in without its name. The whole tree's size, its age from first commit to last and its
+number of commits go in as buckets. `--feels` and `--ai` are the owner's own answers to two
+questions: whether adding a feature is easy, mixed or tends to break things, and whether most,
+some or none of the code was written by an AI agent.
 """
 
 import json
@@ -20,11 +33,15 @@ import os
 import re
 import secrets
 import statistics
+import subprocess
 import sys
+import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONTRIBUTED = os.path.join(os.path.dirname(HERE), "contributed")
 NOTE_MAX = 280
+ISSUES = "https://github.com/svetdev/cleat/issues/new"
+LINK_MAX = 6000
 ORACLE_SHARE = 0.9
 BUCKETS = ((2000, "under 2k"), (5000, "2k to 5k"), (10000, "5k to 10k"), (20000, "10k to 20k"),
            (50000, "20k to 50k"), (100000, "50k to 100k"), (None, "over 100k"))
@@ -46,10 +63,28 @@ SCHEMA = {
     "probes": {"*": {"runs": int, "resolved": int, "cost": NUM}},
     "mutants": {"*": {arm: [[int]] for arm in ARMS} | {"upstream": [[int]]}},
 }
+STATE_SCHEMA = {
+    "schema": int, "kind": str, "id": str, "cleat": str, "note": str, "duplicated": NUM,
+    "size": str, "age": str, "commits": str, "feels": str, "ai": str,
+    "parts": [{"language": str, "size": str, "measures": {"*": NUM}}],
+    "history": {"commits": int, "refused": int, "gates": {"*": int}},
+}
+MEASURES = ("complexity_per_kloc", "over_cc_per_kloc", "over_lines_per_kloc", "escapes_per_kloc", "test_ratio",
+            "assertions_per_test", "unchecked_share")
+GATE_NAME = r"[a-z][a-z-]{1,30}"
+AGES = ((90, "under 3 months"), (365, "3 to 12 months"), (730, "1 to 2 years"), (1825, "2 to 5 years"),
+        (None, "over 5 years"))
+COMMITS = ((100, "under 100"), (500, "100 to 500"), (2000, "500 to 2k"), (10000, "2k to 10k"), (None, "over 10k"))
+FEELS = ("easy", "mixed", "breaks", "unsaid")
+AI = ("most", "some", "none", "unsaid")
 
 
-def bucket(lines):
-    return next(name for top, name in BUCKETS if top is None or lines < top)
+def bucket(count, table=BUCKETS):
+    return next(name for top, name in table if top is None or count < top)
+
+
+def names(table):
+    return [name for _, name in table]
 
 
 def runner(test_command):
@@ -77,21 +112,49 @@ def shape_errors(value, shape, where="card"):
     return out
 
 
-def check(card):
-    """Every reason this card cannot be contributed."""
-    out = shape_errors(card, SCHEMA)
-    if out:
-        return out
-    missing = [k for k in SCHEMA if k not in card]
-    out += ["card has no %s" % k for k in missing]
+def common_errors(card, schema):
+    """What every kind of card must hold: its fields, a random id, cleat's commit, a short note."""
+    out = ["card has no %s" % k for k in schema if k not in card]
     out += [] if card.get("schema") == 1 else ["schema is not 1"]
     out += [] if re.fullmatch(r"[0-9a-f]{12}", card.get("id", "")) else ["id is not 12 hex digits"]
     out += [] if re.fullmatch(r"[0-9a-f]{40}", card.get("cleat", "")) else ["cleat is not a commit"]
+    out += [] if len(card.get("note", "")) <= NOTE_MAX else ["note is over %d characters" % NOTE_MAX]
+    return out
+
+
+def check_state(card):
+    """Every reason this state card cannot be contributed."""
+    out = shape_errors(card, STATE_SCHEMA)
+    if out:
+        return out
+    out += common_errors(card, STATE_SCHEMA)
+    sizes = names(BUCKETS)
+    for part in card.get("parts", []):
+        out += [] if part.get("size") in sizes else ["a part's size is not a bucket"]
+        out += [] if part.get("language") in LANGUAGES else ["a part's language is not one of: " + ", ".join(LANGUAGES)]
+        out += ["%s is not a measure a part may hold" % k for k in part.get("measures", {}) if k not in MEASURES]
+    out += [] if card.get("parts") else ["card has no part"]
+    for field, allowed in (("size", names(BUCKETS)), ("age", names(AGES)), ("commits", names(COMMITS)),
+                           ("feels", FEELS), ("ai", AI)):
+        out += [] if card.get(field) in allowed else ["%s is not one of: %s" % (field, ", ".join(allowed))]
+    history = card.get("history", {})
+    out += ["%s is not a gate's name" % k for k in history.get("gates", {}) if not re.fullmatch(GATE_NAME, k)]
+    out += [] if history.get("refused", 0) <= history.get("commits", 0) else ["more commits refused than replayed"]
+    return out
+
+
+def check(card):
+    """Every reason this card cannot be contributed."""
+    if isinstance(card, dict) and card.get("kind") == "state":
+        return check_state(card)
+    out = shape_errors(card, SCHEMA)
+    if out:
+        return out
+    out += common_errors(card, SCHEMA)
     out += [] if card.get("size") in [name for _, name in BUCKETS] else ["size is not a bucket"]
     out += [] if card.get("language") in LANGUAGES else ["language is not one of: " + ", ".join(LANGUAGES)]
     out += [] if card.get("runner") in RUNNERS + ("other",) else ["runner is not a known kind"]
     out += [] if card.get("status") in ("complete", "stopped") else ["status is not complete or stopped"]
-    out += [] if len(card.get("note", "")) <= NOTE_MAX else ["note is over %d characters" % NOTE_MAX]
     oracle = card.get("oracle", {})
     if oracle.get("resolved", 0) < ORACLE_SHARE * oracle.get("scored", 0) or not oracle.get("scored"):
         out.append("the oracle resolved %s of %s scored changes, under 90%%: the harness or adapter was failing"
@@ -181,10 +244,65 @@ def card(work, upto=None, note=""):
         mutants=mutant_counts(work, points))
 
 
-def write_card(work, upto=None, note=""):
-    got = card(os.path.abspath(work), upto, note)
+def cleat_commit():
+    done = subprocess.run(["git", "-C", HERE, "rev-parse", "HEAD"], capture_output=True, text=True)
+    return done.stdout.strip()
+
+
+def part_row(part):
+    language = part.get("language") if part.get("language") in LANGUAGES else "other"
+    measures = {k: round(part[k], 3) for k in MEASURES if isinstance(part.get(k), NUM)}
+    return dict(language=language, size=bucket(part.get("lines", 0)), measures=measures)
+
+
+def history_counts(path):
+    """Commits replayed, commits refused and refusals by gate from history.py's file; zeros without one."""
+    if not path:
+        return dict(commits=0, refused=0, gates={})
+    with open(path) as handle:
+        rows = json.load(handle)
+    gates = {}
+    for row in rows:
+        for name in row.get("failing") or []:
+            if re.fullmatch(GATE_NAME, name):
+                gates[name] = gates.get(name, 0) + 1
+    return dict(commits=len(rows), refused=sum(1 for row in rows if row.get("failing")), gates=gates)
+
+
+def repository_age(tree):
+    """(age bucket, commits bucket) of the tree's history: first commit to last, and how many."""
+    def git(*args):
+        return subprocess.run(["git", "-C", tree, *args], capture_output=True, text=True).stdout.split()
+    stamps = sorted(int(t) for t in git("log", "--format=%ct"))
+    days = (stamps[-1] - stamps[0]) / 86400 if stamps else 0
+    return bucket(days, AGES), bucket(len(stamps), COMMITS)
+
+
+def state_card(tree, history=None, note="", feels="unsaid", ai="unsaid"):
+    """The state card for a tree cleat is attached to: its summary, and history.py's counts if given."""
+    done = subprocess.run([sys.executable, os.path.join("quality", "bin", "gate.py"), "--summary", "--json"],
+                          cwd=tree, capture_output=True, text=True)
+    if done.returncode:
+        raise SystemExit("gate.py --summary failed in %s:\n%s" % (tree, done.stderr or done.stdout))
+    summary = json.loads(done.stdout)
+    duplicated = next((g["total"] for g in summary.get("gates", []) if g.get("check") == "duplication"), 0)
+    age, commits = repository_age(tree)
+    return dict(schema=1, kind="state", id=secrets.token_hex(6), cleat=cleat_commit(), note=note[:NOTE_MAX],
+                size=bucket(summary.get("lines", 0)), age=age, commits=commits, feels=feels, ai=ai,
+                duplicated=duplicated, parts=[part_row(p) for p in summary.get("parts", [])],
+                history=history_counts(history))
+
+
+def issue_link(got):
+    """A link that opens a new issue with the card already in it; empty when the card is too long for one."""
+    body = "```json\n%s\n```" % json.dumps(got, separators=(",", ":"))
+    link = ISSUES + "?" + urllib.parse.urlencode({"title": "card %s" % got["id"], "body": body})
+    return link if len(link) <= LINK_MAX else ""
+
+
+def save(got):
+    """Write a card that passes the check; refuse one that does not."""
     problems = check(got)
-    print(json.dumps(got, indent=1))
     if problems:
         raise SystemExit("not shareable:\n  " + "\n  ".join(problems))
     os.makedirs(CONTRIBUTED, exist_ok=True)
@@ -192,7 +310,30 @@ def write_card(work, upto=None, note=""):
     with open(path, "w") as handle:
         json.dump(got, handle, indent=1)
         handle.write("\n")
-    print("\nwrote %s: this is everything it shares. Read it, then open a pull request with that one file." % path)
+    return path
+
+
+def write_card(work, upto=None, note="", got=None):
+    got = got or card(os.path.abspath(work), upto, note)
+    print(json.dumps(got, indent=1))
+    path = save(got)
+    print("\nwrote %s: this is everything it shares. Read it." % path)
+    link = issue_link(got)
+    if link:
+        print("To share it, open this link and press Submit (nothing is sent until you do):\n%s" % link)
+    print("Or open a pull request with that one file.")
+
+
+def take(text):
+    """The card inside pasted text, from its first brace to its last, checked and written."""
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end < start:
+        raise SystemExit("no card found in the text")
+    try:
+        got = json.loads(text[start:end + 1])
+    except ValueError as err:
+        raise SystemExit("the card is not JSON: %s" % err)
+    print("wrote %s" % save(got))
 
 
 def check_files(paths):
@@ -214,10 +355,18 @@ def check_files(paths):
 def main(argv):
     if argv[:1] == ["check"]:
         return check_files(argv[1:])
-    if argv[:1] == ["card"] and len(argv) >= 2:
-        note = argv[argv.index("--note") + 1] if "--note" in argv else ""
-        rest = [a for i, a in enumerate(argv[1:], 1) if a != "--note" and argv[i - 1] != "--note"]
-        write_card(rest[0], rest[1] if len(rest) > 1 else None, note)
+    if argv[:1] == ["take"]:
+        take(open(argv[1]).read() if len(argv) > 1 else sys.stdin.read())
+        return 0
+    if argv[:1] in (["card"], ["state"]) and len(argv) >= 2:
+        flags = ("--note", "--feels", "--ai")
+        said = {f: argv[argv.index(f) + 1] for f in flags if f in argv[:-1]}
+        rest = [a for i, a in enumerate(argv[1:], 1) if a not in flags and argv[i - 1] not in flags]
+        second, note = (rest[1] if len(rest) > 1 else None), said.get("--note", "")
+        made = None
+        if argv[0] == "state":
+            made = state_card(os.path.abspath(rest[0]), second, note, said.get("--feels", "unsaid"), said.get("--ai", "unsaid"))
+        write_card(rest[0], second, note, made)
         return 0
     raise SystemExit(__doc__)
 

@@ -157,5 +157,71 @@ class Pieces(unittest.TestCase):
         self.assertEqual(share.runner("./acme-test-runner {files} {out}"), "other")
 
 
+class StateCard(unittest.TestCase):
+    """A state card: where a codebase stands, with no replay behind it."""
+
+    def card(self, tmp):
+        part = dict(name="%s-core" % SECRET, roots=["%s/src" % SECRET], language="kotlin", lines=24000,
+                    complexity_per_kloc=1.2345, escapes_per_kloc=9.9, test_ratio=None, standing={"x": [0.5, 18]})
+        rows = [dict(sha="a" * 40, failing=["complexity", "escapes"], files=["%s/Api.kt" % SECRET], said=SECRET),
+                dict(sha="b" * 40, failing=[], files=[], said=""),
+                dict(sha="c" * 40, failing=["%s gate" % SECRET], files=[], said="")]
+        path = os.path.join(tmp, "%s.json" % SECRET)
+        dump(path, rows)
+        return dict(schema=1, kind="state", id="0123456789ab", cleat="f" * 40, note="", duplicated=2.5,
+                    size="20k to 50k", age="1 to 2 years", commits="500 to 2k", feels="breaks", ai="most",
+                    parts=[share.part_row(part)], history=share.history_counts(path))
+
+    def test_holds_numbers_and_no_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            card = self.card(tmp)
+        self.assertEqual(share.check(card), [])
+        self.assertNotIn(SECRET, json.dumps(card))
+        self.assertEqual(card["parts"], [dict(language="kotlin", size="20k to 50k",
+                                              measures=dict(complexity_per_kloc=1.234, escapes_per_kloc=9.9))])
+        self.assertEqual(card["history"], dict(commits=3, refused=2, gates=dict(complexity=1, escapes=1)))
+
+    def test_a_card_comes_back_from_its_issue_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            card = self.card(tmp)
+            link = share.issue_link(card)
+            self.assertTrue(link.startswith(share.ISSUES + "?"))
+            body = share.urllib.parse.parse_qs(link.split("?", 1)[1])["body"][0]
+            share.CONTRIBUTED, kept = os.path.join(tmp, "contributed"), share.CONTRIBUTED
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    share.take("thanks for cleat!\n" + body + "\nsent from my phone")
+                with open(os.path.join(tmp, "contributed", card["id"] + ".json")) as handle:
+                    self.assertEqual(json.load(handle), card)
+                bad = dict(card, repo="acme/billing")
+                with self.assertRaises(SystemExit):
+                    share.take(json.dumps(bad))
+            finally:
+                share.CONTRIBUTED = kept
+
+    def test_age_and_commits_are_buckets(self):
+        self.assertEqual(share.bucket(40, share.AGES), "under 3 months")
+        self.assertEqual(share.bucket(800, share.AGES), "2 to 5 years")
+        self.assertEqual(share.bucket(99, share.COMMITS), "under 100")
+        self.assertEqual(share.bucket(25000, share.COMMITS), "over 10k")
+
+    def test_check_refuses_what_a_state_card_may_not_hold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            good = self.card(tmp)
+        for change, said in ((lambda c: c["parts"][0].update(name="core"), "not a field"),
+                             (lambda c: c["parts"][0]["measures"].update(billing=1), "not a measure"),
+                             (lambda c: c["history"]["gates"].update({"Acme Billing": 1}), "not a gate"),
+                             (lambda c: c["history"].update(refused=9), "more commits refused"),
+                             (lambda c: c.update(parts=[]), "no part"),
+                             (lambda c: c.update(age="since 2019"), "age is not one of"),
+                             (lambda c: c.update(commits="1234"), "commits is not one of"),
+                             (lambda c: c.update(feels="%s is painful" % SECRET), "feels is not one of"),
+                             (lambda c: c.update(ai="yes"), "ai is not one of"),
+                             (lambda c: c.update(note="x" * 300), "note is over")):
+            card = json.loads(json.dumps(good))
+            change(card)
+            self.assertTrue(any(said in problem for problem in share.check(card)), said)
+
+
 if __name__ == "__main__":
     unittest.main()

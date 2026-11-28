@@ -10,7 +10,7 @@
 
 Say why here. Loosening is a policy decision; tightening needs no justification.
 
-## If this adds a replay card
+## If this adds a card
 
-- [ ] The card is the file `share.py card` wrote, unedited but for the note
+- [ ] The card is the file `share.py card` or `share.py state` wrote, unedited but for the note
 - [ ] I read every field, and the note names no company, client or person

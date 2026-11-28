@@ -43,4 +43,6 @@ The replay in `study/replay/` can run on your own repository, private included, 
 3. Run the `oracle-1` chain first. `chain.py` starts no agent chain until it resolves 90% of the scored changes.
 4. `share.py card <work dir>` writes `study/contributed/<id>.json` and prints all of it. Read it, then open a pull request with that one file.
 
+Without a replay: `study/try-it.md` has a prompt for a coding agent. It measures where your code stands and what the gates would have refused in your last 60 commits, and ends in a link that opens an issue holding the card.
+
 A card holds counts, ratios and size buckets: no repository name, path, commit text, date, command or code. Its optional note goes in public, so it names no company, client or person. The pull request shows your account; use another if that matters. Cards are pooled with each other, never with the study's own runs.
