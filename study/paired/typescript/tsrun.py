@@ -44,6 +44,39 @@ ALLOWED = ["Read", "Glob", "Grep", "Edit(./**)", "Write(./**)",
            "Bash(ls *)", "Bash(head *)", "Bash(tail *)", "Bash(wc *)",
            "Bash(python3 quality/bin/*)"]   # cleat's own gates, which its instructions tell the agent to run
 IGNORED = ["node_modules/", ".tsreport-*", "quality/.running/", "quality/.events.jsonl", ".cleat-gate-*.json"]
+# A runner's whole suite under coverage, from the directory that configures it, writing LCOV:
+# what STUDY_COVERAGE and STUDY_CRAP arms run at every stop, as run.py's do with coverage.py.
+SUITES = {"vitest": "%s run --coverage.enabled=true --coverage.reportOnFailure=true --coverage.reporter=lcov --coverage.reportsDirectory=%s",
+          "jest": "%s --ci --coverage --coverageReporters=lcov --coverageDirectory=%s"}
+REPORT = "quality/.coverage/lcov.info"
+SUITE_RAN = ('test -s %s || { echo "FAIL: the test suite wrote no coverage report (exit $(cat quality/.suite-exit)), '
+             'so coverage cannot be judged:"; tail -5 quality/.suite.log; exit 1; }; ' % REPORT)
+
+
+def stack(root, task):
+    """run.PYTHON for this tree: the runner of the task's tests, from its own directory. Its
+    report names files from that directory, and cleat reads a relative name from the root, so
+    the names are put under the directory; the runner's count of tests is the log's last line."""
+    runner, where = tsdraw.locate(root, task["tests"][0])
+    if runner not in SUITES:
+        raise ValueError("no coverage command for the runner %s" % runner)
+    rel, back = os.path.relpath(where, root), os.path.relpath(root, where)
+    suite = SUITES[runner] % (os.path.relpath(tsdraw.binary_for(root, where, runner), where), os.path.join(back, "quality", ".coverage"))
+    under = "" if rel == "." else "sed -i '' -e 's|^SF:\\([^/]\\)|SF:%s/\\1|' %s 2>/dev/null; " % (rel, REPORT)
+    return dict(suite="rm -rf quality/.coverage; (cd %s && CI=1 NO_COLOR=1 FORCE_COLOR=0 %s) >quality/.suite.log 2>&1; echo $? >quality/.suite-exit; %s"
+                      "grep -E '^ *Tests:? ' quality/.suite.log | tail -1 >>quality/.suite.log; " % (rel, suite, under),
+                ran=SUITE_RAN, report=REPORT, reader="lcov", install=lambda tree: None,
+                ignored="\nquality/.coverage/\nquality/.suite.log\nquality/.suite-exit\n")
+
+
+def add_gates(task, arm, root):
+    """The coverage and CRAP gates of the arms STUDY_COVERAGE and STUDY_CRAP name, as run.py adds them."""
+    name, info = arm.split("-")[0], {}
+    if name in run.COVERAGE_ARMS:
+        info["coverage"] = run.add_coverage(root, stack(root, task))
+    if name in run.CRAP_ARMS:
+        info["crap"] = run.add_crap(root, run.CRAP_THRESHOLDS[name], stack(root, task))
+    return info
 
 
 def clear_hooks(root):
@@ -58,6 +91,7 @@ def clear_hooks(root):
 
 def prepare(clones, task, arm, root):
     draw.tree(os.path.join(clones, task["repo"]), task["parent"], root)
+    stripped = run.strip_tests(task, root)
     subprocess.run(["git", "init", "-q"], cwd=root, capture_output=True)   # install hooks expect a repository
     code, said = tsdraw.install_recipe(root, task["recipe"])
     clear_hooks(root)
@@ -65,12 +99,13 @@ def prepare(clones, task, arm, root):
         handle.write("\n" + "\n".join(IGNORED) + "\n")
     run.git(root, "add", "-A")
     run.git(root, "commit", "-q", "-m", "base")
-    info = dict(install=code)
+    info = dict(install=code, **({"stripped": stripped} if stripped else {}))
     if arm.split("-")[0] != "plain":
         checkout = run.CHECKOUTS[arm.split("-")[0]]
         out = subprocess.run(["python3", os.path.join(checkout, "quality", "bin", "attach.py"), "--into", root],
                              capture_output=True, text=True, env=run.clean_env())
         info["attach"] = out.stdout[-3000:] + out.stderr[-1000:]
+        info.update(add_gates(task, arm, root))
         if arm.split("-")[0] in run.CEILINGS:
             info["ceiling"] = run.set_ceiling(root, run.CEILINGS[arm.split("-")[0]])
         run.git(root, "add", "-A")
@@ -129,6 +164,7 @@ def one(clones, work, task, arm):
     if run.limited(out_dir, info["agent"]):
         run.PARKED.set()
         return task["id"], arm, "parked: usage limit, run again after it resets"
+    run.keep_work(root, out_dir)
     info["score"] = tsscore.score_run(clones, task, arm, root, out_dir)
     with open(os.path.join(out_dir, "score.json"), "w") as handle:
         json.dump(info, handle, indent=1)

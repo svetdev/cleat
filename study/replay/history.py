@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """history — cleat's gates over a repository's own merged commits, no agent and no tokens.
 
-  history.py <clone> <work dir> [commits] [jobs]
+  history.py <clone> <work dir> [commits] [jobs] [newest commit]
 
 For each of the last `commits` first-parent commits that change a source file: the parent's tree,
 cleat attached to it so the baselines are the parent's debt, the commit's files laid on, and the
-gates run as the Stop hook runs them (`gate.py --changed`). The project's own tests are left out:
-they would need an install per commit. A commit the maintainers merged and a gate refuses is a
+gates run as the Stop hook runs them (`gate.py --changed`). The project's own tests are left out
+(`attach.py --no-tests`): they would need an install per commit, and a suite that builds or
+needs the network would run at every one. A commit the maintainers merged and a gate refuses is a
 candidate false refusal, or debt a person chose to take; the output keeps the gate's own lines so
 a sample can be read and told apart.
+`newest commit` (default HEAD) starts the stretch further back, at a commit old enough for
+later fixes to have landed on it (gates/later_fixes.py). STUDY_SHAS names a file of commits
+to replay instead, one per line (gates/eras.py picks them).
 Writes <work dir>/<repo>.json: one row per commit with the gates that failed.
 """
 
@@ -35,25 +39,18 @@ def env():
     return env
 
 
-def commits(clone, count):
+def commits(clone, count, newest="HEAD"):
     """The newest `count` first-parent, single-parent commits that change a source file: (sha, parent, files)."""
     out = []
-    for sha in git(clone, "rev-list", "--first-parent", "--no-merges", "-n", str(count * 4), "HEAD").stdout.split():
+    listed = os.environ.get("STUDY_SHAS")
+    shas = open(listed).read().split() if listed else git(clone, "rev-list", "--first-parent", "--no-merges", "-n", str(count * 4), newest).stdout.split()
+    for sha in shas:
         files = [line.split("\t") for line in git(clone, "diff", "--name-status", "--no-renames", sha + "^", sha).stdout.splitlines()]
         if any(f[-1].endswith(SOURCE) for f in files if len(f) > 1):
             out.append((sha, files))
         if len(out) == count:
             break
     return out
-
-
-def drop(root, gates):
-    path = os.path.join(root, "quality.json")
-    config = json.load(open(path))
-    for gate in gates:
-        config.pop(gate, None)
-    with open(path, "w") as handle:
-        json.dump(config, handle, indent=2)
 
 
 def one(clone, work, sha, files):
@@ -67,11 +64,10 @@ def one(clone, work, sha, files):
         git(root, "init", "-q")
         git(root, "add", "-A")
         git(root, "commit", "-q", "-m", "base")
-        attach = subprocess.run(["python3", os.path.join(CLEAT, "quality", "bin", "attach.py"), "--into", root],
+        attach = subprocess.run(["python3", os.path.join(CLEAT, "quality", "bin", "attach.py"), "--no-tests", "--into", root],
                                 capture_output=True, text=True, env=env())
         if attach.returncode != 0:
             return dict(sha=sha, error="attach: " + (attach.stdout + attach.stderr)[-300:])
-        drop(root, ["commands"])
         git(root, "add", "-A")
         git(root, "commit", "-q", "-m", "attach")
         for status, path in [(f[0], f[-1]) for f in files if len(f) > 1]:
@@ -88,19 +84,19 @@ def one(clone, work, sha, files):
         gate = subprocess.run(["python3", "quality/bin/gate.py", "--changed"], cwd=root, capture_output=True, text=True, env=env())
         said = gate.stdout + gate.stderr
         failing = sorted({line.split()[1] for line in said.splitlines() if line.split()[:1] == ["FAIL"] and len(line.split()) > 1})
-        stat = git(root, "diff", "--shortstat", "HEAD").stdout.strip()
+        stat = git(clone, "diff", "--shortstat", sha + "^", sha).stdout.strip()   # the commit's own size, new files included
         return dict(sha=sha, exit=gate.returncode, failing=failing, files=[f[-1] for f in files if len(f) > 1][:40],
                     stat=stat, said=said[-4000:] if failing else "")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
 
-def main(clone, work, count="100", jobs="6"):
+def main(clone, work, count="100", jobs="6", newest="HEAD"):
     clone, work = os.path.abspath(clone), os.path.abspath(work)
     if os.path.realpath(work).startswith(os.path.realpath(CLEAT) + os.sep):
         raise SystemExit("work dir %s is inside the cleat repository" % work)
     os.makedirs(work, exist_ok=True)
-    todo = commits(clone, int(count))
+    todo = commits(clone, int(count), newest)
     with concurrent.futures.ThreadPoolExecutor(int(jobs)) as pool:
         rows = list(pool.map(lambda c: one(clone, work, *c), todo))
     name = os.path.basename(clone.rstrip("/"))

@@ -1,0 +1,247 @@
+{
+  "about": "A booking system for meeting rooms, asked for one feature at a time. Each request names its routes so the hidden tests have a fixed interface. No request asks for tests. Times are ISO 8601 in UTC; an error is a status code with a JSON body {\"error\": \"...\"}.",
+  "start": "npm start",
+  "environment": {"PORT": "the port to listen on", "DB_FILE": "the SQLite file that holds the data"},
+  "features": [
+    {
+      "id": 1,
+      "name": "rooms",
+      "routes": ["GET /health", "POST /rooms", "GET /rooms", "GET /rooms/:id"],
+      "request": "I'm starting a booking system for our meeting rooms and need the backend: an HTTP API that speaks JSON. The project folder already has Hono and TypeScript installed, and Node runs TypeScript directly and has SQLite built in (node:sqlite). `npm start` must start the server on the port given in the PORT environment variable (3000 if it is not set) and keep its data in the SQLite file named by the DB_FILE environment variable (data.db if it is not set), so nothing is lost when the server restarts. Every error should be a JSON body like {\"error\": \"what went wrong\"} with a fitting status code. To begin with I need rooms. GET /health answers 200 with {\"status\": \"ok\"}. POST /rooms takes {name, capacity} and answers 201 with {id, name, capacity}; the name must not be empty and the capacity must be a positive whole number, otherwise 400. GET /rooms answers with the array of all rooms. GET /rooms/:id answers with one room, or 404 if there is none."
+    },
+    {
+      "id": 2,
+      "name": "customers",
+      "routes": ["POST /customers", "GET /customers", "GET /customers/:id"],
+      "request": "Now the people who book. POST /customers takes {name, email} and answers 201 with {id, name, email}. The name must not be empty and the email must contain an @, otherwise 400. Two customers cannot share an email: a second one with the same email gets 409. GET /customers answers with the array of all customers and GET /customers/:id with one, or 404."
+    },
+    {
+      "id": 3,
+      "name": "bookings",
+      "routes": ["POST /bookings", "GET /bookings", "GET /bookings/:id"],
+      "request": "Let customers book rooms. POST /bookings takes {roomId, customerId, start, end}, where start and end are ISO 8601 times in UTC such as \"2031-03-04T09:00:00Z\", and answers 201 with {id, roomId, customerId, start, end, status}, the status being \"confirmed\". If start or end is missing or is not a valid time, or the end is not after the start, answer 400. If the room or the customer does not exist, answer 404. GET /bookings answers with the array of all bookings and GET /bookings/:id with one, or 404."
+    },
+    {
+      "id": 4,
+      "name": "no double booking",
+      "routes": ["POST /bookings"],
+      "request": "We had two meetings land in the same room at the same time. A room must not be booked twice for overlapping times: POST /bookings answers 409 when the room already has a confirmed booking that overlaps the requested time. A booking that starts exactly when another ends is fine, and so is the same time in a different room."
+    },
+    {
+      "id": 5,
+      "name": "cancelling",
+      "routes": ["POST /bookings/:id/cancel"],
+      "request": "People need to cancel. POST /bookings/:id/cancel answers 200 with the booking, its status now \"cancelled\". An unknown booking is 404 and one that is already cancelled is 409. A cancelled booking no longer blocks its room, so the same time can be booked again."
+    },
+    {
+      "id": 6,
+      "name": "filtering bookings",
+      "routes": ["GET /bookings"],
+      "request": "The list of bookings is getting long. Let GET /bookings be filtered with query parameters: roomId, customerId, status, and a time window given as from and to (ISO times), which keeps the bookings that overlap the window, meaning they start before `to` and end after `from`. The filters can be combined, and each is optional."
+    },
+    {
+      "id": 7,
+      "name": "availability",
+      "routes": ["GET /rooms/:id/availability"],
+      "request": "I want to show when a room is free. GET /rooms/:id/availability?date=2031-03-04 answers 200 with {date, free}, where free is the array of free intervals [{start, end}, ...] on that UTC day, in order, from midnight to the next midnight, with the room's confirmed bookings taken out. A day with no bookings is one interval covering the whole day. A missing or invalid date is 400 and an unknown room 404."
+    },
+    {
+      "id": 8,
+      "name": "editing and removing rooms",
+      "routes": ["PATCH /rooms/:id", "DELETE /rooms/:id"],
+      "request": "Rooms change. PATCH /rooms/:id takes any of {name, capacity} and answers 200 with the updated room, with the same checks as when a room is created (400) and 404 for an unknown room. DELETE /rooms/:id removes a room and answers 204, but answers 409 while the room still has a confirmed booking. A removed room is 404 from then on and is no longer in GET /rooms."
+    },
+    {
+      "id": 9,
+      "name": "attendees",
+      "routes": ["POST /bookings"],
+      "request": "A booking should say how many people are coming. POST /bookings accepts an optional `attendees`, a positive whole number that is 1 when left out, and every booking shows it. If it is not a positive whole number, or is more than the room's capacity, answer 400."
+    },
+    {
+      "id": 10,
+      "name": "rescheduling",
+      "routes": ["PATCH /bookings/:id"],
+      "request": "Let people move a booking. PATCH /bookings/:id takes any of {start, end, attendees} and answers 200 with the updated booking. All the rules for making a booking apply to the result (400 for bad times or too many attendees, 409 if it would overlap another booking in the room; its own old time does not count as a conflict). An unknown booking is 404, and a cancelled booking cannot be changed: 409."
+    },
+    {
+      "id": 11,
+      "name": "opening hours",
+      "routes": ["PUT /rooms/:id/hours", "GET /rooms/:id/hours", "DELETE /rooms/:id/hours"],
+      "request": "Some rooms are only open part of the day. PUT /rooms/:id/hours takes {open, close} as \"HH:MM\" in UTC and answers 200 with {open, close}; an invalid time, or a close that is not after the open, is 400. GET /rooms/:id/hours answers with {open, close}, both null when no hours are set, and DELETE /rooms/:id/hours removes them and answers 204. All three answer 404 for an unknown room. While a room has hours, a booking must start and end on the same UTC day, not before the room opens and not after it closes, otherwise 400; this holds when a booking is made and when it is rescheduled. The room's availability only offers time inside its hours. Rooms without hours are not restricted."
+    },
+    {
+      "id": 12,
+      "name": "closures",
+      "routes": ["POST /rooms/:id/closures", "GET /rooms/:id/closures", "DELETE /rooms/:id/closures/:closureId"],
+      "request": "Rooms are sometimes closed for a day, for maintenance or a holiday. POST /rooms/:id/closures takes {date, reason}, the date like \"2031-03-04\" and the reason optional, and answers 201 with {id, date, reason}; an invalid date is 400. GET /rooms/:id/closures answers with the room's closures and DELETE /rooms/:id/closures/:closureId removes one and answers 204, or 404 if there is none. An unknown room is 404. A booking that touches any part of a closed UTC day is refused with 409, both when it is made and when it is rescheduled, and the room's availability for a closed day has no free intervals."
+    },
+    {
+      "id": 13,
+      "name": "prices",
+      "routes": ["POST /rooms", "PATCH /rooms/:id", "POST /bookings", "PATCH /bookings/:id"],
+      "request": "We are going to charge for rooms. A room gets an `hourlyRate`, a number that is 0 unless given, which can be set when the room is created and changed with PATCH /rooms/:id, and which shows on the room; a negative rate is 400. Every booking gets a `price`: its length in hours times the room's hourly rate, rounded to cents. The price is set when the booking is made and does not change when the room's rate changes later, but it is worked out again, at the room's rate at that moment, when the booking is rescheduled."
+    },
+    {
+      "id": 14,
+      "name": "a customer's bookings",
+      "routes": ["GET /customers/:id/bookings", "GET /customers/:id/summary"],
+      "request": "I need to see what a customer has booked. GET /customers/:id/bookings answers with the array of that customer's bookings, whatever their status. GET /customers/:id/summary answers with {confirmed, cancelled, totalSpent}: how many of their bookings are confirmed, how many are cancelled, and the sum of the prices of the confirmed ones. Both answer 404 for an unknown customer."
+    },
+    {
+      "id": 15,
+      "name": "coupons",
+      "routes": ["POST /coupons", "POST /bookings"],
+      "request": "Marketing wants discount codes. POST /coupons takes {code, percentOff} and answers 201 with {code, percentOff}; the code must not be empty and percentOff must be a number from 1 to 100, otherwise 400, and a code that already exists is 409. POST /bookings accepts an optional `couponCode`; an unknown code is 400. With a coupon the booking's `price` is the normal price less that percentage, and the booking also shows `couponCode` and `discount`, the amount taken off; without one the discount is 0. A booking keeps its coupon when it is rescheduled, and its price and discount are worked out again."
+    },
+    {
+      "id": 16,
+      "name": "coupon limits",
+      "routes": ["POST /coupons", "GET /coupons/:code", "POST /bookings"],
+      "request": "A coupon should be able to run out. POST /coupons accepts an optional `maxUses`, a positive whole number (anything else is 400). GET /coupons/:code answers with {code, percentOff, maxUses, uses}, where maxUses is null for a coupon without a limit and uses is the number of confirmed bookings that carry the coupon; an unknown code is 404. When a coupon has been used as often as it allows, POST /bookings with that code answers 409. Cancelling a booking gives its use back."
+    },
+    {
+      "id": 17,
+      "name": "payments",
+      "routes": ["POST /bookings/:id/payments", "GET /bookings/:id/payments"],
+      "request": "Record what customers pay. POST /bookings/:id/payments takes {amount} and answers 201 with {id, bookingId, amount}. The amount must be a number above 0 and must not be more than what is still owed on the booking, otherwise 400. An unknown booking is 404 and a cancelled booking takes no payments: 409. GET /bookings/:id/payments answers with the array of the booking's payments. Every booking now also shows `paid`, the total paid so far, and `balance`, its price less what was paid."
+    },
+    {
+      "id": 18,
+      "name": "refunds",
+      "routes": ["POST /bookings/:id/cancel", "GET /bookings/:id/payments"],
+      "request": "When a booking that has been paid for is cancelled, the money goes back. The answer to POST /bookings/:id/cancel gets a `refunded` field with the amount returned (0 if nothing had been paid). The refund is recorded among the booking's payments as an entry with a negative amount, so that after the cancellation the booking's `paid` is 0, and its `balance` is 0 as well."
+    },
+    {
+      "id": 19,
+      "name": "shortest and longest booking",
+      "routes": ["POST /rooms", "PATCH /rooms/:id", "POST /bookings", "PATCH /bookings/:id"],
+      "request": "Some rooms should not be booked for five minutes, or for a whole day. A room gets `minMinutes` and `maxMinutes`, each a positive whole number or null (null when not given, meaning no limit), settable when the room is created and with PATCH /rooms/:id, and shown on the room; anything else is 400. A booking shorter than the room's minMinutes or longer than its maxMinutes is refused with 400, when it is made and when it is rescheduled."
+    },
+    {
+      "id": 20,
+      "name": "time between bookings",
+      "routes": ["POST /rooms", "PATCH /rooms/:id", "POST /bookings", "PATCH /bookings/:id"],
+      "request": "Cleaners need time between meetings. A room gets `bufferMinutes`, a whole number that is 0 unless given (a negative one is 400), settable when the room is created and with PATCH /rooms/:id, and shown on the room. Two confirmed bookings in the same room must be at least that many minutes apart: a booking that would leave less time before or after another one is refused with 409, when it is made and when it is rescheduled. A gap of exactly the buffer is fine."
+    },
+    {
+      "id": 21,
+      "name": "repeating bookings",
+      "routes": ["POST /bookings/recurring", "GET /bookings"],
+      "request": "Teams want their weekly meeting booked in one go. POST /bookings/recurring takes {roomId, customerId, start, end, repeat, count} and optionally attendees, where repeat is \"daily\" or \"weekly\" and count is a whole number from 2 to 52 (anything else is 400). It makes `count` bookings, the first at the given time and each next one a day or a week later, and answers 201 with {seriesId, bookings}, the bookings in order. Every rule for a normal booking applies to each of them, and if any one of them cannot be made, none is made and the answer is the error for that one (for example 409 for a conflict, 404 for an unknown room). Every booking shows a `seriesId`, which is null for a booking that is not part of a series, and GET /bookings can be filtered with seriesId."
+    },
+    {
+      "id": 22,
+      "name": "cancelling a series",
+      "routes": ["POST /series/:seriesId/cancel"],
+      "request": "And they want to cancel the whole series at once. POST /series/:seriesId/cancel cancels every booking of the series that is still confirmed, exactly as if each had been cancelled on its own, and answers 200 with {cancelled}, the number of bookings it cancelled. An unknown series is 404."
+    },
+    {
+      "id": 23,
+      "name": "waiting list",
+      "routes": ["POST /rooms/:id/waitlist", "GET /rooms/:id/waitlist", "DELETE /rooms/:id/waitlist/:entryId"],
+      "request": "When a room is taken, let people queue for it. POST /rooms/:id/waitlist takes {customerId, start, end} and answers 201 with {id, roomId, customerId, start, end}. An unknown room or customer is 404, bad times are 400 as for a booking, and if the room could simply be booked for that time the answer is 409, because there is nothing to wait for. GET /rooms/:id/waitlist answers with the room's entries, oldest first, and DELETE /rooms/:id/waitlist/:entryId removes one and answers 204, or 404 if there is none."
+    },
+    {
+      "id": 24,
+      "name": "the waiting list fills cancellations",
+      "routes": ["POST /bookings/:id/cancel", "POST /series/:seriesId/cancel"],
+      "request": "The waiting list should work by itself. Whenever a booking is cancelled, go through that room's waiting list, oldest entry first, and turn every entry that can now be booked into a confirmed booking for that customer and time, removing it from the list; entries that still do not fit stay on the list. Every booking shows `fromWaitlist`, true for a booking made this way and false otherwise."
+    },
+    {
+      "id": 25,
+      "name": "a limit per customer",
+      "routes": ["PATCH /customers/:id", "POST /bookings"],
+      "request": "One customer booked every room for a month. PATCH /customers/:id takes any of {name, email, maxActiveBookings} and answers 200 with the updated customer, with the same checks as when a customer is created (400, and 409 for an email another customer has) and 404 for an unknown customer. maxActiveBookings is a positive whole number or null, null meaning no limit (anything else is 400), and every customer shows it, null unless set. A customer who already has that many confirmed bookings cannot make another: POST /bookings answers 409."
+    },
+    {
+      "id": 26,
+      "name": "deactivating a customer",
+      "routes": ["POST /customers/:id/deactivate", "POST /customers/:id/activate"],
+      "request": "We need to be able to block a customer who does not pay. Every customer shows `active`, true from the start. POST /customers/:id/deactivate sets it to false and POST /customers/:id/activate back to true; both answer 200 with the customer, or 404. A customer who is not active cannot make a booking, a repeating booking or a waiting-list entry: those answer 403. The bookings they already have stay as they are."
+    },
+    {
+      "id": 27,
+      "name": "titles and notes",
+      "routes": ["POST /bookings", "PATCH /bookings/:id", "GET /bookings"],
+      "request": "People want to say what a booking is for. A booking accepts an optional `title` and optional `notes`, both text, when it is made and with PATCH /bookings/:id, and shows them. A title longer than 100 characters is 400. GET /bookings gets a `q` parameter that keeps the bookings whose title contains the given text, whatever the capitals."
+    },
+    {
+      "id": 28,
+      "name": "sorting and pages",
+      "routes": ["GET /bookings"],
+      "request": "The bookings list needs pages. GET /bookings accepts `sort`, which is \"start\" for earliest first or \"-start\" for latest first, and `limit` and `offset`, whole numbers of 0 or more (anything else is 400). The answer is still the array of bookings, and it always carries an X-Total-Count header with the number of bookings that match the filters before limit and offset are applied. Without limit the whole list is returned as before."
+    },
+    {
+      "id": 29,
+      "name": "finding a free room",
+      "routes": ["GET /rooms/available"],
+      "request": "Instead of checking room by room, let me ask which rooms are free. GET /rooms/available?start=...&end=...&attendees=... answers with the array of rooms that could be booked for that time by that many people (1 if attendees is left out): rooms that are large enough and where a booking for that time would be accepted under all the rules there are, such as other bookings, time between bookings, opening hours, closures and the shortest and longest booking. Invalid times, or an end that is not after the start, are 400."
+    },
+    {
+      "id": 30,
+      "name": "checking in",
+      "routes": ["POST /bookings/:id/checkin"],
+      "request": "The front desk wants to mark people as arrived. POST /bookings/:id/checkin sets a confirmed booking's status to \"checked_in\" and answers 200 with it; a booking in any other status is 409 and an unknown one 404. A checked-in booking still occupies its room, so nothing else can be booked over it, and it can no longer be cancelled or rescheduled: both answer 409."
+    },
+    {
+      "id": 31,
+      "name": "no-shows",
+      "routes": ["POST /bookings/:id/no-show", "GET /customers/:id/summary"],
+      "request": "And people who never turn up. POST /bookings/:id/no-show sets a confirmed booking's status to \"no_show\" and answers 200 with it; a booking in any other status is 409 and an unknown one 404. A no-show frees the room for that time, but nothing that was paid is refunded. The customer's summary at GET /customers/:id/summary gets a `noShows` count."
+    },
+    {
+      "id": 32,
+      "name": "history",
+      "routes": ["GET /bookings/:id/history"],
+      "request": "When there is a dispute I need to know what happened to a booking. GET /bookings/:id/history answers with the array of its events, oldest first, each {action, at}, where at is the time it happened and action is one of \"created\", \"rescheduled\", \"paid\", \"cancelled\", \"checked_in\" and \"no_show\". An unknown booking is 404."
+    },
+    {
+      "id": 33,
+      "name": "the daily report",
+      "routes": ["GET /reports/daily"],
+      "request": "Give me a report for a day. GET /reports/daily?date=2031-03-04 answers with {date, bookings, revenue, rooms}. It counts the bookings that start on that UTC day and are confirmed or checked in: `bookings` is how many, `revenue` the sum of their prices, and `rooms` an array of {roomId, bookings, revenue} with one entry for each room that has at least one of them. A missing or invalid date is 400."
+    },
+    {
+      "id": 34,
+      "name": "how much rooms are used",
+      "routes": ["GET /reports/utilization"],
+      "request": "I also want to know which rooms are used. GET /reports/utilization?from=2031-03-03&to=2031-03-05 answers with an array of {roomId, hours} with one entry for every room, where hours is the total length in hours of the room's bookings that start on a UTC day from `from` to `to`, both days included, and are confirmed or checked in. A room with none has 0 hours. A missing or invalid date, or a `to` before `from`, is 400."
+    },
+    {
+      "id": 35,
+      "name": "equipment",
+      "routes": ["POST /rooms", "PATCH /rooms/:id", "GET /rooms", "GET /rooms/available"],
+      "request": "People look for a room with a projector. A room gets `equipment`, an array of text such as [\"projector\", \"whiteboard\"], empty unless given, settable when the room is created and with PATCH /rooms/:id, and shown on the room; anything that is not an array of text is 400. GET /rooms?equipment=projector,whiteboard keeps only the rooms that have every listed item, and GET /rooms/available accepts the same parameter."
+    },
+    {
+      "id": 36,
+      "name": "export",
+      "routes": ["GET /bookings.csv"],
+      "request": "Accounting wants the bookings in a spreadsheet. GET /bookings.csv answers with content type text/csv: a first line that reads exactly id,roomId,customerId,start,end,status,price and then one line per booking with those values. It accepts the same filters as GET /bookings."
+    },
+    {
+      "id": 37,
+      "name": "closing a day that has bookings",
+      "routes": ["POST /rooms/:id/closures"],
+      "request": "Closing a room for a day should not leave bookings behind on that day. If the room has confirmed bookings that touch the day, POST /rooms/:id/closures now answers 409 and adds no closure, unless the request has `cancelBookings: true`: then those bookings are cancelled, exactly as if each had been cancelled on its own, the closure is added, and the 201 answer gets a `cancelled` field with the array of the cancelled bookings' ids."
+    },
+    {
+      "id": 38,
+      "name": "safe retries",
+      "routes": ["POST /bookings"],
+      "request": "Our app sometimes sends a booking twice when the connection is bad. POST /bookings should honour an Idempotency-Key header: when a request arrives with a key that an earlier booking was made with, do not make another booking, and answer 200 with the booking that was made the first time. Requests with different keys, or with no key, behave as before."
+    },
+    {
+      "id": 39,
+      "name": "moving to another room",
+      "routes": ["POST /bookings/:id/move"],
+      "request": "Sometimes a meeting has to move to another room. POST /bookings/:id/move takes {roomId} and answers 200 with the booking, now in that room at the same time. The booking has to be acceptable in the new room under all of that room's rules, with the same errors as when a booking is made there (for example 400 for too many attendees and 409 for a conflict). Its price is worked out again at the new room's rate, keeping its coupon. An unknown booking or room is 404, and only a confirmed booking can be moved: otherwise 409. The time in the old room becomes free."
+    },
+    {
+      "id": 40,
+      "name": "removing a customer",
+      "routes": ["DELETE /customers/:id"],
+      "request": "A customer asked us to delete their account. DELETE /customers/:id answers 204, or 404 for an unknown customer. Their waiting-list entries are removed and their confirmed bookings are cancelled, exactly as if each had been cancelled on its own. From then on the customer is 404 and is not in GET /customers, and their email can be used for a new customer. Their bookings stay visible, as cancelled."
+    }
+  ]
+}

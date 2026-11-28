@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -68,11 +69,55 @@ through the change once more before you stop.
 # report: counted, the test lines an agent adds would all have run and carry any change over the minimum.
 COVERAGE_ARMS = set(filter(None, os.environ.get("STUDY_COVERAGE", "").split(",")))
 COVERAGE_OMIT = "*/tests/*,*/test/*,*/t/*,*/testing/*,*/test_*.py,*_test.py,*/conftest.py,tests/*,test/*,t/*,testing/*"
-COVERAGE_RUN = ("rm -f .coverage quality/.coverage.xml; "
-                ".venv/bin/python -m coverage run --omit='%s' -m pytest -q -p no:cacheprovider >/dev/null 2>&1; "
-                ".venv/bin/python -m coverage xml -q -o quality/.coverage.xml >/dev/null 2>&1; "
-                "python3 quality/bin/check-changed-coverage.py" % COVERAGE_OMIT)
+# One suite run under coverage, its report and pytest's exit code. pytest exits 0 or 1 when the tests
+# ran; anything else (no tests, a broken plugin) leaves a report of import-time lines only, on which
+# every function body reads as not run. A file that cannot be collected stops a plain run the same
+# way, so the run goes on past it, and a gate that reads the report first checks the suite ran.
+SUITE_REPORT = ("rm -f .coverage quality/.coverage.xml; "
+                ".venv/bin/python -m coverage run --omit='%s' -m pytest -q -p no:cacheprovider --continue-on-collection-errors >quality/.suite.log 2>&1; "
+                "echo $? >quality/.suite-exit; "
+                ".venv/bin/python -m coverage xml -q -o quality/.coverage.xml >/dev/null 2>&1; " % COVERAGE_OMIT)
+SUITE_RAN = ('test "$(cat quality/.suite-exit)" -le 1 || { echo "FAIL: the test suite did not run (pytest exit '
+             '$(cat quality/.suite-exit)), so coverage cannot be judged:"; tail -5 quality/.suite.log; exit 1; }; ')
+SUITE_SECONDS = int(os.environ.get("STUDY_SUITE_SECONDS", "600"))   # a suite slower than this under coverage cannot be a gate at every stop
+SUITE_IGNORED = "\n.coverage\n.coverage.*\nquality/.coverage.xml\nquality/.suite.log\nquality/.suite-exit\n"
 COVERAGE_MIN_LINES = 5   # most of these tasks change fewer executable lines than the check's default of 20
+
+
+def install_coverage(root):
+    venv_python = os.path.join(root, ".venv", "bin", "python")
+    subprocess.run([venv_python, "-m", "pip", "install", "-q", "--disable-pip-version-check", "coverage"], check=True, capture_output=True)
+
+
+# What a language's suite needs to be a coverage gate: the command that runs it and writes the
+# report, the check that it ran, where the report is, which of CRAP's readers reads it, what
+# git must ignore, and how the tool gets into the tree. tsrun.py builds one per task.
+PYTHON = dict(suite=SUITE_REPORT, ran=SUITE_RAN, report="quality/.coverage.xml", reader="cobertura", ignored=SUITE_IGNORED, install=install_coverage)
+
+# Arms with the project's own lint and format as a gate at every stop: STUDY_RULES="rules". After
+# attach, ruff goes into .venv, project_rules.py is copied in as quality/project-rules.py and one
+# `commands` entry runs it. It judges what gates/rules.py counts afterwards, by the same rule.
+RULES_ARMS = set(filter(None, os.environ.get("STUDY_RULES", "").split(",")))
+RUFF = os.environ.get("STUDY_RUFF_VERSION", "0.17.6")
+
+# Arms with CRAP as a gate at every stop: STUDY_CRAP="crap". After attach, coverage goes into .venv,
+# quality.json gets a `crap` section (threshold 8, lizard over the complexity gate's sources, a
+# Cobertura report), the suite runs once under coverage and the functions over the gate that day
+# go into the baseline. One `commands` entry then runs the suite under coverage and the gate itself
+# on the changed files: gate.py's hook pass runs CRAP only as an estimate that never fails.
+# STUDY_COVERAGE and STUDY_CRAP may name the same arm; it then carries both gates.
+# An arm may name its own threshold: STUDY_CRAP="crap8=8,crap30=30".
+STRIP_TESTS = bool(os.environ.get("STUDY_STRIP_TESTS"))   # hand the agent a tree without the tests of the code it is to change
+CRAP_THRESHOLDS = dict((x.partition("=")[0], float(x.partition("=")[2] or os.environ.get("STUDY_CRAP_THRESHOLD", "8")))
+                       for x in filter(None, os.environ.get("STUDY_CRAP", "").split(",")))   # 8 is cleat's; the metric's authors used 30
+CRAP_ARMS = set(CRAP_THRESHOLDS)
+
+# Arms with the public API as a gate at every stop: STUDY_API="api". After attach, quality.json gets
+# a `public_api` section over the project's packages (src/, or the top-level directories that are
+# packages), tests left out, and the surface as it stands is the baseline. A recorded signature
+# that is gone, renamed or changed is refused; one added is a note.
+API_ARMS = set(filter(None, os.environ.get("STUDY_API", "").split(",")))
+NOT_SHIPPED = {"tests", "test", "testing", "t", "docs", "doc", "examples", "benchmarks", "scripts", "quality"}
 
 PROMPT = """You are working in a Python repository. Implement the change described below.
 
@@ -133,31 +178,111 @@ def set_ceiling(root, cc):
     return dict(cc=cc, baseline=out.returncode, tail=(out.stdout + out.stderr)[-300:])
 
 
-def add_coverage(root):
-    venv_python = os.path.join(root, ".venv", "bin", "python")
-    subprocess.run([venv_python, "-m", "pip", "install", "-q", "--disable-pip-version-check", "coverage"], check=True, capture_output=True)
+def suite_once(root, stack=PYTHON):
+    """The suite under coverage once, as the gate's command runs it: {exit, last line}, or {timeout}."""
+    suite = subprocess.Popen(stack["suite"], shell=True, cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             env=clean_env(), start_new_session=True)
+    try:
+        suite.wait(timeout=SUITE_SECONDS)
+    except subprocess.TimeoutExpired:
+        os.killpg(suite.pid, signal.SIGKILL)   # the shell's children too: a killed shell leaves pytest running
+        return dict(timeout=SUITE_SECONDS)
+    read = lambda name: open(os.path.join(root, "quality", name), errors="replace").read().strip() if os.path.isfile(os.path.join(root, "quality", name)) else ""   # noqa: E731
+    return dict(exit=int(read(".suite-exit") or 9), said=(read(".suite.log").splitlines() or [""])[-1][-200:])
+
+
+def add_coverage(root, stack=PYTHON):
+    stack["install"](root)
     path = os.path.join(root, "quality.json")
     with open(path) as handle:
         config = json.load(handle)
-    config["changed_coverage"] = {"report": "quality/.coverage.xml", "minimum": 0.8, "min_lines": COVERAGE_MIN_LINES}
-    config.setdefault("commands", []).append({"name": "changed-coverage", "run": COVERAGE_RUN})
+    config["changed_coverage"] = {"report": stack["report"], "minimum": 0.8, "min_lines": COVERAGE_MIN_LINES}
+    config.setdefault("commands", []).append({"name": "changed-coverage", "run": stack["suite"] + stack["ran"] + "python3 quality/bin/check-changed-coverage.py"})
     with open(path, "w") as handle:
         json.dump(config, handle, indent=2)
         handle.write("\n")
     with open(os.path.join(root, ".gitignore"), "a") as handle:
-        handle.write("\n.coverage\n.coverage.*\nquality/.coverage.xml\n")
-    return config["changed_coverage"]
+        handle.write(stack["ignored"])
+    return dict(config["changed_coverage"], suite=suite_once(root, stack))
+
+
+def add_rules(root):
+    venv_python = os.path.join(root, ".venv", "bin", "python")
+    subprocess.run([venv_python, "-m", "pip", "install", "-q", "--disable-pip-version-check", "ruff==" + RUFF], check=True, capture_output=True)
+    shutil.copyfile(os.path.join(HERE, "project_rules.py"), os.path.join(root, "quality", "project-rules.py"))
+    path = os.path.join(root, "quality.json")
+    with open(path) as handle:
+        config = json.load(handle)
+    entry = {"name": "project-rules", "run": ".venv/bin/python quality/project-rules.py"}
+    config.setdefault("commands", []).append(entry)
+    with open(path, "w") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+    return entry
+
+
+def add_crap(root, threshold=8, stack=PYTHON):
+    stack["install"](root)
+    path = os.path.join(root, "quality.json")
+    with open(path) as handle:
+        config = json.load(handle)
+    shape = config["complexity"]
+    config["crap"] = {"threshold": threshold, "baseline": "quality/crap-baseline.json",
+                      "complexity": {"tool": "lizard", "sources": shape["sources"], "languages": shape["languages"], "exclude": shape.get("exclude", [])},
+                      stack["reader"]: {"sources": ".", "exports": stack["report"]}}
+    config.setdefault("commands", []).append({"name": "crap", "run": stack["suite"] + stack["ran"] + "python3 quality/bin/check-crap.py --changed"})
+    with open(path, "w") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+    with open(os.path.join(root, ".gitignore"), "a") as handle:
+        handle.write(stack["ignored"])
+    suite = suite_once(root, stack)
+    if "timeout" in suite:
+        return dict(baseline="suite did not finish under coverage in %ds" % SUITE_SECONDS, suite=suite)
+    out = subprocess.run(["python3", "quality/bin/check-crap.py", "--write-baseline"], cwd=root, capture_output=True, text=True, env=clean_env())
+    return dict(baseline=out.returncode, said=(out.stdout + out.stderr)[-300:], suite=suite)
+
+
+def packages(root):
+    """Where the code a project ships lives: src/, or its top-level package directories."""
+    if os.path.isdir(os.path.join(root, "src")):
+        return ["src"]
+    return sorted(d for d in os.listdir(root) if d not in NOT_SHIPPED and os.path.isfile(os.path.join(root, d, "__init__.py")))
+
+
+def add_api(root):
+    path = os.path.join(root, "quality.json")
+    with open(path) as handle:
+        config = json.load(handle)
+    config["public_api"] = {"name": "api", "language": "python", "roots": packages(root), "skip_dirs": sorted(NOT_SHIPPED),
+                            "baseline": "quality/api-baseline.json"}
+    with open(path, "w") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+    out = subprocess.run(["python3", "quality/bin/check-public-api.py", "--write-baseline"], cwd=root, capture_output=True, text=True, env=clean_env())
+    return dict(config["public_api"], baseline=out.returncode, said=(out.stdout + out.stderr)[-300:])
+
+
+def strip_tests(task, root):
+    """With STUDY_STRIP_TESTS, the test files the commit touches are gone from the tree the agent
+    gets, so the code it is to change stands untested, as it would in a project that tests little.
+    Scoring lays the commit's own test files back. Returns the files removed."""
+    gone = [t for t in task["tests"] if STRIP_TESTS and os.path.isfile(os.path.join(root, t))]
+    for name in gone:
+        os.remove(os.path.join(root, name))
+    return gone
 
 
 def prepare(clones, task, arm, root):
     draw.tree(os.path.join(clones, task["repo"]), task["parent"], root)
+    stripped = strip_tests(task, root)
     with open(os.path.join(root, ".gitignore"), "a") as handle:
         handle.write("\n.venv/\n")
     draw.install_recipe(root, task["recipe"])
     git(root, "init", "-q")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "base")
-    info = {}
+    info = {"stripped": stripped} if stripped else {}
     if arm.split("-")[0] in WORDS_ONLY | EFFORT_ARMS:
         doc = next((d for d in ("CLAUDE.md", "AGENTS.md") if os.path.isfile(os.path.join(root, d))), "CLAUDE.md")
         with open(os.path.join(root, doc), "a") as handle:
@@ -174,8 +299,11 @@ def prepare(clones, task, arm, root):
             drop_hooks(root)
         if arm.split("-")[0] in DROP_GATES:
             info["dropped"] = drop_gates(root, DROP_GATES[arm.split("-")[0]])
-        if arm.split("-")[0] in COVERAGE_ARMS:
-            info["coverage"] = add_coverage(root)
+        added = (("coverage", COVERAGE_ARMS, add_coverage), ("rules", RULES_ARMS, add_rules),
+                 ("crap", CRAP_ARMS, lambda tree: add_crap(tree, CRAP_THRESHOLDS[arm.split("-")[0]])), ("api", API_ARMS, add_api))
+        for key, arms, add in added:
+            if arm.split("-")[0] in arms:
+                info[key] = add(root)
         if arm.split("-")[0] in CEILINGS:
             info["ceiling"] = set_ceiling(root, CEILINGS[arm.split("-")[0]])
         git(root, "add", "-A")
@@ -257,6 +385,17 @@ def limited(out_dir, info):
     return bool(LIMIT_RE.search(text))
 
 
+def keep_work(root, out_dir):
+    """The files the agent changed, copied to <run>/agent before scoring lays the hidden tests over some of them."""
+    names = subprocess.run(["git", "-C", root, "diff", "HEAD", "--name-only"], capture_output=True, text=True).stdout.split("\n")
+    names += subprocess.run(["git", "-C", root, "ls-files", "--others", "--exclude-standard"], capture_output=True, text=True).stdout.split("\n")
+    for name in filter(None, names):
+        source, target = os.path.join(root, name), os.path.join(out_dir, "agent", name)
+        if os.path.isfile(source):
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copyfile(source, target)
+
+
 def one(clones, work, task, arm):
     out_dir = os.path.join(work, "runs", task["id"], arm)
     if os.path.isfile(os.path.join(out_dir, "score.json")):
@@ -271,6 +410,7 @@ def one(clones, work, task, arm):
     if limited(out_dir, info["agent"]):
         PARKED.set()
         return task["id"], arm, "parked: usage limit, run again after it resets"
+    keep_work(root, out_dir)
     info["score"] = score.score(clones, task, arm, root, out_dir)
     with open(os.path.join(out_dir, "score.json"), "w") as handle:
         json.dump(info, handle, indent=1)
