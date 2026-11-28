@@ -13,6 +13,12 @@ an agent writes when it is in a hurry, and the one nobody wants to touch
 later. The complexity gate (check-complexity.py) catches complexity alone;
 this is the half that asks whether the paths are exercised.
 
+The score is never below `cc`, so against the threshold alone a function with
+more paths than it would fail at 100% coverage, told to cover paths it already
+covers. That function is the complexity gate's. Here the paths count toward the
+score up to the threshold and no further: at 8, a function of cc 3 needs 18% of
+its lines run, one of cc 5 needs 51%, and one of cc 8 or more needs every line.
+
 Complexity comes from SwiftLint, run with the threshold at 1 so every function
 with more than one path is reported with its number; a function it does not
 report has cc 1 and a CRAP of at most 2. Coverage comes from the last test
@@ -193,6 +199,15 @@ def crap(cc, coverage):
     return cc * cc * (1.0 - coverage) ** 3 + cc
 
 
+def unpaid(cc, coverage, threshold):
+    """Whether the tests leave this function over the gate. The score is never below `cc`, so
+    a function with more paths than the threshold would fail fully covered — for its path
+    count alone, which is the complexity gate's to refuse and no test can fix. So the paths
+    count toward the score up to the threshold and no further: a function at or over it in
+    paths passes fully covered, and only then."""
+    return cc * cc * (1.0 - coverage) ** 3 + min(cc, threshold) > threshold
+
+
 # ---------------------------------------------------------------- the judgement
 
 def _from_spans(coverage, path, line, end):
@@ -240,9 +255,9 @@ def judge(complexities, coverage, threshold, repo, ends=None, recorded_only=Fals
         cov = coverage_record(coverage, path, line, (ends or {}).get((path, line)))
         if cov is None and recorded_only:
             continue
-        score = crap(cc, cov or 0.0)
-        if score > threshold:
-            over.append((os.path.relpath(path, repo), line, complexity_readers.declaration_text(path, line), cc, cov or 0.0, score))
+        cov = cov or 0.0
+        if unpaid(cc, cov, threshold):
+            over.append((os.path.relpath(path, repo), line, complexity_readers.declaration_text(path, line), cc, cov, crap(cc, cov)))
     over.sort(key=lambda o: (-o[5], o[0], o[1]))
     return over
 
@@ -268,19 +283,43 @@ def functions_for(args, settings):
         return _saved_functions(args.lizard_csv, settings)
     if settings.has("complexity", "tool") and settings.value(None, "complexity", "tool") == "lizard":
         spec = settings.value(None, "complexity")
-        roots = narrowed(args, settings, settings.config.paths(spec["sources"]), lizard_suffixes(spec["languages"]))
+        roots = narrowed(args, settings, settings.config.paths(spec["sources"]), lizard_suffixes(spec["languages"]), spec)
         if not roots:
             return []
         text = complexity_readers.run_lizard(roots, spec["languages"], spec.get("exclude", []), root=settings.config.root)
-        return complexity_readers.functions_from_csv(text, skip_rust_tests=spec.get("skip_rust_tests", True))[0]
+        functions = complexity_readers.functions_from_csv(text, skip_rust_tests=spec.get("skip_rust_tests", True))[0]
+        if complexity_readers.reads_typescript(spec):
+            functions += complexity_readers.unreported(functions, roots, spec.get("exclude", []), settings.config.root)
+        return complexity_readers.as_recorded(functions, stored_reader(args, settings), "CRAP")
     return None
 
 
-def narrowed(args, settings, sources, suffixes):
+def stored_reader(args, settings):
+    """The provenance of the baseline this run is judged against; None when it writes one."""
+    return None if args.write_baseline else ratchet.read(settings.path(args.baseline, "baseline"))[1]
+
+
+def reader_version(args, settings):
+    """What the baseline records of the TypeScript reader: its mark when this run read with it."""
+    spec = settings.value(None, "complexity") if settings.has("complexity", "tool") else {}
+    lizard = spec.get("tool") == "lizard" and complexity_readers.reads_typescript(spec)
+    return complexity_readers.TS_READER if lizard and complexity_readers.recorded_with(stored_reader(args, settings)) else None
+
+
+def narrowed(args, settings, sources, suffixes, spec=None):
     """`sources`, or under `--only` just the changed files inside them that the reader reads."""
     if args.only is None:
         return sources
-    return complexity_readers.only_files(args.only, sources, suffixes, settings.config.path)
+    return complexity_readers.only_files(kept_files(args.only, spec or {}, settings.config), sources, suffixes, settings.config.path)
+
+
+def kept_files(only, spec, config):
+    """The `--only` files no exclude glob of the complexity spec drops, unless `exclude_except`
+    keeps them. lizard reads a file it is handed by name whatever `-x` says, so a changed test
+    file would be measured, and where the coverage run leaves tests out it reads as 0% covered:
+    every test with a branch a new function over the gate."""
+    kept = {os.path.realpath(p) for p in config.paths(spec.get("exclude_except", []))}
+    return [p for p in only if os.path.realpath(config.path(p)) in kept or not complexity_readers.excluded(p, spec.get("exclude", []))]
 
 
 def lizard_suffixes(names):
@@ -516,6 +555,8 @@ def gather_coverage(args, settings):
             coverage.update(found)
             for path, spans in getattr(found, "spans", {}).items():
                 coverage.spans.setdefault(path, []).extend(spans)
+            coverage.lines.update(getattr(found, "lines", {}))   # what `over` reads: without it a function no report names is 0%
+            coverage.body_only |= getattr(found, "body_only", set())
             sources_read.append("%s %s" % (label, source))
     if not sources_read:
         raise GateError("no coverage reader is configured — give the gate an \"xccov\", \"llvm_cov\", \"istanbul\", "
@@ -607,7 +648,7 @@ def gate(args, settings):
     over = [ratchet.Finding(f, line, t, {"cc": cc, "coverage": round(cov, 2), "crap": round(score, 1)})
             for f, line, t, cc, cov, score in judge(complexities, coverage, threshold, repo=repo, ends=ends)]
     section = {k: v for k, v in settings.section.items() if k != "baseline"} if settings.has() else {}
-    measured = ratchet.provenance(complexity_tool(settings), None, section)
+    measured = ratchet.provenance(complexity_tool(settings), reader_version(args, settings), section)
     if args.write_baseline:
         ratchet.write(baseline_path, over, measured)
         print("baseline written: %d function(s) over CRAP %g" % (len(over), threshold))

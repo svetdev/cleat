@@ -6,7 +6,10 @@ declarations a language marks as exported — `export` in TypeScript, `pub` in
 Rust, a capital letter in Go, `public`/`open` in Swift, `public` in Java and
 Kotlin's default visibility, a name without an underscore (or in `__all__`) in
 Python — each as (repo-relative file, line, signature), the signature being
-the declaration line normalised up to its body. `from_cargo_public_api()` and
+the declaration line normalised up to its body. Python is read from its syntax
+tree (`pysurface`), which also sees methods and a parameter list spread over
+lines; the line reader stays for a baseline an earlier reader wrote, and for a
+file that does not parse. `from_cargo_public_api()` and
 `from_api_extractor()` read the reports of tools that know their language
 properly; use those when the project has them.
 """
@@ -14,7 +17,7 @@ properly; use those when the project has them.
 import os
 import re
 
-from . import patterns
+from . import patterns, pysurface
 
 SUFFIXES = {
     "python": (".py",), "typescript": (".ts", ".tsx"), "rust": (".rs",), "go": (".go",), "swift": (".swift",),
@@ -96,8 +99,11 @@ def _file_surface(path, language, repo_root):
     return out
 
 
-def built_in(roots, language, repo_root, skip_dirs=()):
-    """[(repo-relative file, line, signature)] for every exported declaration."""
+def built_in(roots, language, repo_root, skip_dirs=(), by_line=False):
+    """[(repo-relative file, line, signature)] for every exported declaration. `by_line`
+    reads Python as the first reader did, one declaration line at a time."""
+    if language == "python" and not by_line:
+        return pysurface.built_in(roots, repo_root, skip_dirs, lambda path: _file_surface(path, language, repo_root))
     out = []
     for path in patterns.files(roots, SUFFIXES[language], skip_dirs):
         out += _file_surface(path, language, repo_root)

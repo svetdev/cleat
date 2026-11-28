@@ -16,7 +16,7 @@ directory.
 
   python3 quality/tests/test-gate.py
 """
-import json, os, shutil, subprocess, sys, tempfile
+import json, os, shutil, subprocess, sys, tempfile, time
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -75,11 +75,24 @@ try:
     check("a failure set that changed blocks again, with the whole report",
           code == 2 and "src/b.py:1  noqa" in err and "fix what each names" in err, err)
     os.remove(os.path.join(tmp, "src", "b.py"))
-    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": True, "hook_event_name": "Stop"}))
-    check("--hook does not block a second consecutive stop either, whatever the report says",
-          code == 0 and "not blocking again" in err and "src/a.py:1  noqa" not in err, err)
-    check("and says that, rather than claiming a sameness this changed report does not have",
-          "this stop is already a continuation" in err and "same report as the last" not in err, err)
+    active = json.dumps({"stop_hook_active": True, "hook_event_name": "Stop"})
+    code, out, err = run("--config", config, "--hook", stdin=active)
+    check("a continuation whose report changed is blocked again: a fix that broke something else is sent back",
+          code == 2 and "src/a.py:1  noqa" in err and "src/b.py" not in err and "fix what each names" in err, err)
+    code, out, err = run("--config", config, "--hook", stdin=active)
+    check("and the same report on the next stop of that continuation is one line", code == 0 and "same report as the last blocked stop" in err, err)
+    codes = []
+    for n in range(6):   # a report that never settles: a new failing file at every stop
+        write(os.path.join(tmp, "src", "c%d.py" % n), ESCAPE)
+        codes.append(run("--config", config, "--hook", stdin=active))
+    check("a report that changes at every stop blocks five stops in a row and then lets go",
+          [c for c, _, _ in codes] == [2, 2, 2, 0, 0, 0], str([c for c, _, _ in codes]))
+    check("saying why, rather than claiming a sameness the report does not have",
+          "blocked as often as the hook allows" in codes[-1][2] and "same report as the last" not in codes[-1][2], codes[-1][2])
+    for n in range(6):
+        os.remove(os.path.join(tmp, "src", "c%d.py" % n))
+    code, out, err = run("--config", config, "--hook", stdin=json.dumps({"stop_hook_active": False}))
+    check("a stop that is not a continuation starts the count again and blocks", code == 2 and "src/a.py:1  noqa" in err, err)
     code, out, err = run("--config", config, "--hook", "--gate", "doc-size")
     check("--hook exits 0 when everything passes", code == 0 and err == "", err)
     check("and forgets the report, so the failure is news again", not os.path.exists(state), state)
@@ -212,6 +225,26 @@ try:
           out.split() == ["doc-size", "suite", "changed-coverage", "covered-now"], out + err)
     code, out, err = run("--config", config, "--list")
     check("and one named in `gates` with postflight off is judged at every stop, after the suite", out.split() == ["doc-size", "suite", "covered-now"], out + err)
+    write(config, json.dumps({"gates": [{"name": "covered-now", "check": "changed_coverage", "postflight": False, "with": {"report": "coverage.xml"}}],
+                              "commands": [{"name": "suite", "run": "sh scripts/own-check.sh"}]}))
+    proc = subprocess.run([sys.executable, SCRIPT, "--config", config], capture_output=True, text=True, env=dict(os.environ, OWN_EXIT="2"))
+    check("after a failed command a gate that reads a coverage report is not judged, and the run is red for the command alone",
+          proc.returncode == 1 and "FAIL  suite" in proc.stdout and "wait  covered-now (not judged: suite failed" in proc.stdout and "1 failed" in proc.stdout, proc.stdout)
+    proc = subprocess.run([sys.executable, SCRIPT, "--config", config], capture_output=True, text=True, env=dict(os.environ, OWN_EXIT="0"))
+    check("and it is judged once the command passes", "wait  covered-now" not in proc.stdout and "covered-now" in proc.stdout, proc.stdout)
+    write(config, json.dumps({"commands": [{"name": "hangs", "run": "sleep 30 & echo $! > child.pid; echo started; wait", "timeout": 1}]}))
+    began = time.time()
+    code, out, err = run("--config", config)
+    check("a command still running at its timeout fails, saying so", code == 1 and "FAIL  hangs" in out and "still running after 1 seconds" in out, out + err)
+    check("with what it printed before, and well before it would have ended", "started" in out and time.time() - began < 15, out)
+    code, out, err = run("--config", config, "--hook")
+    check("under --hook too, so a hanging suite cannot hold a stop", code == 2 and "still running after 1 seconds" in err, err)
+    child = open(os.path.join(tmp, "child.pid")).read().strip()   # gone, or dead and not yet reaped
+    state = subprocess.run(["ps", "-o", "stat=", "-p", child], capture_output=True, text=True).stdout.strip()
+    check("and everything it started is stopped with it", state == "" or state.startswith("Z"), "process %s is %r" % (child, state))
+    write(config, json.dumps({"commands": [{"name": "odd", "run": "true", "timeout": "soon"}]}))
+    code, out, err = run("--config", config)
+    check("a timeout that is not a number of seconds is refused", code == 2 and '"timeout"' in err, err)
     write(config, json.dumps({"commands": [{"name": "nameless"}]}))
     code, out, err = run("--config", config)
     check("an entry without run is refused", code == 2 and '"run"' in err, err)

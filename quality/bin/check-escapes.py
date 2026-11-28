@@ -52,7 +52,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_config
 import ratchet
-from extractors import languages, patterns
+from extractors import census, languages, patterns
 
 SECTION = "escapes"
 
@@ -143,6 +143,8 @@ def load(args):
         raise KeyError("%s: \"%s\" names no \"languages\" and no \"patterns\" — nothing to look for" % (config.file, SECTION))
     measured = ratchet.provenance("escapes", "1", {k: section[k] for k in sorted(section) if k != "baseline"})
     found, skipped = findings(section, config)
+    made = census.accepted(config)   # a tool's output a person accepted (check-exclusions.py) is not judged
+    found = [f for f in found if f.file not in made]
     return section, baseline_path, found, measured, skipped
 
 

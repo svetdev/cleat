@@ -9,6 +9,12 @@ them ran. A change with fewer than `min_lines` executable lines is not judged
 at all — two lines cannot fail on rounding. No baseline: the scope is the
 change itself.
 
+A report the config's path or glob found is refused when a changed file was
+written after it: it is an earlier run's, and would judge the change by lines
+as they stood then. That is what a runner leaves behind when it writes no
+report on a failing test — vitest does so unless `coverage.reportOnFailure`
+is set. A report named with --report is the run the caller chose.
+
 The report is LCOV or Cobertura (see extractors/coverage.py), whichever the
 stack's test command writes.
 
@@ -16,6 +22,7 @@ stack's test command writes.
     "report":    "coverage/lcov.info",   # a path or glob; the newest match is read
     "minimum":   0.8,                    # share of changed executable lines that must have run
     "min_lines": 20,                     # fewer changed executable lines than this: not judged
+    "exclude":   ["deno_dist/*"],        # optional: changed files left out — a checked-in build no test runs
     "base_ref":  "origin/main"           # optional
   }
 
@@ -30,7 +37,7 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_config
-from extractors import changed, coverage
+from extractors import changed, coverage, patterns
 
 SECTION = "changed_coverage"
 # A changed file the report does not know is worth a note only when it is code.
@@ -80,6 +87,21 @@ def report_path_for(args, section, config):
     if path is None or not os.path.isfile(path):
         raise KeyError("no coverage report matches %s — run the tests with coverage first" % pattern)
     return path
+
+
+def newer_than(report_path, changed_files, root):
+    """The changed source files written after the report was."""
+    written = os.path.getmtime(report_path)
+    paths = [os.path.join(root, rel) for rel in sorted(changed_files) if rel.endswith(CODE_SUFFIXES)]
+    return [os.path.relpath(p, root) for p in paths if os.path.isfile(p) and os.path.getmtime(p) > written]
+
+
+def refuse_stale(report_path, newer):
+    print("FAIL: the coverage report %s is older than %d changed file(s) (%s%s) — it is an earlier run's, and would judge "
+          "the change by lines as they stood then. Run the tests with coverage again. If they just ran and a test failed, "
+          "the runner wrote no report: fix the test, or have it write one on failure (vitest: coverage.reportOnFailure)."
+          % (report_path, len(newer), newer[0], ", …" if len(newer) > 1 else ""), file=sys.stderr)
+    return 2
 
 
 def first(flag, fallback):
@@ -132,8 +154,14 @@ def main():
     except KeyError as problem:
         print("FAIL: %s" % problem.args[0], file=sys.stderr)
         return 2
+    left_out = config.data.get(SECTION, {}).get("exclude", [])
+    changed_lines = {rel: numbers for rel, numbers in changed.changed_lines(config.root, base).items()
+                     if not patterns.excluded(rel, left_out)}
+    newer = [] if args.report else newer_than(report_path, changed_lines, config.root)
+    if newer:
+        return refuse_stale(report_path, newer)
     lines = coverage.line_coverage(coverage.read(report_path, config.root))
-    uncovered, judged, covered, unknown = judge(changed.changed_lines(config.root, base), lines, config.root)
+    uncovered, judged, covered, unknown = judge(changed_lines, lines, config.root)
     return verdict(uncovered, judged, covered, unknown, minimum, min_lines, report_path, args.quiet)
 
 

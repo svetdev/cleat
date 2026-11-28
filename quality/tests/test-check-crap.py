@@ -395,6 +395,31 @@ try:
     check("without the map the container path matches nothing — refused loudly, never read as 0%", code == 2 and "none under" in out and "path_map" in out, out)
     cfg["crap"][1]["llvm_cov"]["exports"] = "rust.json"; write(config, cfg)
     check("the inline Rust test function is not judged", "knot.rs:3" not in out, out)
+    # coverage.py's Cobertura lists lines and no functions: a function is judged by the lines in
+    # the range lizard gives, never read as 0% because the report did not name it
+    plain = os.path.join(tmp2, "pkg", "money.py")
+    write(plain, "def tested(a):\n    if a:\n        return 1\n    return 2\n\ndef untested(a):\n    if a:\n        return 1\n    return 2\n")
+    xml = os.path.join(tmp2, "coverage.xml")
+    with open(xml, "w") as handle:
+        handle.write('<coverage><sources><source>%s</source></sources><packages><package><classes><class filename="pkg/money.py"><methods/><lines>%s</lines></class></classes></package></packages></coverage>'
+                     % (tmp2, "".join('<line number="%d" hits="%d"/>' % (n, h) for n, h in ((1, 1), (2, 1), (3, 1), (4, 0), (6, 1), (7, 0), (8, 0), (9, 0)))))
+    lined = coverage.function_coverage(coverage.read(xml, tmp2), tmp2)
+    real = os.path.realpath(plain)
+    check("a Cobertura report with no functions is read by the lines in the function's range",
+          round(mod.coverage_record(lined, real, 1, 4), 2) == 0.67, str(mod.coverage_record(lined, real, 1, 4)))
+    check("a function nothing called is 0% covered, though its declaration line ran at import",
+          mod.coverage_record(lined, real, 6, 9) == 0.0, str(mod.coverage_record(lined, real, 6, 9)))
+    class _Config:
+        path = staticmethod(lambda p: os.path.join(tmp2, p))
+        paths = staticmethod(lambda ps: [os.path.join(tmp2, p) for p in ps])
+    spec = {"exclude": ["*/tests/*", "*/test_*.py"], "exclude_except": ["tests/kept.py"]}
+    named = mod.kept_files(["src/money.py", "tests/test_money.py", "pkg/test_x.py", "tests/kept.py"], spec, _Config)
+    check("under --only a changed test file an exclude glob drops is not measured, so it never reads as uncovered production code",
+          named == ["src/money.py", "tests/kept.py"], str(named))
+    check("a function with more paths than the gate passes fully covered: its path count is the complexity gate's",
+          not mod.unpaid(9, 1.0, 8) and not mod.unpaid(45, 1.0, 8), "")
+    check("and fails with any line unrun, as one of exactly the gate's paths does; a small function is judged by the whole score as before",
+          mod.unpaid(9, 0.94, 8) and mod.unpaid(8, 0.94, 8) and not mod.unpaid(8, 1.0, 8) and mod.unpaid(3, 0.0, 8) and not mod.unpaid(2, 0.0, 8) and not mod.unpaid(5, 0.6, 8), "")
     code, out = run2("--gate", "nowhere")
     check("an unknown gate name fails naming the ones there are", code == 2 and "nowhere" in out and "web" in out, out)
     # --estimate: the preflight's look ahead — a WARN from the last coverage run on disk, exit 0 whatever it finds

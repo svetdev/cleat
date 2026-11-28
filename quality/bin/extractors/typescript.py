@@ -88,3 +88,67 @@ def _previous(text, j):
     """The last non-space character before `j`, or ""."""
     before = text[:j].rstrip()
     return before[-1] if before else ""
+
+
+# ---------------------------------------------------------------- functions lizard does not report
+#
+# lizard (1.24) also drops whole TypeScript functions: after a `function` with a return type,
+# or an object literal that spreads a call, the next declaration is read as part of the one
+# before, or not at all. On five open-source libraries that was between a tenth and a third of
+# their named functions, some of them over any ceiling. `declared` reads the three shapes that
+# carry a name on their own line — a `function` declaration, a method, a `const` arrow — with
+# the bracket matching above, and counts the decisions lizard counts. complexity.py adds the
+# ones lizard did not report; what lizard did report stays as lizard read it.
+
+NOT_A_NAME = frozenset("if for while switch catch return function super await new typeof throw else do with "
+                       "import export delete void yield in of case constructor".split()) - {"constructor"}
+MODIFIERS = r"(?:(?:export|default|declare|public|private|protected|static|async|override|abstract|get|set)\s+)*"
+HEADER = re.compile(r"^[ \t]*%s(?:function\s*\*?\s*|\*\s*)?(?P<name>[#\w$]+)\s*(?:<[^(){};=]*>)?\(" % MODIFIERS, re.M)
+ARROW = re.compile(r"^[ \t]*(?:export\s+)?(?:const|let|var)\s+(?P<name>[\w$]+)\s*(?::[^=\n]*)?=\s*(?:async\s*)?(?:<[^(){};=]*>\s*)?\(", re.M)
+RETURN_TYPE = re.compile(r"\s*(?::[^\n;=]*(?:\n\s*[|&][^\n;=]*)*)?\s*$")
+ARROW_TYPE = re.compile(r"\s*(?::[^\n;=]*(?:\n\s*[|&][^\n;=]*)*)?\s*=>\s*$")
+DECISION = re.compile(r"\b(?:if|for|while|case|catch)\b|&&|\|\||\?(?![.?:,)\]=])")
+GROUP = re.compile(r"\([^()]*\)|\[[^\[\]]*\]|\{[^{}]*\}|<[^<>]*>")
+
+
+def _flat(text):
+    """`text` with every bracketed group taken out, innermost first: what is left is the
+    signature's own level, where a return type is one run and a statement shows."""
+    previous = None
+    while previous != text:
+        previous, text = text, GROUP.sub("", text.replace("=>", "\x00"))
+    return text.replace("\x00", "=>")
+
+
+def _body(code, opened, between):
+    """The index of the `{` opening the body of a declaration whose parameter list opens at
+    `opened`; None when what follows the list is not a return type and a brace."""
+    closed = matching(code, opened)
+    brace = code.find("{", closed + 1) if closed is not None else -1
+    while brace != -1 and not between.match(_flat(code[closed + 1:brace])):
+        if "\n\n" in code[closed + 1:brace] or ";" in _flat(code[closed + 1:brace]):
+            return None
+        brace = code.find("{", brace + 1)
+    return brace if brace != -1 else None
+
+
+def declared(text):
+    """[(name, first line, last line, cyclomatic number)] for the named functions of `text`,
+    one per body: the declaration nearest a body is the one that owns it, so an overload
+    signature above its implementation is not a second function."""
+    code = "\n".join(code_lines(text))
+    owners = {}
+    for pattern, between in ((HEADER, RETURN_TYPE), (ARROW, ARROW_TYPE)):
+        for found in pattern.finditer(code):
+            if found.group("name") in NOT_A_NAME:
+                continue
+            body = _body(code, found.end() - 1, between)
+            if body is not None:
+                owners[body] = max(owners.get(body, found), found, key=lambda m: m.start())
+    out = []
+    for body, found in sorted(owners.items()):
+        close = matching(code, body)
+        if close is not None:
+            out.append((found.group("name"), code.count("\n", 0, found.start("name")) + 1, code.count("\n", 0, close) + 1,
+                        1 + len(DECISION.findall(code[body:close]))))
+    return out

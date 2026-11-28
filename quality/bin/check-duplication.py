@@ -22,6 +22,15 @@ this change wrote: a copy made fails, while a rename or a reorder inside a
 clone that already existed does not, and neither does the same edit made to
 both copies of one — which is how a clone is kept consistent, not how one is made.
 
+The density fails only when the share and the count of duplicated lines both rose: a
+change that deletes code leaves the same copies in a smaller tree, which is a higher share
+and no new duplication.
+
+`variants` names directories that hold one thing written once per platform — Kotlin
+Multiplatform's `iosMain` beside `jvmMain`. A clone whose copies sit in different
+directories of one such family, under the same parent, is how that is done and is not
+reported or counted.
+
 Clones come from the built-in finder (exact after whitespace normalisation,
 nothing to install) or from a jscpd report when `report.jscpd` names one.
 
@@ -30,6 +39,7 @@ nothing to install) or from a jscpd report when `report.jscpd` names one.
     "languages": ["python", "typescript"],           # which suffixes (the escapes table's)
     "exclude":   ["*.test.ts"],                      # file globs left unread
     "min_lines": 6,                                  # shortest clone reported (default 6)
+    "variants":  ["*Main"],                          # directory-name globs: one source set per platform
     "skip_rust_tests": true,                         # lines inside `#[cfg(test)]` modules are not production (default)
     "baseline":  "quality/duplication-baseline.json",
     "base_ref":  "origin/main",                      # optional; see extractors/changed.py
@@ -45,6 +55,7 @@ nothing to install) or from a jscpd report when `report.jscpd` names one.
 
 import argparse
 import collections
+import fnmatch
 import json
 import os
 import sys
@@ -54,7 +65,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import quality_config
 import ratchet
-from extractors import languages, changed, duplication, patterns
+from extractors import census, languages, changed, duplication, patterns
 
 
 SECTION = "duplication"
@@ -68,7 +79,8 @@ def sources(section, config):
         set(languages.suffixes(section.get("languages", []))))
     if not suffixes:
         raise KeyError("%s: \"%s\" names no \"languages\" and no \"suffixes\" — nothing to read" % (config.file, SECTION))
-    return list(patterns.files(roots, suffixes, skip, section.get("exclude", [])))
+    made = census.accepted(config)
+    return [p for p in patterns.files(roots, suffixes, skip, section.get("exclude", [])) if os.path.relpath(p, config.root) not in made]
 
 
 def clones_for(section, config, paths):
@@ -76,7 +88,22 @@ def clones_for(section, config, paths):
     if "jscpd" in report:
         with open(config.path(report["jscpd"])) as handle:
             return duplication.from_jscpd(json.load(handle), config.root), "jscpd"
-    return duplication.find(paths, config.root, int(section.get("min_lines", 6)), section.get("skip_rust_tests", True)), "built-in"
+    found = duplication.find(paths, config.root, int(section.get("min_lines", 6)), section.get("skip_rust_tests", True))
+    variants = section.get("variants", [])
+    return [c for c in found if not (variants and by_design(c, variants))], "built-in"
+
+
+def by_design(clone, variants):
+    """Whether every copy sits in a different directory of one variant family under one
+    parent: `lib/src/iosMain/…` and `lib/src/jvmMain/…` for the family `*Main`."""
+    homes = set()
+    for rel, _, _ in clone.locations:
+        parts = rel.split("/")
+        at = next((i for i, part in enumerate(parts[:-1]) if any(fnmatch.fnmatch(part, v) for v in variants)), None)
+        if at is None:
+            return False
+        homes.add(("/".join(parts[:at]), parts[at]))
+    return len(homes) == len(clone.locations) and len({parent for parent, _ in homes}) == 1
 
 
 def describe(clone):
@@ -192,6 +219,18 @@ def parse_args():
     return parser.parse_args()
 
 
+def no_new_copies(finding, entries):
+    """The finding, with its share held at the baseline's when no more lines are duplicated
+    than the baseline counted: the share rose because the tree shrank."""
+    entry = next((e for e in entries if e.get("text") == DENSITY_KEY), None)
+    if entry is None or "duplicated_lines" not in entry:
+        return finding
+    values = finding.values
+    if values["percent"] > entry["percent"] and values["duplicated_lines"] <= entry["duplicated_lines"]:
+        return ratchet.Finding(finding.file, finding.line, finding.text, dict(values, percent=entry["percent"]))
+    return finding
+
+
 def judge_all(args, section, config, baseline_path, finding, clones, measured):
     """The changed-lines judgment, then the density ratchet; the exit code."""
     touching, changed_count = [], 0
@@ -202,7 +241,7 @@ def judge_all(args, section, config, baseline_path, finding, clones, measured):
         print_touching(touching, changed_count)
     entries, stored = ratchet.read(baseline_path)
     ok_line = ok_line_for(finding.values, len(clones), None if args.repo_only else changed_count)
-    verdict = ratchet.judge([finding], entries, ["percent"], stored, measured)
+    verdict = ratchet.judge([no_new_copies(finding, entries)], entries, ["percent"], stored, measured)
     code = ratchet.report(verdict, GATE, len(entries), ok_line, quiet=args.quiet, strict=args.strict,
                           tighten=args.tighten, baseline=(baseline_path, measured, ()))
     return 1 if touching else code

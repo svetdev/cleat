@@ -61,6 +61,7 @@ their baselines, and touches no section that is already there.
 """
 
 import argparse
+import fnmatch
 import json
 import math
 import os
@@ -73,7 +74,7 @@ import time
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from extractors import languages, patterns, shell
+from extractors import languages, mirrors, patterns, shell
 import runlock
 
 
@@ -105,7 +106,8 @@ SLEEP_PATTERNS = {
     "ruby": r"\bsleep\b",
     "shell": r"\bsleep\s+[0-9]",
 }
-TEST_DIR_RE = re.compile(r"^(?:tests?|specs?|__tests__|[A-Za-z]+Tests|testing|e2e)$")
+# `AppTests`, and Kotlin's source sets: `jvmTest`, `commonTest`, `androidTest` — by case, so `latest` is not one
+TEST_DIR_RE = re.compile(r"^(?:tests?|specs?|__tests__|[A-Za-z]+Tests?|testing|e2e)$")
 # The files an agent is handed at every turn. A README is not one: it is the project's own
 # documentation, and a ceiling on it has the agent cutting what the maintainers wrote.
 AGENT_DOCS = ["CLAUDE.md", "AGENTS.md", "GEMINI.md", ".github/copilot-instructions.md", ".cursorrules"]
@@ -174,6 +176,7 @@ class Plan:
         self.languages = {}      # language → file count
         self.test_roots = []     # repo-relative
         self.docs = []           # repo-relative
+        self.copies = []         # top-level directories that are a built copy of another: no gate reads them
         self.writes = []         # (relative path, what was done)
         self.notes = []
         self.refreshing = False
@@ -225,6 +228,21 @@ def survey(plan):
     plan.languages = dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
     plan.test_roots = _outermost(tests)
     plan.docs = [d for d in AGENT_DOCS if os.path.isfile(os.path.join(plan.root, d))]
+    note_copies(plan)
+
+
+def note_copies(plan):
+    """A top-level directory that is a checked-in build of another (see extractors/mirrors.py)
+    is left out of every gate; a mirror whose names do not say which is built is a note."""
+    decided, undecided = mirrors.copies(plan.root, suffixes_of(plan.languages), SKIP_DIRS)
+    plan.copies = sorted({copy for copy, _ in decided})
+    plan.test_roots = [t for t in plan.test_roots if t.split(os.sep)[0] not in plan.copies]
+    for copy, source in decided:
+        plan.notes.append("%s/ is a copy of %s/ (the same files, nearly line for line), so no gate reads it: "
+                          "take it out of the skip_dirs and exclude lists in quality.json if it is written by hand." % (copy, source))
+    for a, b in undecided:
+        plan.notes.append("%s/ and %s/ hold the same files, nearly line for line. If one is built from the other, add it "
+                          "to the skip_dirs and exclude lists in quality.json, or every gate reads the code twice." % (a, b))
 
 
 def ceiling_for(words):
@@ -263,6 +281,21 @@ TEST_FILE_GLOBS = ["*.test.*", "*.spec.*", "*_test.py", "*/test_*.py", "*/confte
                    "*_spec.rb", "*_test.rb", "*Tests.swift", "*Test.kt", "*Test.java"]
 
 
+# Build manifests in a project's own language: one per toolchain or per module, alike by
+# design, and not code the project ships.
+BUILD_MANIFESTS = ["Package.swift", "Package@swift-*.swift", "*.gradle.kts", "*.gradle"]
+SOURCE_SET = "*Main"   # Kotlin Multiplatform: `commonMain`, `iosMain`, `jvmMain`, one per platform
+
+
+def source_sets(plan):
+    """Whether some directory holds two source sets or more, so one thing is written per platform."""
+    for _dirpath, dirnames, _files in os.walk(plan.root):
+        dirnames[:] = _kept(dirnames)
+        if sum(fnmatch.fnmatch(d, SOURCE_SET) for d in dirnames) > 1:
+            return True
+    return False
+
+
 def test_globs(plan):
     """Globs that name the project's tests, for the gates that judge production code only
     (complexity, duplication) or judge tests by another rule (escapes): every test directory
@@ -281,7 +314,7 @@ def complexity_section(plan, languages):
                           "`pip install lizard`, then run attach again (tier 1).")
         return None
     return {"tool": "lizard", "sources": ["."], "languages": lizard_languages,
-            "exclude": ["*/%s/*" % d for d in sorted(SKIP_DIRS)] + test_globs(plan),
+            "exclude": ["*/%s/*" % d for d in sorted(SKIP_DIRS) + plan.copies] + test_globs(plan),
             "ceilings": {"cc": 8, "lines": 60}, "helpers": "inline",
             "growth": {"share": 0.1, "cc": 1, "lines": 5}, "baseline": "quality/complexity-baseline.json"}
 
@@ -305,7 +338,10 @@ def changed_coverage_section(plan):
         plan.notes.append("no coverage report found (lcov.info or a Cobertura XML), so changed-line coverage was "
                           "not attached: have the tests write one, then run attach again (tier 2).")
         return None
-    return {"report": report, "minimum": 0.8, "min_lines": 20}
+    section = {"report": report, "minimum": 0.8, "min_lines": 20}
+    if plan.copies:
+        section["exclude"] = ["%s/*" % d for d in plan.copies]
+    return section
 
 
 TESTS_TIMEOUT = 600   # seconds attach waits for the project's tests on day one
@@ -401,9 +437,15 @@ def doc_ceiling(plan, doc):
     """A document's ceiling from today's words — the agent block attach is about to append
     counted in, so attach's own edit cannot trip the gate it installs."""
     words = _words(os.path.join(plan.root, doc))
-    if doc == agent_doc(plan.root):
+    if _same_file(plan.root, doc, agent_doc(plan.root)):
         words += block_words_pending(plan.root)
     return ceiling_for(words)
+
+
+def _same_file(root, doc, other):
+    """Whether two documents are one file: `CLAUDE.md` is often a link to `AGENTS.md`, and
+    the block appended through one is words in the other."""
+    return os.path.realpath(os.path.join(root, doc)) == os.path.realpath(os.path.join(root, other))
 
 
 def xcode_projects(root):
@@ -422,9 +464,31 @@ def manifests_section(plan):
     """A `manifests` entry per Xcode project in the tree, over the test roots beside it —
     a generated project that omits a new test file is the silent kind of failure."""
     roots = [r for r in plan.test_roots if r.endswith("Tests")]
-    if not roots:
-        return None
-    return [{"file": pbx, "roots": roots, "extensions": [".swift"]} for pbx in xcode_projects(plan.root)] or None
+    entries = [_manifest_entry(plan, pbx, roots) for pbx in xcode_projects(plan.root)]
+    return [e for e in entries if e] or None
+
+
+MANIFEST_DAY_ONE = "not in the project on the day cleat was attached"
+
+
+def _unnamed_under(plan, root, manifest_text):
+    """The Swift files under a root the project does not name, or None when it names under
+    half of them: such a root is not listed file by file (a Swift package's tests, a folder
+    Xcode keeps in sync), and holding it to the project would fail every file in it."""
+    files = list(patterns.files([os.path.join(plan.root, root)], (".swift",), set()))
+    missing = [os.path.relpath(f, plan.root) for f in files if os.path.basename(f) not in manifest_text]
+    return missing if 2 * len(missing) < len(files) else None
+
+
+def _manifest_entry(plan, pbx, roots):
+    """The entry for one Xcode project: the test roots whose files it lists, with the files
+    under them it does not name today as exempt, so the gate starts green."""
+    text = _read_if_exists(os.path.join(plan.root, pbx))
+    unnamed = {root: _unnamed_under(plan, root, text) for root in roots}
+    kept = [root for root in roots if unnamed[root] is not None]
+    exempt = {rel: MANIFEST_DAY_ONE for root in kept for rel in unnamed[root]}
+    entry = dict({"file": pbx, "roots": kept, "extensions": [".swift"]}, **({"exempt": exempt} if exempt else {}))
+    return entry if kept else None
 
 
 def config_for(plan, have=()):
@@ -436,11 +500,15 @@ def config_for(plan, have=()):
     if plan.docs:
         config["doc_size"] = [{"file": d, "ceiling": doc_ceiling(plan, d)} for d in plan.docs]
     if languages:
-        config["escapes"] = {"roots": ["."], "languages": languages, "skip_dirs": ["quality"],
+        skip = ["quality"] + plan.copies
+        config["escapes"] = {"roots": ["."], "languages": languages, "skip_dirs": skip,
                              "tests": test_globs(plan), "baseline": "quality/escapes-baseline.json"}
-        config["duplication"] = {"roots": ["."], "languages": languages, "skip_dirs": ["quality"],
-                                 "exclude": test_globs(plan), "min_lines": 6, "baseline": "quality/duplication-baseline.json"}
-        config["exclusions"] = {"skip_dirs": ["quality"], "baseline": "quality/exclusions-baseline.json"}
+        config["duplication"] = {"roots": ["."], "languages": languages, "skip_dirs": skip,
+                                 "exclude": test_globs(plan) + BUILD_MANIFESTS, "min_lines": 6,
+                                 "baseline": "quality/duplication-baseline.json"}
+        if source_sets(plan):
+            config["duplication"]["variants"] = [SOURCE_SET]
+        config["exclusions"] = {"skip_dirs": skip, "baseline": "quality/exclusions-baseline.json"}
     sections = (("hygiene", lambda: hygiene_section(plan, languages)), ("complexity", lambda: complexity_section(plan, languages)),
                 ("changed_coverage", lambda: changed_coverage_section(plan)), ("manifests", lambda: manifests_section(plan)),
                 ("commands", lambda: tests_section(plan)))
@@ -690,9 +758,10 @@ def raise_ceiling_for_block(plan, config, config_path, doc, dry_run):
     block's words in the same write, and the report says so — attach's edit must not be
     the first thing its own gate fails on."""
     for entry in config.get("doc_size", []):
-        if entry.get("file") == doc and _words(os.path.join(plan.root, doc)) > int(entry.get("ceiling", 0)):
+        name = entry.get("file", "")
+        if _same_file(plan.root, name, doc) and _words(os.path.join(plan.root, name)) > int(entry.get("ceiling", 0)):
             entry["ceiling"] = int(entry["ceiling"]) + BLOCK_WORDS
-            plan.say("quality.json", "doc_size: %s ceiling raised by %d for the cleat block" % (doc, BLOCK_WORDS))
+            plan.say("quality.json", "doc_size: %s ceiling raised by %d for the cleat block" % (name, BLOCK_WORDS))
             if not dry_run:
                 with open(config_path, "w") as handle:
                     json.dump(config, handle, indent=2)

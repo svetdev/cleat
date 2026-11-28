@@ -195,10 +195,71 @@ def only_files(only, sources, suffixes, path_of):
 
 
 class Function:
-    __slots__ = ("path", "line", "end", "cc", "length", "name")
+    __slots__ = ("path", "line", "end", "cc", "length", "name", "unreported")
 
-    def __init__(self, path, line, end, cc, length, name):
+    def __init__(self, path, line, end, cc, length, name, unreported=False):
         self.path, self.line, self.end, self.cc, self.length, self.name = path, line, end, cc, length, name
+        self.unreported = unreported   # lizard did not report it: read by typescript.declared
+
+
+# What a baseline's provenance carries once it was recorded with the TypeScript functions
+# lizard does not report in it. One recorded before is judged without them (`as_recorded`),
+# or every such function over the gate would be new debt the day cleat is upgraded.
+TS_READER = "ts-declared-1"
+
+
+def reads_typescript(spec):
+    return "typescript" in spec.get("languages", [])
+
+
+def version_with(version, spec):
+    """lizard's version, marked when the TypeScript reader ran beside it."""
+    return "%s %s" % (version or "lizard", TS_READER) if reads_typescript(spec) else version
+
+
+def recorded_with(stored):
+    """Whether the baseline whose provenance is `stored` holds the unreported functions:
+    it says so, or there is no baseline yet and the first one written will."""
+    return not stored or TS_READER in (stored.get("version") or "")
+
+
+def as_recorded(functions, stored, noun="the gate"):
+    """`functions` as the baseline's reader saw them: all of them, or without the ones lizard
+    does not report when the baseline was recorded before cleat read those, with a NOTE."""
+    left_out = [f for f in functions if f.unreported]
+    if recorded_with(stored) or not left_out:
+        return functions
+    print("NOTE: the baseline was recorded before cleat read the TypeScript functions lizard does not report, so %d of "
+          "them are not judged by %s. Recording it again with --write-baseline is a person's step." % (len(left_out), noun))
+    return [f for f in functions if not f.unreported]
+
+
+def _typescript_files(roots, excludes, root):
+    """The TypeScript files under `roots` (a file is itself) that no exclude glob drops."""
+    base = root or os.getcwd()
+    for start in roots:
+        found = [start] if os.path.isfile(start) else patterns.files([start], typescript.SUFFIXES)
+        for path in found:
+            if path.endswith(typescript.SUFFIXES) and not excluded(os.path.relpath(path, base), excludes):
+                yield os.path.realpath(path)
+
+
+def unreported(functions, roots, excludes, root=None):
+    """[Function] for the named TypeScript functions under `roots` that lizard did not report:
+    declared on a line, give or take one, where lizard starts no function (see typescript.py)."""
+    starts = {}
+    for f in functions:
+        starts.setdefault(f.path, set()).update((f.line - 1, f.line, f.line + 1))
+    out = []
+    for path in sorted(set(_typescript_files(roots, excludes, root))):
+        try:
+            with open(path, errors="replace") as handle:
+                found = typescript.declared(handle.read())
+        except OSError:
+            continue
+        out += [Function(path, line, end, cc, end - line + 1, name, unreported=True)
+                for name, line, end, cc in found if line not in starts.get(path, ())]
+    return out
 
 
 def functions_from_csv(text, skip_rust_tests=True):
@@ -371,4 +432,6 @@ def measure(spec, roots, exclude_except=(), root=None):
         return functions_from_swiftlint(swiftlint_violations(roots)), 0, "swiftlint", swiftlint_version()
     text = run_lizard(roots, spec.get("languages", []), spec.get("exclude", []), list(exclude_except), root=root)
     functions, skipped = functions_from_csv(text, skip_rust_tests=spec.get("skip_rust_tests", True))
-    return functions, skipped, "lizard", lizard_version()
+    if reads_typescript(spec):
+        functions += unreported(functions, roots, spec.get("exclude", []), root) + unreported(functions, exclude_except, [], root)
+    return functions, skipped, "lizard", version_with(lizard_version(), spec)

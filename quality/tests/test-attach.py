@@ -242,6 +242,50 @@ try:
     code, gout, gerr = gate(ios, "--strict", "--skip-missing-tools")
     check("and it is green on day one", code == 0, gout + gerr)
 
+    # ---- a project that does not name every test file: the unnamed are exempt, a root it does not list is left out
+    partial = os.path.join(tmp, "ios-partial")
+    write(os.path.join(partial, "App.xcodeproj", "project.pbxproj"), "// !$*UTF8*$!\n\t\tA1 /* ATests.swift */ = {};\n\t\tA2 /* BTests.swift */ = {};\n\t\tA3 /* CTests.swift */ = {};\n")
+    for name in ("ATests", "BTests", "CTests", "Forgotten"):
+        write(os.path.join(partial, "AppTests", name + ".swift"), "final class %s {}\n" % name)
+    for name in ("One", "Two", "Three"):
+        write(os.path.join(partial, "PackageTests", name + ".swift"), "final class %s {}\n" % name)
+    write(os.path.join(partial, "App", "Thing.swift"), "struct Thing {}\n")
+    subprocess.run(["git", "-C", partial, "init", "-q"], check=True)
+    code, out = run("--into", partial)
+    entry = (json.load(open(os.path.join(partial, "quality.json"))).get("manifests") or [{}])[0]
+    check("a test file the project does not name on day one is exempt, with the reason", list(entry.get("exempt", {})) == ["AppTests/Forgotten.swift"], str(entry))
+    check("and a root the project lists none of is not held to it", entry.get("roots") == ["AppTests"], str(entry))
+    code, gout, gerr = gate(partial, "--strict", "--skip-missing-tools")
+    check("so the gate is green on day one", code == 0, gout + gerr)
+
+    # ---- CLAUDE.md as a link to AGENTS.md: the block lands in both names, and both ceilings hold it
+    linked = os.path.join(tmp, "linked")
+    write(os.path.join(linked, "AGENTS.md"), "word " * 340 + "\n")
+    os.symlink("AGENTS.md", os.path.join(linked, "CLAUDE.md"))
+    os.symlink("AGENTS.md", os.path.join(linked, "GEMINI.md"))
+    write(os.path.join(linked, "src", "a.py"), "x = 1\n")
+    subprocess.run(["git", "-C", linked, "init", "-q"], check=True)
+    code, out = run("--into", linked)
+    ceilings = {e["file"]: e["ceiling"] for e in json.load(open(os.path.join(linked, "quality.json"))).get("doc_size", [])}
+    check("every name of the linked document gets a ceiling that holds the block", len(set(ceilings.values())) == 1 and min(ceilings.values()) > 500, str(ceilings))
+    code, gout, gerr = gate(linked, "--strict", "--skip-missing-tools")
+    check("and the gate is green on day one", code == 0, gout + gerr)
+
+    # ---- Kotlin source sets are test trees: jvmTest, commonTest, androidTest
+    kmp = os.path.join(tmp, "kmp")
+    write(os.path.join(kmp, "lib", "src", "commonMain", "kotlin", "A.kt"), "fun a() = 1\n")
+    write(os.path.join(kmp, "lib", "src", "commonTest", "kotlin", "ATest.kt"), "fun t() = 1\n")
+    write(os.path.join(kmp, "lib", "src", "androidTest", "kotlin", "B.kt"), "fun b() = 1\n")
+    subprocess.run(["git", "-C", kmp, "init", "-q"], check=True)
+    code, out = run("--into", kmp)
+    excluded = json.load(open(os.path.join(kmp, "quality.json"))).get("duplication", {}).get("exclude", [])
+    check("a Kotlin test source set is found and left out of the production gates", "*/commonTest/*" in excluded and "*/androidTest/*" in excluded, str(excluded))
+    write(os.path.join(kmp, "lib", "src", "iosMain", "kotlin", "A.ios.kt"), "fun a2() = 1\n")
+    code, out = run("--into", kmp, "--force")
+    dup = json.load(open(os.path.join(kmp, "quality.json"))).get("duplication", {})
+    check("two source sets side by side are named as variants, and build manifests are left out of duplication",
+          dup.get("variants") == ["*Main"] and "*.gradle.kts" in dup.get("exclude", []) and "Package@swift-*.swift" in dup.get("exclude", []), str(dup))
+
     # ---- the closing lines: the ruleset command filled in, and the identity advice
     check("attach ends with the gh ruleset command for this repository's origin, naming the check",
           "gh api -X POST repos/acme-org/proj/rulesets" in out_first and '"context": "gates"' in out_first and "require_code_owner_review" in out_first, out_first)
@@ -298,6 +342,27 @@ try:
         check("--no-tests neither runs nor attaches them", code == 0 and "commands" not in json.load(open(os.path.join(skipped, "quality.json"))) and "--no-tests" in out, out)
     else:
         print("  skip  the tests gate end to end: npm is not installed")
+
+    # ---- a checked-in build of the source is not production code: no gate reads it
+    built = os.path.join(tmp, "built")
+    body = "export function f%d(a: number) {\n  if (a > %d) {\n    return a\n  }\n  return %d\n}\n"
+    for n in range(6):
+        write(os.path.join(built, "src", "m%d.ts" % n), "import { x } from './x'\n" + body % (n, n, n))
+        write(os.path.join(built, "deno_dist", "m%d.ts" % n), "import { x } from './x.ts'\n" + body % (n, n, n))
+        write(os.path.join(built, "lib", "m%d.ts" % n), "import { x } from './x'\n" + body % (n, n, n))
+    write(os.path.join(built, "lcov.info"), "TN:\nSF:src/m0.ts\nDA:1,1\nend_of_record\n")
+    subprocess.run(["git", "-C", built, "init", "-q"], check=True)
+    code, out = run("--into", built, "--no-tests")
+    made = json.load(open(os.path.join(built, "quality.json")))
+    check("a directory named as a build that mirrors another is left out of every gate that walks the tree",
+          code == 0 and all("deno_dist" in made[k]["skip_dirs"] for k in ("escapes", "duplication", "exclusions")), json.dumps(made)[:600])
+    check("and out of complexity and changed-line coverage, where there are any",
+          "deno_dist/*" in made["changed_coverage"]["exclude"] and ("complexity" not in made or "*/deno_dist/*" in made["complexity"]["exclude"]), json.dumps(made)[:600])
+    check("saying so, and what to undo if it is written by hand", "deno_dist/ is a copy of src/" in out and "written by hand" in out, out)
+    check("a mirror whose names do not say which is built is left in, with a note for a person",
+          "lib" not in made["escapes"]["skip_dirs"] and "lib/ and src/ hold the same files" in out, out)
+    check("which leaves no clone to accept on day one between the source and its build",
+          not any("deno_dist" in json.dumps(e) for e in json.load(open(os.path.join(built, "quality", "duplication-baseline.json"))).get("entries", [])), "")
 
     code, out = run("--into", os.path.join(tmp, "missing"))
     check("a directory that does not exist is refused", code == 2, out)

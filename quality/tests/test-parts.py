@@ -116,6 +116,11 @@ try:
     check("test directories by case: jvmTest and AppTests are tests, latest is not",
           summary._is_test("lib/src/jvmTest/A.kt") and summary._is_test("App/AppTests/A.swift") and summary._is_test("test_suite/a.rs")
           and not summary._is_test("docs_gen/latest/a.py".replace("docs_gen/", "")))
+    check("test files by name, outside any test directory: StoreTest.kt, LoginTests.swift, test.ts beside its source",
+          all(summary._is_test(p) for p in ("app/StoreTest.kt", "app/StoreTests.kt", "a/BarTest.java", "App/LoginTests.swift",
+                                            "src/add/test.ts", "lib/user_spec.rb", "pkg/conftest.py")))
+    check("and by case, so Latest.kt, Contest.java, attest.ts and a script named test.py stay production",
+          not any(summary._is_test(p) for p in ("app/Latest.kt", "src/Contest.java", "src/attest.ts", "src/test.py", "build.gradle.kts")))
     check("a file with no test in it, or a language with no runner known, counts nothing",
           assertions.scan_text("x = 1\nassert y\n", "python") == (0, 0, 0) and assertions.scan_text("it 'a'", "shell") == (0, 0, 0))
     write(os.path.join(tmp, "apps", "api", "tests", "it.rs"), "#[test]\nfn a() { assert!(ok()); }\n#[test]\nfn b() { run(); }\n" + lines(296, "let t = 1;"))

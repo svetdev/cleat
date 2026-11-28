@@ -14,7 +14,7 @@ nothing outside a temporary directory.
 
   python3 quality/tests/test-check-changed-coverage.py
 """
-import json, os, shutil, subprocess, sys, tempfile
+import json, os, shutil, subprocess, sys, tempfile, time
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -75,6 +75,22 @@ try:
     fcc = coverage.function_coverage(cob, os.path.join(repo, "src"))
     check("Cobertura methods give per-function coverage from their own lines", abs(fcc[(real, 9)] - 0.6) < 1e-9 and abs(fcc[(real, 1)] - 1.0) < 1e-9, str(fcc))
 
+    # ---- a package's report in a monorepo names its files from the package, not the repository root
+    pkg_src = os.path.join(repo, "packages", "core", "src", "calc.py")
+    write(pkg_src, original)
+    pkg_report = os.path.join(repo, "packages", "core", "coverage", "lcov.info")
+    write(pkg_report, lcov)
+    nested = coverage.read(pkg_report, repo)
+    check("a relative name in a package's report is the package's file, not the root's of the same name",
+          os.path.realpath(pkg_src) in nested and real not in nested, str(sorted(nested)))
+    write(pkg_report, lcov.replace("SF:src/calc.py", "SF:packages/core/src/calc.py"))
+    check("a root-relative name in a report kept inside a package still reads from the root",
+          os.path.realpath(pkg_src) in coverage.read(pkg_report, repo), "")
+    write(pkg_report, lcov.replace("SF:src/calc.py", "SF:src/gone.py"))
+    check("a name no directory holds falls back to the root, as before",
+          os.path.realpath(os.path.join(repo, "src", "gone.py")) in coverage.read(pkg_report, repo), "")
+    shutil.rmtree(os.path.join(repo, "packages"))
+
     config = os.path.join(repo, "quality.json")
     write(config, json.dumps({"changed_coverage": {"report": "coverage/lcov.info", "minimum": 0.8, "min_lines": 5}}))
     code, out = run(SCRIPT, "--config", config, "--min-lines", "50")
@@ -87,9 +103,21 @@ try:
     code, out = run(SCRIPT, "--config", config, "--minimum", "0.5", "--quiet")
     check("--quiet prints nothing on success", out == "", repr(out))
     write(os.path.join(repo, "src", "unknown.py"), "x = 1\ny = 2\n")
+    old = time.time() - 3600
+    os.utime(lcov_path, (old, old))
+    code, out = run(SCRIPT, "--config", config)
+    check("a report older than a changed file is refused as an earlier run's, naming the file and what leaves one behind",
+          code == 2 and "older than 2 changed file(s)" in out and "src/calc.py" in out and "reportOnFailure" in out, out)
+    code, out = run(SCRIPT, "--config", config, "--report", lcov_path)
+    check("a report named with --report is the run the caller chose, and is read", code == 1 and "6 of 10 changed" in out, out)
+    os.utime(lcov_path, None)
     code, out = run(SCRIPT, "--config", config)
     check("a changed file the report does not know is counted but not judged", code == 1 and "1 changed file(s) the report does not know" in out, out)
     os.remove(os.path.join(repo, "src", "unknown.py"))
+    write(config, json.dumps({"changed_coverage": {"report": "coverage/lcov.info", "minimum": 0.8, "min_lines": 5, "exclude": ["src/calc.*"]}}))
+    code, out = run(SCRIPT, "--config", config)
+    check("a changed file an exclude glob names is left out of the count", code == 0 and "0 changed executable line(s)" in out, out)
+    write(config, json.dumps({"changed_coverage": {"report": "coverage/lcov.info", "minimum": 0.8, "min_lines": 5}}))
     code, out = run(SCRIPT, "--config", config, "--report", cob_path)
     check("a Cobertura report judges the same change the same way", code == 1 and "6 of 10 changed executable line(s) ran (60%)" in out, out)
     code, out = run(SCRIPT, "--config", config, "--report", os.path.join(repo, "coverage", "missing.info"))

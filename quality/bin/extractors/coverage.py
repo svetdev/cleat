@@ -10,7 +10,9 @@ rather than a reader per stack.
 [(start, end or None, name, hits)]}}. `function_coverage()` turns that into
 the {(path, declaration line): fraction} the CRAP gate joins to complexity —
 a function's coverage is the share of its executable lines that ran, its
-range running to the next function's start when the report gives no end.
+range running to the next function's start when the report gives no end. A
+report that lists no functions at all (coverage.py's Cobertura) still answers
+`over(path, start, end)` from its lines, for a caller that knows the range.
 `line_coverage()` is the per-line view the changed-line gate reads.
 """
 
@@ -42,9 +44,25 @@ def newest(patterns):
 
 
 
-def _absolute(name, base_dir, path_map=None):
+def _absolute(name, base_dir, path_map=None, nearer=()):
+    """`name` as a real path: against the first of `nearer` that holds such a file, else `base_dir`."""
     name = remap(name, path_map)
-    return os.path.realpath(name if os.path.isabs(name) else os.path.join(base_dir, name))
+    if os.path.isabs(name):
+        return os.path.realpath(name)
+    held = next((d for d in nearer if os.path.isfile(os.path.join(d, name))), base_dir)
+    return os.path.realpath(os.path.join(held, name))
+
+
+def report_dirs(path, base_dir):
+    """The directories from the report's own up to, not including, `base_dir`, nearest first.
+    A package's runner in a monorepo writes `SF:src/x.ts` for `<package>/src/x.ts`; read
+    against the repository root that names no file, or the wrong one, and every changed line
+    reads as unknown to the report. Empty when the report is not under `base_dir`."""
+    base, here, out = os.path.realpath(base_dir), os.path.dirname(os.path.realpath(path)), []
+    while here.startswith(base + os.sep):
+        out.append(here)
+        here = os.path.dirname(here)
+    return out
 
 
 def remap(path, path_map):
@@ -77,13 +95,13 @@ def _lcov_line(entry, line):
         entry["lines"][int(number)] = max(entry["lines"].get(int(number), 0), int(hits))
 
 
-def read_lcov(text, base_dir, path_map=None):
+def read_lcov(text, base_dir, path_map=None, nearer=()):
     files = {}
     current = None
     for raw in text.splitlines():
         line = raw.strip()
         if line.startswith("SF:"):
-            current = files.setdefault(_absolute(line[3:], base_dir, path_map), {"lines": {}, "functions": [], "_hits": {}})
+            current = files.setdefault(_absolute(line[3:], base_dir, path_map, nearer), {"lines": {}, "functions": [], "_hits": {}})
         elif line == "end_of_record":
             current = None
         elif current is not None:
@@ -127,8 +145,9 @@ def read(path, base_dir, path_map=None):
     """The report at `path` — Cobertura when it is XML, LCOV otherwise."""
     with open(path, errors="replace") as handle:
         text = handle.read()
-    reader = read_cobertura if text.lstrip().startswith("<") else read_lcov
-    return reader(text, base_dir, path_map)
+    if text.lstrip().startswith("<"):
+        return read_cobertura(text, base_dir, path_map)
+    return read_lcov(text, base_dir, path_map, report_dirs(path, base_dir))
 
 
 def _function_share(entry, start, end, hits):
@@ -156,10 +175,12 @@ def function_coverage(report, sources_root):
     """{(abs file, declaration line): coverage in [0, 1]} for every function under
     `sources_root`."""
     root = os.path.join(os.path.realpath(sources_root), "")
-    out = {}
+    out = Spanned()
     for path, entry in report.items():
         if not path.startswith(root):
             continue
+        out.lines[path] = dict(entry["lines"])
+        out.body_only.add(path)
         for start, end, hits in _ranges(entry):
             out[(path, start)] = max(out.get((path, start), 0.0), _function_share(entry, start, end, hits))
     if report and not out and not any(p.startswith(root) for p in report):
@@ -203,6 +224,9 @@ class Spanned(dict):
         super().__init__()
         self.spans = {}
         self.lines = {}   # {abs file: {statement line: hits}} — for a function the report never named
+        # A line report (LCOV, Cobertura) counts a declaration line as run when its file was
+        # imported, so a function nothing called would read as partly covered; its body is judged.
+        self.body_only = set()   # the files read from such a report
 
     def within(self, path, line):
         spans = self.spans.get(os.path.realpath(path), ())
@@ -213,9 +237,13 @@ class Spanned(dict):
         """The share of the statement lines in [start, end] that ran — how a function the
         report does not list (a nested arrow function, a closure) is judged by what it
         holds; None when no statement starts inside the range."""
-        hits = self.lines.get(os.path.realpath(path), {})
-        inside = [n for n in hits if start <= n <= end]
-        return (sum(1 for n in inside if hits[n] > 0) / len(inside)) if inside else None
+        real = os.path.realpath(path)
+        hits = self.lines.get(real, {})
+        first = start + (real in self.body_only)
+        inside = [n for n in hits if first <= n <= end] or [n for n in hits if n == start]
+        if not inside:
+            return None
+        return sum(hits[n] > 0 for n in inside) / len(inside)
 
 
 def _istanbul_entry(entry, path, out):

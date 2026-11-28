@@ -26,6 +26,11 @@ try:
     write(os.path.join(tmp, "api", "service.pb.go"), HEADER + "package api\n" * 40)
     write(os.path.join(tmp, "api", "handler.go"), "package api\n" * 10)
     write(os.path.join(tmp, "vendored", "lib.go"), HEADER + "package lib\n")
+    licence = "//\n// Copyright Acme\n// SPDX-License-Identifier: MIT\n//\n\nimport Foundation\n\n"
+    write(os.path.join(tmp, "probe", "Proto.swift"), licence + "// WARNING: This code is " + "generated. Only edit within the markers.\n" + "let a = 1\n" * 5)
+    code, out = run(SCRIPT, "--config", config, "--write-baseline")
+    check("a header that follows a licence comment is still a header", "2 generated file(s) accepted" in out, out)
+    shutil.rmtree(os.path.join(tmp, "probe"))
     code, out = run(SCRIPT, "--config", config, "--write-baseline")
     check("a person accepts the generator's output once", code == 0 and "1 generated file(s) accepted" in out, out)
     code, out = run(SCRIPT, "--config", config)

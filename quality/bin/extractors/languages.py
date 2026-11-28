@@ -8,9 +8,15 @@ languages by suffix, read this table. `language(name)` follows an alias
 file suffixes for a list of names, the shape a walker wants.
 """
 
+# JaCoCo and Kover leave out what carries an annotation whose name ends in `Generated`, or
+# one named for the purpose. `@GeneratedValue` is a column's, and is not one.
+JACOCO_SKIPPED = r"@(?:\w+\.)*\w*Generated\b|@ExcludeFrom\w*Coverage\w*|@ExcludeFromJacoco\w*|@NoCoverage\b|@KoverIgnore\b"
+
 # Per language: the file suffixes it lives in, and the escapes worth a site each.
 # A pattern is a regex over the raw text — comments included, since most escapes
-# are comments — anchored loosely enough to survive spacing.
+# are comments — anchored loosely enough to survive spacing. "no cover" is each
+# stack's way to leave code out of the coverage report: under a gate that asks for
+# coverage, it is the line an agent writes in place of the test.
 LANGUAGES = {
     "python": {
         "suffixes": [".py"],
@@ -28,6 +34,7 @@ LANGUAGES = {
             "any": r":\s*any\b|\bas\s+any\b|<any>",
             "ts-ignore": r"@ts-(?:ignore|expect-error|nocheck)",
             "eslint-disable": r"eslint-disable",
+            "no cover": r"\b(?:istanbul|c8|v8)\s+ignore\b",
             "non-null assertion": r"[\w)\]]!\.",
             "skipped test": r"\b(?:it|test|describe)\.(?:skip|only)\(|\bx(?:it|test|describe)\(",
         },
@@ -52,6 +59,7 @@ LANGUAGES = {
             "unsafe": r"\bunsafe\s*\{",
             "allow": r"#!?\[allow\(",
             "todo": r"\b(?:todo|unimplemented)!\(",
+            "no cover": r"\bcoverage\(off\)|tarpaulin::skip|not\(tarpaulin_include\)|not\(coverage\)|LCOV_EXCL|grcov-excl",
             "skipped test": r"#\[ignore\b",
         },
     },
@@ -60,6 +68,7 @@ LANGUAGES = {
         "patterns": {
             "not-null assertion": r"!!",
             "suppress": r"@Suppress\(",
+            "no cover": JACOCO_SKIPPED,
             "skipped test": r"@(?:Ignore|Disabled)\b",
         },
     },
@@ -67,6 +76,7 @@ LANGUAGES = {
         "suffixes": [".java"],
         "patterns": {
             "suppress warnings": r"@SuppressWarnings\(",
+            "no cover": JACOCO_SKIPPED,
             "skipped test": r"@(?:Ignore|Disabled)\b",
         },
     },
@@ -74,6 +84,7 @@ LANGUAGES = {
         "suffixes": [".go"],
         "patterns": {
             "nolint": r"//\s*nolint",
+            "no cover": r"//\s*coverage:ignore",
             "skipped test": r"\bt\.Skip(?:Now|f)?\(",
         },
     },
@@ -81,6 +92,7 @@ LANGUAGES = {
         "suffixes": [".rb"],
         "patterns": {
             "rubocop:disable": r"rubocop:disable",
+            "no cover": r"#\s*:nocov:",
             "skipped test": r"\bskip\b|\bxit\b|\bpending\b",
         },
     },

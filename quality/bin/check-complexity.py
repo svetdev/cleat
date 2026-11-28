@@ -68,7 +68,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import quality_config
 import ratchet
-from extractors import languages, complexity, patterns
+from extractors import census, languages, complexity, patterns
 
 SECTIONS = ("complexity", "complexity_lizard")
 RETIRED_KEYS = ("cwd", "config")   # the SwiftLint-native gate's shape, before the two gates were one
@@ -210,6 +210,15 @@ def inlined_counts(section, args, config, name, functions, ceilings):
     return inline_helpers(functions, ceilings[0], ceilings[1], paths)
 
 
+def as_baseline_reads(functions, version, args, baseline_path):
+    """(functions, version) as the baseline's reader saw them: one recorded before cleat read the
+    TypeScript functions lizard does not report is judged without them, under lizard's version alone."""
+    stored = None if args.write_baseline else ratchet.read(baseline_path)[1]
+    if complexity.recorded_with(stored):
+        return functions, version
+    return complexity.as_recorded(functions, stored), version and complexity.lizard_version()
+
+
 def read_functions(args, name, section, config):
     """(functions, skipped, tool, version) from a saved report when a flag names one, else
     from the tool over the configured sources."""
@@ -260,6 +269,12 @@ def growth_allowed(section):
     return lambda metric, recorded: recorded + max(int(recorded * share), int(growth.get(metric, 0)))
 
 
+def written_by_hand(functions, config, repo):
+    """The functions outside the files a person accepted as generated (check-exclusions.py)."""
+    made = census.accepted(config)
+    return [f for f in functions if os.path.relpath(f.path, os.path.realpath(repo)) not in made] if made else functions
+
+
 def show_values(values):
     helpers = values.get("helpers")
     own = " (%s its own, with %d single-use helper%s)" % (values.get("own_cc"), helpers, "" if helpers == 1 else "s") if helpers else ""
@@ -291,6 +306,8 @@ def main():
         return 2
 
     repo = os.path.abspath(args.repo) if args.repo else config.root
+    functions, version = as_baseline_reads(functions, version, args, baseline_path)
+    functions = written_by_hand(functions, config, repo)
     inlined = inlined_counts(section, args, config, name, functions, (cc_ceiling, line_ceiling))
     over = [ratchet.Finding(f, line, text, values)
             for f, line, text, values in judge(functions, cc_ceiling, line_ceiling, repo, inlined)]

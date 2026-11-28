@@ -6,7 +6,7 @@ a list of (repo-relative path, first line, last line), one per copy, and
 
 `find()` is the built-in finder, for a project with nothing installed: every
 file's significant lines (whitespace collapsed; blank lines, lone braces and
-punctuation-only lines dropped) are hashed in windows of `min_lines`, and a
+punctuation-only lines, comments and import lines dropped) are hashed in windows of `min_lines`, and a
 window seen twice is the start of a clone that is extended as long as both
 sides keep matching. It is exact-match after normalisation — renamed
 variables are not caught, which a token-based scanner does; for that, read
@@ -17,6 +17,7 @@ significant lines that sit inside some clone.
 """
 
 import hashlib
+import re
 import os
 
 from . import patterns
@@ -40,6 +41,19 @@ class Clone:
         return False
 
 
+# A line that is only a comment: `//`, `/*`, a block comment's ` * ` continuation, `# ` and
+# `--`. A licence header at the top of every file is the same twenty lines in each, and is not
+# copied code. `#[derive]`, `#include`, `#if` and `*pointer` are code and are kept.
+COMMENT_LINE = re.compile(r"(?://|/\*|\*/|\*(?: |$)|#(?: |!|$)|-- )")
+
+
+# A line that only names what the file uses: `import x`, `from x import y`, `package x`,
+# `use x::y;`, `using X;`, `#include`. Two screens of one feature open with the same dozen
+# of them, and there is nowhere to move them to.
+IMPORT_LINE = re.compile(r"(?:(?:@\w+ |public |internal |private )*import |from \S+ import |package [\w.]+;?$|"
+                         r"use [\w:{}*, ]+;$|using [\w.= ]+;$|#(?:include|import) )")
+
+
 def significant(text, skip_ranges=()):
     """[(line number, normalised text)] for the lines worth comparing — those inside
     `skip_ranges` (inline test modules) left out."""
@@ -48,7 +62,7 @@ def significant(text, skip_ranges=()):
         if patterns.in_ranges(skip_ranges, number):
             continue
         line = " ".join(raw.split())
-        if len(line) < 3 or set(line) <= PUNCTUATION_ONLY:
+        if len(line) < 3 or set(line) <= PUNCTUATION_ONLY or COMMENT_LINE.match(line) or IMPORT_LINE.match(line):
             continue
         out.append((number, line))
     return out

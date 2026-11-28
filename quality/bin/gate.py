@@ -25,13 +25,19 @@ Gates come from three places in quality.json. Each configured section is a gate
 same check over different facts; and a `commands` list runs the project's own
 checks beside them, so this one command is the whole preflight and no wrapper
 script has to list gates. Commands run after cleat's gates and before the two that
-read a coverage report (changed-coverage, crap), so a command can write that report:
+read a coverage report (changed-coverage, crap), so a command can write that report.
+Once a command has failed those two are not judged in that run: the report may be
+from a suite that stopped early, which reads tested lines as untested.
 
   "commands": [
     {"name": "migrations", "run": "scripts/check-migrations.py"},
     {"name": "api-compat", "run": "scripts/check-api-compat.sh", "needs": ["oasdiff"]},
-    {"name": "web-lint", "run": "cd apps/web && npx eslint src", "needs": ["npx"], "postflight": true}
+    {"name": "web-lint", "run": "cd apps/web && npx eslint src", "needs": ["npx"], "postflight": true},
+    {"name": "tests", "run": "make test", "timeout": 600}
   ]
+
+A command gets `timeout` seconds (default 1800) and then fails, with everything it
+started stopped: a suite that hangs would otherwise hold an agent's stop for good.
 
 
   "gates": [
@@ -50,11 +56,12 @@ front of it. It blocks once per distinct failure set, not once per stop:
 the report that blocked is fingerprinted under `quality/.running/`, and a
 later stop carrying the identical report gets one line and exit 0 rather
 than the whole report again, so a failure the agent cannot fix — a policy
-question for a person — stops costing a report every turn. The event's
-`stop_hook_active` (the agent is already continuing because of this hook)
-reads the same way. Any change in any gate's output — a file fixed, a file
-broken, a count moved — is a new report and blocks again; CI refuses
-whatever stays red. The hook runs every baselined gate with `--tighten`: an
+question for a person — stops costing a report every turn. Any change in
+any gate's output — a file fixed, a file broken, a count moved — is a new
+report and blocks again, also when the event's `stop_hook_active` says the
+agent is already continuing because of this hook: a fix that breaks
+something else is sent back too. Five stops blocked in a row end it, so a
+report that never settles cannot loop the agent; CI refuses whatever stays red. The hook runs every baselined gate with `--tighten`: an
 entry the change fixed is dropped and an improved one lowered as the agent
 goes — never added, never raised — so the next `--strict` run does not fail on
 a fix. `--guard` reads a PreToolUse event from stdin and exits 2 —
@@ -72,6 +79,7 @@ import os
 import re
 import select as selectors  # `select` is a function below
 import shutil
+import signal
 import subprocess
 import sys
 
@@ -110,11 +118,13 @@ BY_SECTION = {section: (name, script, strict, postflight) for section, name, scr
 # Gates that take --only FILES (the changed files, under --changed), and the one that takes --changed-only.
 SCOPED = {"complexity", "escapes", "conventions", "crap"}
 CHANGED_ONLY = {"duplication"}
+# How long a `commands` entry may run before it fails, in seconds, unless it names its own.
+COMMAND_TIMEOUT = 1800
 # Gates that judge a coverage report, and so run after the `commands` that may write it.
 READS_REPORT = {"changed-coverage", "crap"}
 # Gates that take --tighten, which the Stop hook passes: a baseline entry the agent's change
 # fixed is dropped and an improved one lowered as it goes, so --strict never fails on a fix.
-TIGHTENS = {"escapes", "exclusions", "conventions", "duplication", "sarif", "complexity", "crap"}
+TIGHTENS = {"escapes", "exclusions", "conventions", "duplication", "sarif", "complexity", "crap", "public-api"}
 # The sections that may be a list of named entries, each its own gate selected with --gate.
 LISTABLE = {"crap", "sarif", "public_api", "inventory"}
 # Sections whose check was retired, and what replaced them.
@@ -137,7 +147,7 @@ GUARDED_PATH_RE = re.compile(r"(?:^|/)" + POLICY_PATHS)   # by name alone: a rel
 
 
 class Gate:
-    def __init__(self, name, script, strict, postflight, extra=(), section=None, spec=None, shell=None, needs=(), advisory=False):
+    def __init__(self, name, script, strict, postflight, extra=(), section=None, spec=None, shell=None, needs=(), advisory=False, timeout=None):
         self.name = name
         self.advisory = advisory  # a look ahead (CRAP's --estimate): its output is shown, it never fails the run
         self.script = os.path.join(HERE, script) if script else None
@@ -148,6 +158,7 @@ class Gate:
         self.spec = spec         # … and the object to put there
         self.shell = shell       # for a `commands` entry: the project's own check, run through the shell
         self.needs = list(needs)  # … and the tools it needs on the PATH
+        self.timeout = timeout   # … and the seconds it may run; cleat's own checks have no limit
         self.tighten = False     # the Stop hook's: lower the baseline to what the code has as it judges
 
     @property
@@ -218,13 +229,22 @@ def from_list(config):
 def from_commands(config):
     """One Gate per entry of the `commands` list — the project's own checks, run by this
     runner beside cleat's so one command is the whole preflight: `{"name", "run",
-    "needs": [tools], "postflight": bool}`. Exit 0 passes; anything else fails."""
+    "needs": [tools], "postflight": bool, "timeout": seconds}`. Exit 0 passes; anything
+    else fails, and so does running past the timeout."""
     gates = []
     for entry in config.data.get("commands", []):
         if not entry.get("name") or not entry.get("run"):
             raise KeyError("%s: every \"commands\" entry needs \"name\" and \"run\"; got %r" % (config.file, entry))
-        gates.append(Gate(entry["name"], None, False, bool(entry.get("postflight")), shell=entry["run"], needs=entry.get("needs", [])))
+        gates.append(Gate(entry["name"], None, False, bool(entry.get("postflight")), shell=entry["run"], needs=entry.get("needs", []),
+                          timeout=_timeout_of(entry, config)))
     return gates
+
+
+def _timeout_of(entry, config):
+    limit = entry.get("timeout", COMMAND_TIMEOUT)
+    if isinstance(limit, bool) or not isinstance(limit, (int, float)) or limit <= 0:
+        raise KeyError("%s: command %r: \"timeout\" is a number of seconds above 0; got %r" % (config.file, entry["name"], limit))
+    return limit
 
 
 def configured(config):
@@ -256,11 +276,26 @@ def run(gate, config_path, strict, changed=None):
         with open(path, "w") as handle:
             json.dump({"project": base.get("project", ""), gate.section: gate.spec}, handle)
     try:
-        proc = subprocess.run(gate.command(path, strict, changed), capture_output=True, text=True, cwd=root)
+        return _wait(gate, gate.command(path, strict, changed), root)
     finally:
         if path != config_path and os.path.exists(path):
             os.remove(path)
-    return proc.returncode, (proc.stdout + proc.stderr).rstrip("\n")
+
+
+def _wait(gate, command, root):
+    """(exit code, output) of one gate's process. One with a timeout runs in a process
+    group of its own, so when it runs out the shell and everything it started are stopped."""
+    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=root,
+                            start_new_session=gate.timeout is not None)
+    try:
+        out, _ = proc.communicate(timeout=gate.timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        out, _ = proc.communicate()
+        out = out.rstrip("\n") + "\nFAIL: still running after %g seconds, so it was stopped. Find what it waits on, " \
+                                "or give this command a longer \"timeout\" in quality.json." % gate.timeout
+        return 1, out.lstrip("\n")
+    return proc.returncode, out.rstrip("\n")
 
 
 def guard_decision(event_text):
@@ -403,16 +438,28 @@ def run_all(gates, config_path, strict, skip_missing=False, config=None, changed
     failures, results = [], []
     if changed_only is not None:
         print("  changed: %d file(s) against the base — complexity, escapes, conventions and crap judge those; CI judges everything" % len(changed_only))
-    judged = only(gates, lambda g: not g.advisory)
+    judged, broke = only(gates, lambda g: not g.advisory), []
     for g in judged:
-        result, output = run_gate(g, config_path, strict, skip_missing, config, changed_only)
+        result, output = unjudged(g, broke) or run_gate(g, config_path, strict, skip_missing, config, changed_only)
         results.append(result)
         if output is not None:
             failures.append((g, output))
+            broke += [g.name] if g.shell else []
     for g in only(gates, lambda g: g.advisory):
         run_advisory(g, config_path, config, changed_only)
     print("gate: %d gate(s), %s" % (len(judged), "all passed." if not failures else "%d failed." % len(failures)))
     return failures, results
+
+
+def unjudged(g, broke):
+    """A gate that reads a coverage report is not judged once a command has failed: the
+    suite that writes the report may have stopped early, and a report from half a run
+    reads tested lines as untested. The failed command keeps the run red; this gate is
+    judged on the next run, when the commands pass. None for any other gate."""
+    if not broke or g.shell or g.check not in READS_REPORT:
+        return None
+    print("  wait  %s (not judged: %s failed, so the coverage report may be from a run that stopped early)" % (g.name, ", ".join(broke)))
+    return {"name": g.name, "status": "skip", "new": 0, "worsened": 0}, None
 
 
 def run_gate(g, config_path, strict, skip_missing, config, changed_only):
@@ -531,10 +578,13 @@ def fail(message):
     return 2
 
 
+MAX_BLOCKS = 5   # stops in a row one continuation can have blocked, each on a report that changed
+
+
 def stop_hook_active():
     """Whether the agent is already continuing because this hook blocked its last stop —
-    Claude Code says so in the Stop event on stdin. A hook that blocks again would loop
-    the agent forever on a failure it cannot fix."""
+    Claude Code says so in the Stop event on stdin. It bounds how often a changing report
+    can block (`spent`); it does not by itself let a stop through."""
     try:
         if sys.stdin.isatty() or not selectors.select([sys.stdin], [], [], 0.5)[0]:
             return False  # nothing piped in: not a Stop event
@@ -563,23 +613,42 @@ def same_as_last_report(failures, root):
     path = _last_report_path(root)
     if not path:
         return False
+    return _last_report(path)[0] == _report_digest(failures)
+
+
+def _last_report(path):
+    """(fingerprint, blocked stops in a row) as last remembered; nothing remembered is ("", 0)."""
     try:
         with open(path) as handle:
-            return handle.read().strip() == _report_digest(failures)
-    except OSError:
+            digest, _, count = handle.read().strip().partition("\n")
+        return digest, int(count or 1)
+    except (OSError, ValueError):
+        return "", 0
+
+
+def spent(root, continuing):
+    """Whether this continuation has been blocked as often as the hook allows. Each new report
+    blocks, so an agent that breaks one thing fixing another is sent back; a report that never
+    settles (a gate whose output moves on its own) would send it back forever, so MAX_BLOCKS
+    stops in a row is the end of it. With nowhere to remember, one block is all there is."""
+    if not continuing:
         return False
+    path = _last_report_path(root)
+    return not path or _last_report(path)[1] >= MAX_BLOCKS
 
 
-def remember_report(failures, root):
-    """Record the report just sent, so the next stop carrying it can stay quiet. A write
-    that fails is not worth a verdict: the hook simply reports once more."""
+def remember_report(failures, root, continuing):
+    """Record the report just sent, so the next stop carrying it can stay quiet, and how many
+    stops in a row this continuation has had blocked. A write that fails is not worth a
+    verdict: the hook simply reports once more."""
     path = _last_report_path(root)
     if not path:
         return
+    blocks = _last_report(path)[1] + 1 if continuing else 1
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as handle:
-            handle.write("%s\n" % _report_digest(failures))
+            handle.write("%s\n%d\n" % (_report_digest(failures), blocks))
     except OSError:
         pass
 
@@ -606,12 +675,12 @@ def record_hook(root, failures, again, results):
 def print_failures(failures, again, repeat=False):
     """The failures on stderr, which the harness hands back to the agent — but only once.
     A report already sent is a single line: repeating it buys nothing and costs the agent
-    its context every turn. `repeat` separates the two ways a report can be old, because
-    a line that claimed sameness on a stop that is merely a continuation would be a lie."""
+    its context every turn. `repeat` separates the two reasons the hook stays quiet, because
+    a line that claimed sameness for a report that changed would be a lie."""
     if again:
         print("cleat: %d gate(s) still failing (%s) — %s, not blocking again; CI holds the line."
               % (len(failures), ", ".join(g.name for g, _ in failures),
-                 "same report as the last blocked stop" if repeat else "this stop is already a continuation"),
+                 "same report as the last blocked stop" if repeat else "this continuation has been blocked as often as the hook allows"),
               file=sys.stderr)
         return
     print("cleat: %d quality gate(s) failed — fix what each names, then stop again:" % len(failures), file=sys.stderr)
@@ -624,20 +693,22 @@ def finish(failures, hook, root=None, results=()):
     agent's harness hands back to it. Exit 2 blocks the stop once per distinct failure
     set: a later stop that would send the identical report gets one line and exit 0, so a
     failure the agent cannot fix does not re-send its report every turn. Any change in
-    any gate's output — a file fixed, a file broken, a count moved — blocks again, and
-    CI holds the line for whatever stays red."""
+    any gate's output — a file fixed, a file broken, a count moved — blocks again, also
+    when the agent is already continuing from a blocked stop, up to MAX_BLOCKS stops in
+    a row; CI holds the line for whatever stays red."""
     if not hook:
         return 1 if failures else 0
     if not failures:
         forget_report(root)
         record_hook(root, failures, False, list(results))
         return 0
+    continuing = stop_hook_active()
     repeat = same_as_last_report(failures, root)
-    again = stop_hook_active() or repeat
+    again = repeat or spent(root, continuing)
     record_hook(root, failures, again, list(results))
     print_failures(failures, again, repeat)
     if not again:
-        remember_report(failures, root)
+        remember_report(failures, root, continuing)
     return 0 if again else 2
 
 

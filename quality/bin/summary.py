@@ -65,7 +65,8 @@ TEST_DIR_RE = re.compile(r"^(?:tests?|specs?|__tests__|testing|testdata|e2e|test
 CAMEL_TEST_DIR_RE = re.compile(r"^[A-Za-z][a-zA-Z]*Tests?$")
 ASIDE_DIR_RE = re.compile(r"^(?:examples?|samples?|demos?|docs?|docs_src|documentation|website|benchmarks?|bench|"
                           r"profiling|playgrounds?|[\w.-]+\.playground|[\w.-]+\.docc|stories)$", re.IGNORECASE)
-TEST_FILE_RE = re.compile(r"(?:^test_|_test\.|\.test\.|\.spec\.|Tests?\.swift$)")
+# `LoginTests.swift`, `StoreTest.kt` — by case, as above; `test.ts` beside the source it tests; `conftest.py`
+TEST_FILE_RE = re.compile(r"(?:^test_|_test\.|\.test\.|\.spec\.|_spec\.rb$|Tests?\.(?:swift|kts?|java)$|^test\.[cm]?[jt]sx?$|^conftest\.py$)")
 CENSUS_SKIP = {".claude", ".github", ".idea", ".vscode"}
 GAP_MIN_LINES = 200      # a language this small is not worth a line
 GAP_MIN_SHARE = 0.2      # nor is a gate that reads most of one
