@@ -5,6 +5,7 @@
   share.py state <attached tree> [history.json] [--note TEXT] [--feels easy|mixed|breaks] [--ai most|some|none]
                                                            the same, with no replay and no agent
   share.py open <card file>                                opens the card's issue link in the browser
+  share.py text <card file>                                the card in words, to paste as a comment
   share.py take [file]                                     a card pasted in an issue or a comment, checked
                                                            and written to study/contributed/ (stdin without a file)
   share.py check <card …>                                  what CI runs on every contributed card
@@ -28,6 +29,10 @@ number of commits go in as buckets. `--feels` and `--ai` are the owner's own ans
 questions: whether adding a feature is easy, mixed or tends to break things, and whether most,
 some or none of the code was written by an AI agent. `gated` says whether the repository
 already carried cleat before the tree was attached.
+
+`text` writes a state card as a few lines a person can read, each measure beside its standing
+in the reference sample (pNN: the share of that language's sampled parts with less). `take`
+reads that form back as well as the JSON, so a card pasted as a comment is a card.
 """
 
 import json
@@ -44,6 +49,9 @@ CONTRIBUTED = os.path.join(os.path.dirname(HERE), "contributed")
 NOTE_MAX = 280
 ISSUES = "https://github.com/svetdev/cleat/issues/new"
 LINK_MAX = 6000
+ISSUE_TOP = "A card from `study/try-it.md`: counts and ranges, with no repository name, path or code."
+ISSUE_END = "Anything that failed or looked wrong (optional):"
+FENCED = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
 ORACLE_SHARE = 0.9
 BUCKETS = ((2000, "under 2k"), (5000, "2k to 5k"), (10000, "5k to 10k"), (20000, "10k to 20k"),
            (50000, "20k to 50k"), (100000, "50k to 100k"), (None, "over 100k"))
@@ -247,6 +255,97 @@ def card(work, upto=None, note=""):
         mutants=mutant_counts(work, points))
 
 
+LABELS = (("complexity_per_kloc", "functions over the limit", " per 1k"), ("over_cc_per_kloc", "complexity over it", " per 1k"),
+          ("over_lines_per_kloc", "length over it", " per 1k"), ("escapes_per_kloc", "escapes", " per 1k"),
+          ("test_ratio", "test lines per line", ""), ("assertions_per_test", "assertions per test", ""),
+          ("unchecked_share", "tests checking nothing", "%"))
+BREAKS = {"easy": "rarely", "mixed": "sometimes", "breaks": "often", "unsaid": "unsaid"}
+REFERENCE = os.path.join(os.path.dirname(os.path.dirname(HERE)), "quality", "reference.json")
+
+
+def standing(language, measure, value):
+    """" (pNN)" for a measure the reference sample holds for the language, else nothing."""
+    try:
+        with open(REFERENCE) as handle:
+            sample = json.load(handle)["languages"][language][measure]
+    except (OSError, ValueError, KeyError):
+        return ""
+    return " (p%d)" % round(100 * sum(1 for v in sample if v < value) / len(sample)) if sample else ""
+
+
+def part_text(part):
+    shown = []
+    for key, label, unit in LABELS:
+        if key in part["measures"]:
+            value = part["measures"][key] * (100 if unit == "%" else 1)
+            shown.append("%s %s%s%s" % (label, ("%.2f" % value).rstrip("0").rstrip("."), unit,
+                                        standing(part["language"], key, part["measures"][key])))
+    return "%s, %s lines: %s" % (part["language"], part["size"], " · ".join(shown))
+
+
+def text(got):
+    """A state card in words: what a person reads, and what `take` reads back."""
+    history = got["history"]
+    gates = "".join(" · %s %d" % pair for pair in sorted(history["gates"].items(), key=lambda p: -p[1]))
+    lines = ["cleat card %s · cleat %s" % (got["id"], got["cleat"][:10]),
+             "%s lines · %s old · %s commits · AI wrote %s · changes break things %s · %s"
+             % (got["size"], got["age"], got["commits"], got["ai"], BREAKS[got["feels"]],
+                "used cleat before" if got["gated"] else "never used cleat")]
+    lines += [part_text(part) for part in got["parts"]]
+    lines += ["duplicated lines %s%%" % got["duplicated"],
+              "last %d commits: %d refused%s" % (history["commits"], history["refused"], gates)]
+    lines += ["note: %s" % got["note"]] if got["note"] else []
+    return "\n\n".join(lines + ["pNN: the share of open-source projects in that language with less; lower is better, except for tests."])
+
+
+def number(word):
+    value = float(word)
+    return int(value) if value == int(value) else value
+
+
+def part_from(line):
+    head, _, rest = line.partition(" lines: ")
+    language, _, size = head.partition(", ")
+    measures = {}
+    for key, label, unit in LABELS:
+        found = re.search(re.escape(label) + r" (-?[0-9.]+)", rest)
+        if found:
+            measures[key] = round(float(found.group(1)) / (100 if unit == "%" else 1), 4)
+    return dict(language=language, size=size, measures=measures)
+
+
+def from_text(pasted):
+    """The state card a `text` form holds, or None when the pasted text is not one."""
+    lines = [line.strip() for line in pasted.splitlines() if line.strip()]
+    top = next((i for i, line in enumerate(lines) if re.match(r"cleat card [0-9a-f]{12} · cleat [0-9a-f]{7,40}$", line)), None)
+    if top is None or len(lines) < top + 2:
+        return None
+    words = lines[top].split()
+    about = [field.strip() for field in lines[top + 1].split(" · ")]
+    if len(about) != 6:
+        return None
+    commit = subprocess.run(["git", "-C", HERE, "rev-parse", "--verify", "-q", words[-1] + "^{commit}"],
+                            capture_output=True, text=True).stdout.strip()
+    got = dict(schema=1, kind="state", id=words[2], cleat=commit or words[-1], note="",
+               size=about[0][:-len(" lines")], age=about[1][:-len(" old")], commits=about[2][:-len(" commits")],
+               ai=about[3][len("AI wrote "):], gated=about[5] == "used cleat before",
+               feels={v: k for k, v in BREAKS.items()}.get(about[4][len("changes break things "):], about[4]),
+               duplicated=0, parts=[], history=dict(commits=0, refused=0, gates={}))
+    for line in lines[top + 2:]:
+        if " lines: " in line and not line.startswith(("last ", "note: ")):
+            got["parts"].append(part_from(line))
+        elif line.startswith("duplicated lines "):
+            got["duplicated"] = number(line[len("duplicated lines "):].rstrip("%"))
+        elif line.startswith("note: "):
+            got["note"] = line[len("note: "):]
+        elif re.match(r"last \d+ commits: \d+ refused", line):
+            counts = [field.strip() for field in line.split(" · ")]
+            first = re.match(r"last (\d+) commits: (\d+) refused", counts[0])
+            gates = {name: int(count) for name, count in (field.rsplit(" ", 1) for field in counts[1:])}
+            got["history"] = dict(commits=int(first.group(1)), refused=int(first.group(2)), gates=gates)
+    return got
+
+
 def cleat_commit():
     done = subprocess.run(["git", "-C", HERE, "rev-parse", "HEAD"], capture_output=True, text=True)
     return done.stdout.strip()
@@ -305,9 +404,12 @@ def state_card(tree, history=None, note="", feels="unsaid", ai="unsaid"):
 
 def issue_link(got):
     """A link that opens a new issue with the card already in it; empty when the card is too long for one."""
-    body = "```json\n%s\n```" % json.dumps(got, separators=(",", ":"))
-    link = ISSUES + "?" + urllib.parse.urlencode({"title": "card %s" % got["id"], "body": body})
-    return link if len(link) <= LINK_MAX else ""
+    for text in (json.dumps(got, indent=1), json.dumps(got, separators=(",", ":"))):
+        body = "%s\n\n```json\n%s\n```\n\n%s\n" % (ISSUE_TOP, text, ISSUE_END)
+        link = ISSUES + "?" + urllib.parse.urlencode({"title": "card %s" % got["id"], "body": body})
+        if len(link) <= LINK_MAX:
+            return link
+    return ""
 
 
 def save(got):
@@ -328,6 +430,8 @@ def write_card(work, upto=None, note="", got=None):
     print(json.dumps(got, indent=1))
     path = save(got)
     print("\nwrote %s: this is everything it shares. Read it." % path)
+    if got.get("kind") == "state":
+        print("\nTo share it as a comment, paste these lines:\n\n%s\n" % text(got))
     link = issue_link(got)
     if link:
         print("To share it, open this link and press Submit (nothing is sent until you do):\n%s" % link)
@@ -335,13 +439,18 @@ def write_card(work, upto=None, note="", got=None):
     print("Or open a pull request with that one file.")
 
 
-def take(text):
-    """The card inside pasted text, from its first brace to its last, checked and written."""
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end < start:
+def take(pasted):
+    """The card inside pasted text, checked and written: its fenced block, or from the first brace to the last."""
+    fenced = FENCED.search(pasted)
+    start, end = pasted.find("{"), pasted.rfind("}")
+    worded = None if fenced else from_text(pasted)
+    if worded:
+        print("wrote %s" % save(worded))
+        return
+    if not fenced and (start < 0 or end < start):
         raise SystemExit("no card found in the text")
     try:
-        got = json.loads(text[start:end + 1])
+        got = json.loads(fenced.group(1) if fenced else pasted[start:end + 1])
     except ValueError as err:
         raise SystemExit("the card is not JSON: %s" % err)
     print("wrote %s" % save(got))
@@ -372,6 +481,10 @@ def main(argv):
         import webbrowser
         print("opening the issue form; nothing is sent until you press Submit" if link and webbrowser.open(link)
               else "could not open a browser; paste the card's contents into a new issue instead")
+        return 0
+    if argv[:1] == ["text"] and len(argv) == 2:
+        with open(argv[1]) as handle:
+            print(text(json.load(handle)))
         return 0
     if argv[:1] == ["take"]:
         take(open(argv[1]).read() if len(argv) > 1 else sys.stdin.read())

@@ -64,7 +64,8 @@ Then tell me, in plain words:
 - anything that failed or looked wrong. Do not edit cleat's scripts to make a step pass;
   describe what happened instead.
 
-Last, print the card, and ask me whether to open the sharing link in my browser. Only if I say
+Last, print the lines the last step printed under "To share it as a comment", exactly as
+printed, and ask me whether to open the sharing link in my browser. Only if I say
 yes, run the `share.py open` command the last step printed. Do not share the card any other way.
 
 When I say I am done with the card, ask me whether to delete ../cleat-try, and delete it only
@@ -76,7 +77,7 @@ if I say yes. It holds a copy of this repository, so it should not be left behin
 The last command prints the card and a link. Read the card; it is everything that would be shared. Then pick whichever is easiest:
 
 - **Open the link and press Submit.** It opens a new issue on cleat with the card already filled in. Nothing is sent until you press the button.
-- **Paste the card as a comment** wherever you found this prompt.
+- **Paste the card's lines as a comment** wherever you found this prompt. The last command prints them in words, so others can read them too.
 - **Open a pull request** with the file `../cleat-try/cleat/study/contributed/<id>.json`.
 
 The first and third show your GitHub account; use another if that matters. A card's optional note goes in public, so it should name no company, client or person.

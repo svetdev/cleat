@@ -190,7 +190,7 @@ class StateCard(unittest.TestCase):
             share.CONTRIBUTED, kept = os.path.join(tmp, "contributed"), share.CONTRIBUTED
             try:
                 with contextlib.redirect_stdout(io.StringIO()):
-                    share.take("thanks for cleat!\n" + body + "\nsent from my phone")
+                    share.take("thanks for cleat!\n" + body + "the {rename} refusal looked wrong\nsent from my phone")
                 with open(os.path.join(tmp, "contributed", card["id"] + ".json")) as handle:
                     self.assertEqual(json.load(handle), card)
                 bad = dict(card, repo="acme/billing")
@@ -198,6 +198,19 @@ class StateCard(unittest.TestCase):
                     share.take(json.dumps(bad))
             finally:
                 share.CONTRIBUTED = kept
+
+    def test_a_card_in_words_reads_back_as_the_same_card(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            card = dict(self.card(tmp), cleat=share.cleat_commit(), note="a monorepo")
+        card["parts"].append(dict(language="swift", size="2k to 5k", measures=dict(test_ratio=0.04, unchecked_share=0.018)))
+        words = share.text(card)
+        self.assertNotIn("{", words)
+        self.assertIn("changes break things often", words)
+        back = share.from_text("here is mine, hope it helps\n\n" + words + "\n\nthe rename refusal looked wrong")
+        self.assertEqual(share.check(back), [])
+        self.assertEqual(share.text(back), words)
+        self.assertEqual(back["history"], card["history"])
+        self.assertIsNone(share.from_text("nice tool, no card here"))
 
     def test_age_and_commits_are_buckets(self):
         self.assertEqual(share.bucket(40, share.AGES), "under 3 months")
