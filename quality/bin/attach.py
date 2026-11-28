@@ -988,7 +988,11 @@ def print_next(plan):
     give. With --ci: the ruleset, and the identity the agent needs for it to hold."""
     print("Next:")
     if not plan.ci:
-        print("  1. Run python3 quality/bin/gate.py. Every gate is green today; from here they only tighten.")
+        if plan.refreshing:
+            print("  1. Run python3 quality/bin/gate.py. The refreshed checks may read more than the copy the baselines")
+            print("     were recorded with; a gate that fails now names what the older copy did not see.")
+        else:
+            print("  1. Run python3 quality/bin/gate.py. Every gate is green today; from here they only tighten.")
         print("  2. The Stop hook hands a failing gate back to the agent; the guard refuses edits to the policy.")
         print("     What local cannot do is stop whoever holds the keyboard from removing the hook.")
         print("  3. When there is a reviewer, or the agent pushes with your keys: attach.py --ci adds the workflow,")

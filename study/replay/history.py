@@ -14,8 +14,8 @@ a sample can be read and told apart.
 later fixes to have landed on it (gates/later_fixes.py). STUDY_SHAS names a file of commits
 to replay instead, one per line (gates/eras.py picks them).
 A repository that already carries cleat has its `quality/` and `quality.json` taken out of the
-copy first: attach keeps what it finds, and the commits would be judged by the repository's own
-copy and policy.
+copy first, and a commit's own changes to them are not laid on: attach keeps what it finds, and
+the commits would be judged by the repository's own copy and policy.
 Writes <work dir>/<repo>.json: one row per commit with the gates that failed.
 """
 
@@ -29,6 +29,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLEAT = os.path.dirname(os.path.dirname(HERE))
 SOURCE = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".swift", ".kt", ".java", ".rb")
+
+
+SAID_MAX = 20000   # the gates' own lines kept per refused commit, from the start: the first failure is the one to read
 
 
 def git(root, *args, **kw):
@@ -59,9 +62,16 @@ def commits(clone, count, newest="HEAD"):
 def drop_own_cleat(root):
     """Take out the cleat a repository already carries, so every commit is judged by this checkout's
     gates and the defaults attach writes, not by the repository's own older copy, gates and baselines."""
-    shutil.rmtree(os.path.join(root, "quality"), ignore_errors=True)
-    if os.path.isfile(os.path.join(root, "quality.json")):
+    carried = os.path.isfile(os.path.join(root, "quality.json"))
+    if carried:
+        shutil.rmtree(os.path.join(root, "quality"), ignore_errors=True)
         os.remove(os.path.join(root, "quality.json"))
+    return carried
+
+
+def own_cleat(path):
+    """A path of the repository's own cleat: laid back on, it would bring that policy back."""
+    return path == "quality.json" or path.startswith("quality/")
 
 
 def one(clone, work, sha, files):
@@ -72,7 +82,7 @@ def one(clone, work, sha, files):
         archive = subprocess.Popen(["git", "-C", clone, "archive", sha + "^"], stdout=subprocess.PIPE)
         subprocess.run(["tar", "-x", "-C", root], stdin=archive.stdout, check=True)
         archive.wait()
-        drop_own_cleat(root)
+        carried = drop_own_cleat(root) or any(f[-1] == "quality.json" for f in files)
         git(root, "init", "-q")
         git(root, "add", "-A")
         git(root, "commit", "-q", "-m", "base")
@@ -84,6 +94,8 @@ def one(clone, work, sha, files):
         git(root, "commit", "-q", "-m", "attach")
         for status, path in [(f[0], f[-1]) for f in files if len(f) > 1]:
             target = os.path.join(root, path)
+            if carried and own_cleat(path):
+                continue
             if status.startswith("D"):
                 if os.path.lexists(target):
                     os.remove(target)
@@ -98,7 +110,7 @@ def one(clone, work, sha, files):
         failing = sorted({line.split()[1] for line in said.splitlines() if line.split()[:1] == ["FAIL"] and len(line.split()) > 1})
         stat = git(clone, "diff", "--shortstat", sha + "^", sha).stdout.strip()   # the commit's own size, new files included
         return dict(sha=sha, exit=gate.returncode, failing=failing, files=[f[-1] for f in files if len(f) > 1][:40],
-                    stat=stat, said=said[-4000:] if failing else "")
+                    stat=stat, said=said[:SAID_MAX] if failing else "")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

@@ -65,6 +65,9 @@ def main(directory):
             for gate in ("duplication", "escapes"):
                 if gate in row["failing"]:
                     kinds["%s: %s" % (gate, "names a test file" if TEST.search(said_by(row, gate)) else "production only")] += 1
+            for gate in row["failing"]:
+                if gate not in ("complexity", "duplication", "escapes"):
+                    kinds[gate] += 1
     print("\n%d commits, %d refused (%.0f%%)" % (total, refused_total, 100 * refused_total / max(total, 1)))
     for kind, count in sorted(kinds.items()):
         print("  %4d  %s" % (count, kind))

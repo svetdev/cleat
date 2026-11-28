@@ -1,16 +1,27 @@
 # Try it on your codebase
 
-Paste the prompt below to a coding agent (Claude Code, Cursor, Codex or another) opened in your repository. It measures where the code stands and what cleat's gates would have said about your last 60 merged commits. It takes a few minutes, starts no other agent and costs nothing beyond that one session.
+Paste one of the prompts below to a coding agent (Claude Code, Cursor, Codex or another) opened in your repository. It measures where the code stands and what cleat's gates would have said about your last 60 merged commits. It takes a few minutes, starts no other agent and costs nothing beyond that one session.
 
 At the end it writes a card you can contribute. It holds the language, rough size, age and number of commits as ranges, test lines against production lines, the measures per 1,000 lines, how many recent commits the gates would have refused, and your answers to two questions. It holds no repository name, path, file name, commit text or code. Sharing it is your choice and a separate step you do by hand.
 
 What it does on your machine, all of it visible in the prompt:
 
-- clones cleat and a second copy of your repository into a new folder beside it, so your working checkout is not touched;
+- clones cleat and a second copy of your repository into a new folder beside it, so your working checkout is not touched, and offers to delete that folder at the end;
 - installs `lizard` from PyPI if it is missing, after asking;
 - runs Python scripts from the cleat checkout. They read your repository through git and send nothing anywhere.
 
-## The prompt
+## The short prompt
+
+```
+If ../cleat-try already exists, ask me before deleting it. Then clone
+https://github.com/svetdev/cleat into ../cleat-try/cleat and follow the prompt in its
+study/try-it.md on this repository. Work only inside ../cleat-try, do not change this
+repository, do not push or send anything anywhere, and ask me before installing anything.
+```
+
+It has the agent read the full prompt below from the clone, so it always runs the current one.
+
+## The full prompt
 
 ```
 Measure this repository with cleat (https://github.com/svetdev/cleat) and show me the results.
@@ -18,11 +29,13 @@ Work only in a new folder ../cleat-try beside this repository. Do not change thi
 do not push anything, do not open issues or pull requests, and send nothing about this code to
 any outside service.
 
+0. If ../cleat-try already exists and you did not just create it, it is left over from an earlier
+   run. Ask me before deleting it, and do not go on while it is there.
 1. Check for python3 (3.9 or later) and git. If `lizard` is missing, ask me before running
    `pip install lizard`.
 2. Set up:
      mkdir -p ../cleat-try/clones ../cleat-try/history
-     git clone https://github.com/svetdev/cleat ../cleat-try/cleat
+     git clone https://github.com/svetdev/cleat ../cleat-try/cleat     (skip if you already cloned it)
      git clone . ../cleat-try/clones/my__repo
      git clone . ../cleat-try/tree
 3. If ../cleat-try/tree has a quality.json, this repository already uses cleat. Tell me, then
@@ -34,9 +47,11 @@ any outside service.
      python3 ../cleat-try/cleat/study/replay/history.py ../cleat-try/clones/my__repo ../cleat-try/history 60 6
      python3 ../cleat-try/cleat/study/gates/refusals.py ../cleat-try/history
 5. Ask me two questions and wait for my answers:
-     a. Does adding a feature to this codebase feel easy, mixed, or does it tend to break things?
+     a. When you add a feature to this codebase, how often does something that worked break:
+        rarely (easy), sometimes (mixed) or often (breaks)?
      b. Was most, some or none of this code written by an AI agent?
-6. The card, with my answers (easy|mixed|breaks, and most|some|none):
+6. The card, with my answers. Each must be exactly one of the words easy|mixed|breaks and
+   most|some|none; if what I said does not fit one, ask me which is closest.
      python3 ../cleat-try/cleat/study/replay/share.py state ../cleat-try/tree ../cleat-try/history/my__repo.json --feels <a> --ai <b>
 
 Then tell me, in plain words:
@@ -51,6 +66,9 @@ Then tell me, in plain words:
 
 Last, print the card, and ask me whether to open the sharing link in my browser. Only if I say
 yes, run the `share.py open` command the last step printed. Do not share the card any other way.
+
+When I say I am done with the card, ask me whether to delete ../cleat-try, and delete it only
+if I say yes. It holds a copy of this repository, so it should not be left behind.
 ```
 
 ## Sharing what you got

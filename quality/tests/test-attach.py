@@ -155,6 +155,8 @@ try:
     code, out = run("--into", root, "--refresh")
     check("--refresh brings the reference sample the summary compares with",
           os.path.isfile(os.path.join(root, "quality", "reference.json")), out)
+    check("--refresh does not promise green: the newer checks may read more than the baselines hold",
+          "Every gate is green today" not in out and "may read more" in out, out)
     check("--refresh replaces the template's files", code == 0 and "refreshed" in out and read(vendored_gate) == read(os.path.join(os.path.dirname(HERE), "bin", "gate.py")), out)
     check("and drops a retired template file", not os.path.exists(os.path.join(root, "quality", "bin", "check-complexity.sh")) and "dropped what the template retired: check-complexity.sh" in out, out)
     check("but keeps a retired name the project marked as its own, and the project's own script", os.path.isfile(os.path.join(root, "quality", "bin", "check-features-map.py")) and os.path.isfile(os.path.join(root, "quality", "bin", "check-mine.py")) and "kept the project's own: check-features-map.py, check-mine.py" in out, out)

@@ -1093,3 +1093,10 @@ Append-only log of choices, findings, disproven assumptions and rules for this r
 **Why:** A card stamped with this checkout's commit was reporting another version's verdicts under another policy. A codebase built under the gates is also a different kind of data point from one that never saw them, and the two must be told apart.
 **Evidence:** That run: 16 project gates instead of the defaults, refusals from gates attach never writes, and no percentile figures after a refresh. After the change, `history.py` on cleat's own repository reports only complexity, duplication and escapes. The agent's terminal also broke the long sharing link across lines, so `share.py open <card>` now opens it in the browser.
 **Status:** holds
+
+## [2026-11-27] In the replay a commit's own changes to the repository's cleat are not laid on
+**Kind:** finding
+**What:** Taking a repository's own `quality/` and `quality.json` out of the parent's copy was not enough: a commit that itself changes them brought them back when its files were laid on, and that commit was judged by the repository's policy again. Those paths are now skipped. The gates' lines kept per refused commit are the first 20,000 characters, not the last 4,000, `refusals.py` counts every gate that refused, and attach no longer says every gate is green after `--refresh`.
+**Why:** A replay that mixes two policies reports refusals from gates the fresh attach never wrote, and the commits behind them read as false refusals of cleat's defaults.
+**Evidence:** A second run on the repository with an older cleat attached: 53 of 56 commits judged by the fresh seven gates and 3 by its own sixteen, the 3 being the ones that changed its `quality.json`; two refusals had lost their first failure to the 4,000-character cut; after a refresh 2 of 16 gates failed under a message promising green. A made-up repository whose second commit rewrites its `quality.json` now replays under the defaults alone. Under the fresh gates the same run saw test-hygiene refuse a real commit for the first time, for two added fixed sleeps, with a message that listed sleeps the commit did not add.
+**Status:** holds
