@@ -4,6 +4,7 @@
   share.py card <work dir> [up to change] [--note TEXT]    write study/contributed/<random id>.json
   share.py state <attached tree> [history.json] [--note TEXT] [--feels easy|mixed|breaks] [--ai most|some|none]
                                                            the same, with no replay and no agent
+  share.py open <card file>                                opens the card's issue link in the browser
   share.py take [file]                                     a card pasted in an issue or a comment, checked
                                                            and written to study/contributed/ (stdin without a file)
   share.py check <card …>                                  what CI runs on every contributed card
@@ -25,7 +26,8 @@ given, how many of its merged commits the gates would have refused and by which 
 goes in without its name. The whole tree's size, its age from first commit to last and its
 number of commits go in as buckets. `--feels` and `--ai` are the owner's own answers to two
 questions: whether adding a feature is easy, mixed or tends to break things, and whether most,
-some or none of the code was written by an AI agent.
+some or none of the code was written by an AI agent. `gated` says whether the repository
+already carried cleat before the tree was attached.
 """
 
 import json
@@ -65,7 +67,7 @@ SCHEMA = {
 }
 STATE_SCHEMA = {
     "schema": int, "kind": str, "id": str, "cleat": str, "note": str, "duplicated": NUM,
-    "size": str, "age": str, "commits": str, "feels": str, "ai": str,
+    "size": str, "age": str, "commits": str, "feels": str, "ai": str, "gated": bool,
     "parts": [{"language": str, "size": str, "measures": {"*": NUM}}],
     "history": {"commits": int, "refused": int, "gates": {"*": int}},
 }
@@ -98,7 +100,8 @@ def shape_errors(value, shape, where="card"):
     if shape is NUM:
         return [] if isinstance(value, NUM) and not isinstance(value, bool) else ["%s is not a number" % where]
     if isinstance(shape, type):
-        return [] if isinstance(value, shape) and not isinstance(value, bool) else ["%s is not %s" % (where, shape.__name__)]
+        fits = isinstance(value, shape) and (shape is bool or not isinstance(value, bool))
+        return [] if fits else ["%s is not %s" % (where, shape.__name__)]
     if isinstance(shape, list):
         if not isinstance(value, list):
             return ["%s is not a list" % where]
@@ -269,6 +272,12 @@ def history_counts(path):
     return dict(commits=len(rows), refused=sum(1 for row in rows if row.get("failing")), gates=gates)
 
 
+def carried_cleat(tree):
+    """Whether the tree's last commit already holds a quality.json: cleat was attached before this run."""
+    done = subprocess.run(["git", "-C", tree, "cat-file", "-e", "HEAD:quality.json"], capture_output=True)
+    return done.returncode == 0
+
+
 def repository_age(tree):
     """(age bucket, commits bucket) of the tree's history: first commit to last, and how many."""
     def git(*args):
@@ -289,6 +298,7 @@ def state_card(tree, history=None, note="", feels="unsaid", ai="unsaid"):
     age, commits = repository_age(tree)
     return dict(schema=1, kind="state", id=secrets.token_hex(6), cleat=cleat_commit(), note=note[:NOTE_MAX],
                 size=bucket(summary.get("lines", 0)), age=age, commits=commits, feels=feels, ai=ai,
+                gated=carried_cleat(tree),
                 duplicated=duplicated, parts=[part_row(p) for p in summary.get("parts", [])],
                 history=history_counts(history))
 
@@ -321,6 +331,7 @@ def write_card(work, upto=None, note="", got=None):
     link = issue_link(got)
     if link:
         print("To share it, open this link and press Submit (nothing is sent until you do):\n%s" % link)
+        print("or let this open it in your browser: python3 %s open %s" % (os.path.abspath(__file__), path))
     print("Or open a pull request with that one file.")
 
 
@@ -355,6 +366,13 @@ def check_files(paths):
 def main(argv):
     if argv[:1] == ["check"]:
         return check_files(argv[1:])
+    if argv[:1] == ["open"] and len(argv) == 2:
+        with open(argv[1]) as handle:
+            link = issue_link(json.load(handle))
+        import webbrowser
+        print("opening the issue form; nothing is sent until you press Submit" if link and webbrowser.open(link)
+              else "could not open a browser; paste the card's contents into a new issue instead")
+        return 0
     if argv[:1] == ["take"]:
         take(open(argv[1]).read() if len(argv) > 1 else sys.stdin.read())
         return 0

@@ -13,6 +13,9 @@ a sample can be read and told apart.
 `newest commit` (default HEAD) starts the stretch further back, at a commit old enough for
 later fixes to have landed on it (gates/later_fixes.py). STUDY_SHAS names a file of commits
 to replay instead, one per line (gates/eras.py picks them).
+A repository that already carries cleat has its `quality/` and `quality.json` taken out of the
+copy first: attach keeps what it finds, and the commits would be judged by the repository's own
+copy and policy.
 Writes <work dir>/<repo>.json: one row per commit with the gates that failed.
 """
 
@@ -53,6 +56,14 @@ def commits(clone, count, newest="HEAD"):
     return out
 
 
+def drop_own_cleat(root):
+    """Take out the cleat a repository already carries, so every commit is judged by this checkout's
+    gates and the defaults attach writes, not by the repository's own older copy, gates and baselines."""
+    shutil.rmtree(os.path.join(root, "quality"), ignore_errors=True)
+    if os.path.isfile(os.path.join(root, "quality.json")):
+        os.remove(os.path.join(root, "quality.json"))
+
+
 def one(clone, work, sha, files):
     root = os.path.join(work, "tmp", sha[:12])
     shutil.rmtree(root, ignore_errors=True)
@@ -61,6 +72,7 @@ def one(clone, work, sha, files):
         archive = subprocess.Popen(["git", "-C", clone, "archive", sha + "^"], stdout=subprocess.PIPE)
         subprocess.run(["tar", "-x", "-C", root], stdin=archive.stdout, check=True)
         archive.wait()
+        drop_own_cleat(root)
         git(root, "init", "-q")
         git(root, "add", "-A")
         git(root, "commit", "-q", "-m", "base")

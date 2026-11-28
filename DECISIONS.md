@@ -1086,3 +1086,10 @@ Append-only log of choices, findings, disproven assumptions and rules for this r
 **Why:** Someone who attaches cleat on the first day of a new app, the case the regression study is about, is left almost ungated unless they know to run `--add` later.
 **Evidence:** Preparing `study/regress/`: attach on the empty seed project, then on the tree after one feature. The study's driver runs `--add` after the first feature, so that feature is ungated in the cleat arms.
 **Status:** holds
+
+## [2026-11-27] A repository that already carries cleat is measured fresh, and its card says it was gated
+**Kind:** finding
+**What:** The first run of the try-it prompt outside the examples was on a repository with an older cleat already attached. Attach kept what it found, so the summary flag was missing, the 56 replayed commits were judged by that repository's own copy, gates and baselines, and `--refresh` did not bring `reference.json`, so the summary had no sample to compare with. `history.py` now takes a repository's own `quality/` and `quality.json` out of each copy before attaching, the prompt does the same for the measured tree, `--refresh` copies the reference files, and a state card carries `gated`: whether cleat was there before.
+**Why:** A card stamped with this checkout's commit was reporting another version's verdicts under another policy. A codebase built under the gates is also a different kind of data point from one that never saw them, and the two must be told apart.
+**Evidence:** That run: 16 project gates instead of the defaults, refusals from gates attach never writes, and no percentile figures after a refresh. After the change, `history.py` on cleat's own repository reports only complexity, duplication and escapes. The agent's terminal also broke the long sharing link across lines, so `share.py open <card>` now opens it in the browser.
+**Status:** holds

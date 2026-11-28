@@ -151,7 +151,10 @@ try:
     write(os.path.join(root, "quality", "bin", "check-features-map.py"), "#!/usr/bin/env python3\n# Not part of cleat's template: this name is wired into the tree.\n")
     write(os.path.join(root, "quality", "bin", "check-mine.py"), "# the project's own check, beside cleat's\n")
     write(os.path.join(root, "quality", "notes.md"), "the project's own notes\n")
+    os.remove(os.path.join(root, "quality", "reference.json"))   # a copy vendored before the summary had a sample
     code, out = run("--into", root, "--refresh")
+    check("--refresh brings the reference sample the summary compares with",
+          os.path.isfile(os.path.join(root, "quality", "reference.json")), out)
     check("--refresh replaces the template's files", code == 0 and "refreshed" in out and read(vendored_gate) == read(os.path.join(os.path.dirname(HERE), "bin", "gate.py")), out)
     check("and drops a retired template file", not os.path.exists(os.path.join(root, "quality", "bin", "check-complexity.sh")) and "dropped what the template retired: check-complexity.sh" in out, out)
     check("but keeps a retired name the project marked as its own, and the project's own script", os.path.isfile(os.path.join(root, "quality", "bin", "check-features-map.py")) and os.path.isfile(os.path.join(root, "quality", "bin", "check-mine.py")) and "kept the project's own: check-features-map.py, check-mine.py" in out, out)

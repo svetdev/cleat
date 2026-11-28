@@ -541,7 +541,8 @@ def write_text(plan, rel, text, dry_run, force=False):
 
 TEMPLATE_IGNORE = shutil.ignore_patterns("__pycache__", ".DS_Store", "*-baseline.json", "REFACTOR.md", ".running", ".events.jsonl")
 # What --refresh replaces: the template's own files. Everything else under quality/ is the project's.
-TEMPLATE_PARTS = ("bin", "tests", "README.md", "STRATEGY.md", "quality.example.json")
+TEMPLATE_PARTS = ("bin", "tests", "README.md", "STRATEGY.md", "quality.example.json", "reference.json",
+                  "reference-repos.json")
 
 
 class Busy(Exception):

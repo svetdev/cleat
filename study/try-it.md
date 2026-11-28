@@ -25,7 +25,9 @@ any outside service.
      git clone https://github.com/svetdev/cleat ../cleat-try/cleat
      git clone . ../cleat-try/clones/my__repo
      git clone . ../cleat-try/tree
-3. Where the code stands:
+3. If ../cleat-try/tree has a quality.json, this repository already uses cleat. Tell me, then
+   delete quality/ and quality.json in ../cleat-try/tree only, so it is measured fresh.
+   Where the code stands:
      python3 ../cleat-try/cleat/quality/bin/attach.py --into ../cleat-try/tree --no-tests
      (cd ../cleat-try/tree && python3 quality/bin/gate.py; python3 quality/bin/gate.py --summary)
 4. What the gates would have refused in the last 60 merged commits:
@@ -47,8 +49,8 @@ Then tell me, in plain words:
 - anything that failed or looked wrong. Do not edit cleat's scripts to make a step pass;
   describe what happened instead.
 
-Last, print the card and the link the last command printed, exactly as printed. Do not open
-the link or share the card for me.
+Last, print the card, and ask me whether to open the sharing link in my browser. Only if I say
+yes, run the `share.py open` command the last step printed. Do not share the card any other way.
 ```
 
 ## Sharing what you got

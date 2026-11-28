@@ -169,7 +169,7 @@ class StateCard(unittest.TestCase):
         path = os.path.join(tmp, "%s.json" % SECRET)
         dump(path, rows)
         return dict(schema=1, kind="state", id="0123456789ab", cleat="f" * 40, note="", duplicated=2.5,
-                    size="20k to 50k", age="1 to 2 years", commits="500 to 2k", feels="breaks", ai="most",
+                    size="20k to 50k", age="1 to 2 years", commits="500 to 2k", feels="breaks", ai="most", gated=False,
                     parts=[share.part_row(part)], history=share.history_counts(path))
 
     def test_holds_numbers_and_no_name(self):
@@ -217,6 +217,7 @@ class StateCard(unittest.TestCase):
                              (lambda c: c.update(commits="1234"), "commits is not one of"),
                              (lambda c: c.update(feels="%s is painful" % SECRET), "feels is not one of"),
                              (lambda c: c.update(ai="yes"), "ai is not one of"),
+                             (lambda c: c.update(gated="since March"), "gated is not bool"),
                              (lambda c: c.update(note="x" * 300), "note is over")):
             card = json.loads(json.dumps(good))
             change(card)
